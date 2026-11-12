@@ -7,3 +7,12 @@ __pycache__/
 .env
 .env.local
 .venv/
+.neon
+
+.vercel
+.env*
+.worker-build/
+backend/.wrangler/
+backend/.tools/
+backend/.venv-workers/
+backend/.worker-build-script.sh

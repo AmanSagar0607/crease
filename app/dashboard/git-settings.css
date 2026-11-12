@@ -1,0 +1,36 @@
+.git-connected { padding: 24px; border-bottom: 1px solid var(--border); }
+.git-connected-heading, .git-provider-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.git-kicker { margin: 0 0 8px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .1em; }
+.git-connected-heading h3, .git-provider-header h3 { margin: 0; font-size: 16px; letter-spacing: -.025em; }
+.git-connected-heading p:not(.git-kicker), .git-provider-header p:not(.git-kicker) { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.git-pill { flex: none; border: 1px solid var(--border); border-radius: 20px; padding: 5px 9px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.git-pill.is-live { color: #17603e; background: #f1faf4; border-color: #d5e9dd; }
+.git-connected-repo, .git-connected-empty { display: flex; align-items: center; gap: 12px; margin-top: 18px; padding: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--soft); }
+.git-repo-icon, .git-connected-empty > span { display: grid; width: 36px; height: 36px; place-items: center; flex: none; border: 1px solid var(--border); border-radius: 7px; background: var(--paper); font-size: 16px; }
+.git-connected-repo > div, .git-connected-empty > div { flex: 1; min-width: 0; }
+.git-connected-repo a { display: block; overflow-wrap: anywhere; font-size: 13px; font-weight: 700; }
+.git-small-label { display: block; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.git-connected-repo p, .git-connected-empty p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+.git-connected-empty strong { font-size: 13px; }
+.git-disconnect { border: 1px solid var(--border); border-radius: 6px; background: var(--paper); padding: 8px 12px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.git-disconnect:hover:not(:disabled) { background: #fbeeea; color: #a12d20; }
+.git-disconnect:disabled, .git-connect-action button:disabled { cursor: not-allowed; opacity: .5; }
+.git-disconnect:focus-visible, .git-connect-action button:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.git-notice { margin: 10px 0 0; color: #17603e; font-size: 12px; }
+.git-connect-action { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; }
+.git-connect-action > span { color: var(--muted); font-size: 12px; }
+.git-connect-action button { cursor: pointer; font-family: inherit; }
+.git-provider-settings { margin-top: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--paper); overflow: hidden; }
+.git-provider-header { padding: 24px; border-bottom: 1px solid var(--border); }
+.git-provider-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.git-provider-group { padding: 22px 24px; }
+.git-provider-group + .git-provider-group { border-left: 1px solid var(--border); }
+.git-provider-group h4 { margin: 0; font-size: 13px; }
+.git-provider-group > p { min-height: 36px; margin: 5px 0 12px; color: var(--muted); font-size: 12px; }
+.git-provider-group ul { list-style: none; padding: 0; margin: 0; }
+.git-provider-group li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 9px 0; border-top: 1px solid var(--border); font-size: 12px; }
+.git-provider-group li span { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.git-provider-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+.git-provider-footer a { color: var(--ink); font-weight: 600; }
+@media (max-width: 780px) { .git-provider-grid { grid-template-columns: 1fr; } .git-provider-group + .git-provider-group { border-left: 0; border-top: 1px solid var(--border); } .git-provider-group > p { min-height: 0; } }
+@media (max-width: 520px) { .git-connected, .git-provider-header { padding: 18px; } .git-connected-heading, .git-provider-header, .git-connect-action, .git-provider-footer { align-items: flex-start; flex-direction: column; } .git-connect-action button { width: 100%; } .git-connected-repo { flex-wrap: wrap; } .git-disconnect { width: 100%; } .git-provider-group { padding: 18px; } }

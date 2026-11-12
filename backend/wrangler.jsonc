@@ -1,0 +1,7 @@
+{
+  "name": "crease-api",
+  "main": "cloudflare_main.py",
+  "compatibility_date": "2026-11-12",
+  "compatibility_flags": ["python_workers"],
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "fd58c97c0ec042c3a29cc70abe6696b3" }]
+}
