@@ -405,6 +405,14 @@
   margin: 62px auto 0;
 }
 
+.catPerch {
+  position: absolute;
+  z-index: 4;
+  top: -96px;
+  right: 7%;
+  width: 132px;
+}
+
 .mockPanel {
   position: relative;
   max-height: 560px;
@@ -1741,6 +1749,12 @@
 
   .mockWrap {
     width: calc(100% - 32px);
+  }
+
+  .catPerch {
+    top: -77px;
+    right: 4%;
+    width: 104px;
   }
 
   .mockPanel {
