@@ -34,11 +34,13 @@ class ApiTest(unittest.TestCase):
         headers = {'origin':main.FRONTEND_URL}
         self.client.cookies.set('crease_session', 'u1')
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
+        self.assertRegex(p['write_key'], r'^crease_[A-Za-z0-9_-]{16,}$')
+        event_headers = {'origin':'https://example.com', 'x-crease-key':p['write_key']}
         event = {'id':'event1','name':'pageview','timestamp':main.stamp(main.now()),'path':'/hello','visitorId':'v','sessionId':'s'}
         payload = {'projectId':p['id'],'events':[event]}
-        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://evil.example'}).status_code,403)
-        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com'}).json()['accepted'],1)
-        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com'}).json()['accepted'],0)
+        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://evil.example', 'x-crease-key':p['write_key']}).status_code,403)
+        self.assertEqual(self.client.post('/api/events', json=payload, headers=event_headers).json()['accepted'],1)
+        self.assertEqual(self.client.post('/api/events', json=payload, headers=event_headers).json()['accepted'],0)
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/summary').json()['metrics']['pageviews'],1)
         summary = self.client.get('/api/projects/'+p['id']+'/summary').json()
         self.assertEqual(len(summary['series']), 30)
@@ -49,14 +51,37 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(overview[0]['visitors_7d'], 1)
         self.assertEqual(overview[0]['events_7d'], 1)
         alternate = dict(event, id='event2')
-        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[alternate]}, headers={'origin':'https://www.example.com'}).json()['accepted'],1)
-        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[dict(event, id='event3')]}, headers={'origin':'https://other.example.com'}).status_code,403)
+        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[alternate]}, headers={'origin':'https://www.example.com', 'x-crease-key':p['write_key']}).json()['accepted'],1)
+        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[dict(event, id='event3')]}, headers={'origin':'https://other.example.com', 'x-crease-key':p['write_key']}).status_code,403)
         self.client.cookies.set('crease_session', 'u2')
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/summary').status_code,404)
         self.assertEqual(self.client.delete('/api/projects/'+p['id'], headers=headers).status_code,404)
         self.client.cookies.set('crease_session', 'u1')
         self.assertEqual(self.client.delete('/api/projects/'+p['id'], headers=headers).status_code,200)
         with main.engine.connect() as db: self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events')).scalar_one(),0)
+
+    def test_events_require_project_write_key(self):
+        headers = {'origin':main.FRONTEND_URL}
+        self.client.cookies.set('crease_session', 'u1')
+        p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
+        other = self.client.post('/api/projects', json={'name':'Other','domain':'other.com'}, headers=headers).json()
+        event = {'id':'event1','name':'pageview','timestamp':main.stamp(main.now()),'path':'/hello','visitorId':'v','sessionId':'s'}
+        payload = {'projectId':p['id'],'events':[event]}
+        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com'}).status_code,401)
+        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com','x-crease-key':'crease_wrongwrongwrongwrong'}).status_code,401)
+        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com','x-crease-key':other['write_key']}).status_code,401)
+        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com','x-crease-key':p['write_key']}).json()['accepted'],1)
+        with main.engine.connect() as db:
+            stored = db.execute(text('SELECT write_key_hash FROM projects WHERE id=:id'), {'id':p['id']}).scalar_one()
+        self.assertEqual(stored, main.digest(p['write_key']))
+        self.assertNotIn(p['write_key'], stored)
+        rotated = self.client.post('/api/projects/'+p['id']+'/write-key', headers=headers).json()['write_key']
+        self.assertNotEqual(rotated, p['write_key'])
+        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com','x-crease-key':p['write_key']}).status_code,401)
+        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[dict(event, id='event2')]}, headers={'origin':'https://example.com','x-crease-key':rotated}).json()['accepted'],1)
+        listing = {item['id']:item for item in self.client.get('/api/projects').json()}
+        self.assertTrue(listing[p['id']]['has_write_key'])
+        self.assertNotIn('write_key', listing[p['id']])
 
     def test_mutation_requires_origin_and_auth(self):
         self.assertEqual(self.client.get('/api/projects').status_code,401)
@@ -67,7 +92,7 @@ class ApiTest(unittest.TestCase):
         headers = {'origin':main.FRONTEND_URL}
         self.client.cookies.set('crease_session', 'u1')
         project = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
-        payload = {'repository':'owner/site','path':'index.html','installation_id':1}
+        payload = {'repository':'owner/site','path':'index.html','installation_id':1,'write_key':'crease_0123456789abcdef'}
         with patch.object(main, 'GITHUB_APP_SLUG', ''):
             self.assertEqual(self.client.post('/api/projects/'+project['id']+'/github-install', json=payload, headers=headers).status_code,503)
         self.client.cookies.set('crease_session', 'u2')
@@ -116,11 +141,12 @@ class ApiTest(unittest.TestCase):
             return httpx.Response(404, json={'message':'Not Found'})
         real_client = httpx.AsyncClient
         with patch.object(github_install.httpx, 'AsyncClient', side_effect=lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw)):
-            result = asyncio.run(github_install.create_install_pr('token','owner/site','index.html','project-id','https://crease.example'))
+            result = asyncio.run(github_install.create_install_pr('token','owner/site','index.html','project-id','https://crease.example','crease_0123456789abcdef'))
         updated = base64.b64decode(writes[0]['content']).decode()
         self.assertEqual(result['url'], 'https://github.com/owner/site/pull/1')
         self.assertIn('data-crease-install', updated)
         self.assertIn('crease:consent', updated)
+        self.assertIn('writeKey', updated)
         self.assertLess(updated.index('data-crease-install'), updated.index('</body>'))
 
     def test_installation_status_identifies_project_on_default_branch(self):

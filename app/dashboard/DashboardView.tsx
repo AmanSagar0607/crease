@@ -19,6 +19,8 @@ type Project = {
   visitors_7d?: number;
   events_7d?: number;
   last_event_at?: string | null;
+  has_write_key?: boolean;
+  write_key?: string;
 };
 type Breakdown = { label: string; count: number };
 type SeriesPoint = { date: string; events: number; pageviews: number; visitors: number; sessions: number };
@@ -37,6 +39,27 @@ type Summary = {
 type Delta = { label: string; dir: 'up' | 'down' | 'flat' };
 
 const firstPageviewSeen = new Set<string>();
+
+function writeKeyStorage(projectId: string) {
+  return `crease-write-key:${projectId}`;
+}
+
+function readWriteKey(projectId: string) {
+  try {
+    return window.localStorage.getItem(writeKeyStorage(projectId)) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function saveWriteKey(projectId: string, key: string) {
+  try {
+    if (key) window.localStorage.setItem(writeKeyStorage(projectId), key);
+    else window.localStorage.removeItem(writeKeyStorage(projectId));
+  } catch {
+    // Storage can be unavailable; the key stays in component state for this session.
+  }
+}
 
 function celebrateFirstPageview(projectId: string, summary: Summary, project?: Project) {
   if (!project || summary.metrics.pageviews <= 0 || !project.last_event_at) return;
@@ -399,6 +422,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [retention, setRetention] = useState(30);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState('');
+  const [keyNotice, setKeyNotice] = useState('');
+  const [writeKey, setWriteKey] = useState('');
   const [origin, setOrigin] = useState('');
   const [tab, setTab] = useState<Tab>('analytics');
   const project = projects.find((item) => item.id === selected);
@@ -469,7 +494,29 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   useEffect(() => {
     setSettingsMessage('');
+    setKeyNotice('');
+    setWriteKey(selected ? readWriteKey(selected) : '');
   }, [selected]);
+
+  async function generateWriteKey() {
+    if (!project) return;
+    setError('');
+    setKeyNotice('');
+    try {
+      const result = await api<{ write_key: string }>(
+        `/api/projects/${encodeURIComponent(project.id)}/write-key`,
+        { method: 'POST' },
+      );
+      saveWriteKey(project.id, result.write_key);
+      setWriteKey(result.write_key);
+      setProjects((list) =>
+        list.map((item) => (item.id === project.id ? { ...item, has_write_key: true } : item)),
+      );
+      setKeyNotice('New write key generated. Update every deployed copy of the snippet; the old key no longer works.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not generate a write key.');
+    }
+  }
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -485,6 +532,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setSelected(created.id);
       setName('');
       setDomain('');
+      saveWriteKey(created.id, created.write_key ?? '');
+      setWriteKey(created.write_key ?? '');
+      setKeyNotice(created.write_key ? 'Write key created. Copy the installation code now; it is also stored in this browser.' : '');
       if (isFirstProject) {
         dispatchMascotEvent({ kind: 'project-created', projectName: created.name });
       }
@@ -548,11 +598,15 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const snippet = `<script src="${origin}/crease.js" defer></script>
 <script>
   window.addEventListener('load', function () {
-    crease.init({ projectId: '${project?.id || ''}', endpoint: '${collector}' });
+    crease.init({ projectId: '${project?.id || ''}', writeKey: '${writeKey}', endpoint: '${collector}' });
   });
 </script>`;
 
   async function copySnippet() {
+    if (!writeKey) {
+      setError('Generate a write key before copying the installation code.');
+      return;
+    }
     try {
       await navigator.clipboard.writeText(snippet);
       setCopied(true);
@@ -896,6 +950,30 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           Add this snippet to your site after obtaining any required visitor consent. The collector URL
                           must be publicly reachable by your visitors.
                         </p>
+                        {!writeKey ? (
+                          <div className={s.keyNotice} role="status">
+                            <strong>Generate a write key</strong>
+                            <p>
+                              Crease rejects events without a valid per-project write key. Generate one before copying
+                              the installation code.
+                            </p>
+                            <button className={`${s.btn} ${s.btnSecondary}`} type="button" onClick={generateWriteKey}>
+                              Generate write key
+                            </button>
+                          </div>
+                        ) : (
+                          <p className={s.keyStatus}>
+                            Write key ready. It is stored in this browser and embedded in the snippet.{' '}
+                            <button className={s.keyRotate} type="button" onClick={generateWriteKey}>
+                              Rotate key
+                            </button>
+                          </p>
+                        )}
+                        {keyNotice && (
+                          <p className={s.keyStatus} role="status">
+                            {keyNotice}
+                          </p>
+                        )}
                         <div className={s.stepList}>
                           {[
                             ['Paste the snippet', 'Place it in your document head so every page loads the tracker.'],
@@ -914,7 +992,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           ))}
                         </div>
                         <div className={s.installFooter}>
-                          <button className={`${s.btn} ${s.btnSecondary}`} type="button" onClick={copySnippet}>
+                          <button className={`${s.btn} ${s.btnSecondary}`} type="button" onClick={copySnippet} disabled={!writeKey}>
                             {copied ? <CheckIcon className={s.iconSm} /> : <CopyIcon className={s.iconSm} />}
                             {copied ? 'Copied' : 'Copy installation code'}
                           </button>
@@ -928,7 +1006,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         <div className={s.codeCard}>
                           <div className={s.codeTop}>
                             <span>INSTALLATION CODE</span>
-                            <button className={s.copyButton} type="button" onClick={copySnippet}>
+                            <button className={s.copyButton} type="button" onClick={copySnippet} disabled={!writeKey}>
                               {copied ? <CheckIcon /> : <CopyIcon />}
                               {copied ? 'Copied' : 'Copy'}
                             </button>
@@ -951,7 +1029,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
                   {tab === 'integrations' && (
                     <div className={s.integrations}>
-                      <GitHubInstall key={project.id} projectId={project.id} />
+                      <GitHubInstall key={project.id} projectId={project.id} writeKey={writeKey} />
                       <VercelGitSettings key={`vercel-${project.id}`} projectId={project.id} />
                     </div>
                   )}
