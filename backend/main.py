@@ -235,6 +235,8 @@ async def github_install_status(project_id: str, response: Response, crease_app_
     with engine.connect() as db:
         owned(db, project_id, user['id'])
         repo = db.execute(text('SELECT full_name, installation_id FROM project_repositories WHERE project_id=:id'), {'id':project_id}).mappings().first()
+        event_count = db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':project_id}).scalar_one()
+        latest_event = db.execute(text('SELECT MAX(occurred_at) FROM events WHERE project_id=:id'), {'id':project_id}).scalar_one()
     if not repo: raise HTTPException(404, 'Connect a repository first')
     token = app_user_token(crease_app_token, user)
     installations, _ = await github_app_pages(token, '/user/installations', 'installations')
@@ -242,7 +244,9 @@ async def github_install_status(project_id: str, response: Response, crease_app_
         raise HTTPException(403, 'The GitHub App no longer has access to this repository. Check the installation.')
     repositories, _ = await github_app_pages(token, f"/user/installations/{repo['installation_id']}/repositories", 'repositories')
     if not any(r['full_name'].lower() == repo['full_name'].lower() for r in repositories): raise HTTPException(403, 'The GitHub App no longer has access to this repository.')
-    return await installation_status(token, repo['full_name'], project_id)
+    result = await installation_status(token, repo['full_name'], project_id)
+    result['analytics'] = {'event_count': event_count, 'latest_event': latest_event}
+    return result
 
 @app.post('/api/projects/{project_id}/github-install')
 async def github_install(project_id: str, data: GitHubInstallInput, crease_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
