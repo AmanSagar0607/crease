@@ -30,10 +30,15 @@ class ApiTest(unittest.TestCase):
             for user in ('u1','u2'):
                 db.execute(text('INSERT INTO sessions VALUES (:token,:user,:expiry)'), {'token':main.digest(user),'user':user,'expiry':main.stamp(main.now()+timedelta(days=1))})
 
+    def verify_project(self, project_id):
+        with main.engine.begin() as db:
+            db.execute(text('UPDATE projects SET verified_at=:at WHERE id=:id'), {'at':main.stamp(main.now()),'id':project_id})
+
     def test_project_isolation_dedup_and_deletion(self):
         headers = {'origin':main.FRONTEND_URL}
         self.client.cookies.set('crease_session', 'u1')
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
+        self.verify_project(p['id'])
         self.assertRegex(p['write_key'], r'^crease_[A-Za-z0-9_-]{16,}$')
         event_headers = {'origin':'https://example.com', 'x-crease-key':p['write_key']}
         event = {'id':'event1','name':'pageview','timestamp':main.stamp(main.now()),'path':'/hello','visitorId':'v','sessionId':'s'}
@@ -65,6 +70,7 @@ class ApiTest(unittest.TestCase):
         self.client.cookies.set('crease_session', 'u1')
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         other = self.client.post('/api/projects', json={'name':'Other','domain':'other.com'}, headers=headers).json()
+        self.verify_project(p['id'])
         event = {'id':'event1','name':'pageview','timestamp':main.stamp(main.now()),'path':'/hello','visitorId':'v','sessionId':'s'}
         payload = {'projectId':p['id'],'events':[event]}
         self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com'}).status_code,401)
@@ -82,6 +88,49 @@ class ApiTest(unittest.TestCase):
         listing = {item['id']:item for item in self.client.get('/api/projects').json()}
         self.assertTrue(listing[p['id']]['has_write_key'])
         self.assertNotIn('write_key', listing[p['id']])
+
+    def test_domain_verification_pending_failed_and_passed(self):
+        headers = {'origin':main.FRONTEND_URL}
+        self.client.cookies.set('crease_session', 'u1')
+        p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
+        self.assertFalse(p['verified'])
+        self.assertTrue(p['verification_token'])
+        verification = self.client.get('/api/projects/'+p['id']+'/verification').json()
+        self.assertFalse(verification['verified'])
+        self.assertEqual(verification['record'], 'crease-site-verification='+p['verification_token'])
+        self.assertIn(p['verification_token'], verification['meta'])
+        event = {'id':'event1','name':'pageview','timestamp':main.stamp(main.now()),'path':'/hello','visitorId':'v','sessionId':'s'}
+        payload = {'projectId':p['id'],'events':[event]}
+        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        self.assertEqual(self.client.post('/api/events', json=payload, headers=event_headers).status_code,403)
+        with patch.object(main, 'dns_has_token', new=AsyncMock(return_value=False)), patch.object(main, 'meta_has_token', new=AsyncMock(return_value=False)):
+            failed = self.client.post('/api/projects/'+p['id']+'/verification/check', headers=headers).json()
+        self.assertFalse(failed['verified'])
+        self.assertIsNone(failed['method'])
+        self.assertEqual(self.client.post('/api/events', json=payload, headers=event_headers).status_code,403)
+        with patch.object(main, 'dns_has_token', new=AsyncMock(return_value=True)), patch.object(main, 'meta_has_token', new=AsyncMock(return_value=False)):
+            passed = self.client.post('/api/projects/'+p['id']+'/verification/check', headers=headers).json()
+        self.assertTrue(passed['verified'])
+        self.assertEqual(passed['method'], 'dns')
+        self.assertTrue(self.client.get('/api/projects/'+p['id']+'/verification').json()['verified'])
+        self.assertEqual(self.client.post('/api/events', json=payload, headers=event_headers).json()['accepted'],1)
+        self.client.cookies.set('crease_session', 'u2')
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/verification').status_code,404)
+        self.assertEqual(self.client.post('/api/projects/'+p['id']+'/verification/check', headers=headers).status_code,404)
+
+    def test_domain_verification_accepts_meta_tag(self):
+        headers = {'origin':main.FRONTEND_URL}
+        self.client.cookies.set('crease_session', 'u1')
+        p = self.client.post('/api/projects', json={'name':'Meta','domain':'meta.example'}, headers=headers).json()
+        with patch.object(main, 'dns_has_token', new=AsyncMock(return_value=False)), patch.object(main, 'meta_has_token', new=AsyncMock(return_value=True)):
+            result = self.client.post('/api/projects/'+p['id']+'/verification/check', headers=headers).json()
+        self.assertTrue(result['verified'])
+        self.assertEqual(result['method'], 'meta')
+
+    def test_meta_verification_rejects_private_hosts(self):
+        self.assertFalse(main.public_host('localhost'))
+        self.assertFalse(main.public_host('127.0.0.1'))
+        self.assertFalse(main.public_host('10.0.0.1'))
 
     def test_mutation_requires_origin_and_auth(self):
         self.assertEqual(self.client.get('/api/projects').status_code,401)
