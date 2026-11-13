@@ -58,6 +58,7 @@ def setup():
             'CREATE TABLE IF NOT EXISTS oauth_states (state_hash VARCHAR(64) PRIMARY KEY, expires_at VARCHAR(32) NOT NULL)',
             'CREATE TABLE IF NOT EXISTS projects (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, name VARCHAR(100) NOT NULL, domain VARCHAR(253) NOT NULL, retention_days INTEGER NOT NULL DEFAULT 90)',
             'CREATE TABLE IF NOT EXISTS project_repositories (project_id VARCHAR(36) PRIMARY KEY, full_name VARCHAR(200) NOT NULL, installation_id BIGINT NOT NULL)',
+            'CREATE TABLE IF NOT EXISTS github_connections (user_id VARCHAR(64) PRIMARY KEY, encrypted_token TEXT NOT NULL)',
             'CREATE TABLE IF NOT EXISTS vercel_connections (user_id VARCHAR(64) PRIMARY KEY, encrypted_token TEXT NOT NULL, team_id VARCHAR(128))',
             'CREATE TABLE IF NOT EXISTS project_vercel (project_id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, vercel_project_id VARCHAR(128) NOT NULL)',
             'CREATE TABLE IF NOT EXISTS events (project_id VARCHAR(36) NOT NULL, id VARCHAR(64) NOT NULL, name VARCHAR(64) NOT NULL, occurred_at VARCHAR(40) NOT NULL, path VARCHAR(512) NOT NULL, visitor_id VARCHAR(64), session_id VARCHAR(64), country VARCHAR(2), device VARCHAR(16), referrer VARCHAR(253), properties TEXT NOT NULL, PRIMARY KEY(project_id,id))',
@@ -147,6 +148,11 @@ def app_cipher():
     except ValueError: raise HTTPException(503, 'GitHub App token key is invalid')
 
 def app_user_token(value, user):
+    with engine.connect() as db:
+        row = db.execute(text('SELECT encrypted_token FROM github_connections WHERE user_id=:user'), {'user': user['id']}).first()
+    if row:
+        try: return app_cipher().decrypt(row[0].encode()).decode()
+        except (InvalidToken, ValueError, TypeError): raise HTTPException(401, 'Connect GitHub repositories again')
     try:
         data = json.loads(app_cipher().decrypt((value or '').encode(), ttl=3600))
         if data['user_id'] != user['id']: raise ValueError()
@@ -201,8 +207,13 @@ async def github_app_callback(code: str, state: str, crease_app_state: str | Non
         profile = await github_app_request(token, '/user')
         if str(profile['id']) != user['github_id']: raise HTTPException(403, 'Connect the same GitHub account used to sign in')
     except httpx.RequestError as exc: raise HTTPException(503, 'Could not connect to GitHub') from exc
-    response = RedirectResponse(FRONTEND_URL+'/dashboard', status_code=302)
-    response.set_cookie('crease_app_token', cipher.encrypt(json.dumps({'token':token,'user_id':user['id']}).encode()).decode(), httponly=True, secure=SECURE, samesite='lax', max_age=3600, path='/')
+    with engine.begin() as db:
+        db.execute(text('INSERT INTO github_connections (user_id,encrypted_token) VALUES (:user,:token) ON CONFLICT (user_id) DO UPDATE SET encrypted_token=:token'), {'user':user['id'], 'token':cipher.encrypt(token.encode()).decode()})
+    installations, _ = await github_app_pages(token, '/user/installations', 'installations')
+    installed = any(item.get('app_slug', '').lower() == GITHUB_APP_SLUG.lower() for item in installations)
+    destination = FRONTEND_URL+'/dashboard' if installed else 'https://github.com/apps/'+GITHUB_APP_SLUG+'/installations/new'
+    response = RedirectResponse(destination, status_code=302)
+    response.delete_cookie('crease_app_token', path='/')
     response.delete_cookie('crease_app_state', path='/')
     return response
 

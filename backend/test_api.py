@@ -22,7 +22,7 @@ class ApiTest(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(main.app)
         with main.engine.begin() as db:
-            for table in ('events', 'project_repositories', 'project_vercel', 'vercel_connections', 'projects', 'sessions', 'users'): db.execute(text('DELETE FROM '+table))
+            for table in ('events', 'project_repositories', 'project_vercel', 'vercel_connections', 'github_connections', 'projects', 'sessions', 'users'): db.execute(text('DELETE FROM '+table))
             db.execute(text("INSERT INTO users VALUES ('u1','g1','first'),('u2','g2','second')"))
             for user in ('u1','u2'):
                 db.execute(text('INSERT INTO sessions VALUES (:token,:user,:expiry)'), {'token':main.digest(user),'user':user,'expiry':main.stamp(main.now()+timedelta(days=1))})
@@ -65,6 +65,16 @@ class ApiTest(unittest.TestCase):
             encrypted = main.app_cipher().encrypt(main.json.dumps({'token':'test', 'user_id':'u1'}).encode()).decode()
             self.assertEqual(main.app_user_token(encrypted, {'id':'u1'}), 'test')
             with self.assertRaises(main.HTTPException): main.app_user_token(encrypted, {'id':'u2'})
+
+    def test_saved_github_connection_is_encrypted_and_user_scoped(self):
+        key = Fernet.generate_key().decode()
+        with patch.object(main, 'GITHUB_APP_SLUG', 'crease'), patch.object(main, 'GITHUB_APP_CLIENT_ID', 'id'), patch.object(main, 'GITHUB_APP_CLIENT_SECRET', 'secret'), patch.object(main, 'GITHUB_APP_TOKEN_KEY', key):
+            encrypted = main.app_cipher().encrypt(b'github-token').decode()
+            with main.engine.begin() as db:
+                db.execute(text('INSERT INTO github_connections VALUES (:user,:token)'), {'user':'u1', 'token':encrypted})
+            self.assertNotIn('github-token', encrypted)
+            self.assertEqual(main.app_user_token(None, {'id':'u1'}), 'github-token')
+            with self.assertRaises(main.HTTPException): main.app_user_token(None, {'id':'u2'})
 
     def test_repository_pagination_includes_later_pages(self):
         responses = [{'repositories':[{'full_name':str(i)} for i in range(100)]}, {'repositories':[{'full_name':'owner/last'}]}]
