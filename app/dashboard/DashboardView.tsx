@@ -21,6 +21,14 @@ type Project = {
   last_event_at?: string | null;
   has_write_key?: boolean;
   write_key?: string;
+  verified?: boolean;
+};
+type Verification = {
+  token: string;
+  verified: boolean;
+  verified_at: string | null;
+  record: string;
+  meta: string;
 };
 type Breakdown = { label: string; count: number };
 type SeriesPoint = { date: string; events: number; pageviews: number; visitors: number; sessions: number };
@@ -424,6 +432,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [settingsMessage, setSettingsMessage] = useState('');
   const [keyNotice, setKeyNotice] = useState('');
   const [writeKey, setWriteKey] = useState('');
+  const [verification, setVerification] = useState<Verification | null>(null);
+  const [verificationBusy, setVerificationBusy] = useState(false);
+  const [verificationNotice, setVerificationNotice] = useState('');
   const [origin, setOrigin] = useState('');
   const [tab, setTab] = useState<Tab>('analytics');
   const project = projects.find((item) => item.id === selected);
@@ -496,7 +507,59 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setSettingsMessage('');
     setKeyNotice('');
     setWriteKey(selected ? readWriteKey(selected) : '');
+    setVerification(null);
+    setVerificationNotice('');
   }, [selected]);
+
+  const loadVerification = useCallback(async () => {
+    if (!selected) {
+      setVerification(null);
+      return;
+    }
+    try {
+      const result = await api<Verification>(`/api/projects/${encodeURIComponent(selected)}/verification`);
+      setVerification(result);
+      setProjects((list) =>
+        list.map((item) => (item.id === selected ? { ...item, verified: result.verified } : item)),
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setError(e instanceof Error ? e.message : 'Could not load domain verification status.');
+    }
+  }, [selected, router]);
+
+  useEffect(() => {
+    void loadVerification();
+  }, [loadVerification]);
+
+  async function checkVerification() {
+    if (!project) return;
+    setError('');
+    setVerificationNotice('');
+    setVerificationBusy(true);
+    try {
+      const result = await api<{ verified: boolean; method: string | null; checked_at: string }>(
+        `/api/projects/${encodeURIComponent(project.id)}/verification/check`,
+        { method: 'POST' },
+      );
+      setProjects((list) =>
+        list.map((item) => (item.id === project.id ? { ...item, verified: item.verified || result.verified } : item)),
+      );
+      setVerificationNotice(
+        result.verified
+          ? `Domain verified via ${result.method === 'meta' ? 'the root meta tag' : 'the DNS TXT record'}.`
+          : 'No matching DNS TXT record or meta tag found yet. DNS changes can take a few minutes to propagate.',
+      );
+      if (result.verified) await loadVerification();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not check domain verification.');
+    } finally {
+      setVerificationBusy(false);
+    }
+  }
 
   async function generateWriteKey() {
     if (!project) return;
@@ -1003,6 +1066,44 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                       </section>
 
                       <div>
+                        <div className={s.verifyCard}>
+                          <div className={s.verifyHead}>
+                            <span className={s.verifyBadge} data-verified={verification?.verified ? 'true' : 'false'}>
+                              {verification?.verified ? 'Domain verified' : 'Verification required'}
+                            </span>
+                            <span className={s.verifyDomain}>{project.domain}</span>
+                          </div>
+                          <p className={s.verifyCopy}>
+                            {verification?.verified
+                              ? 'Crease accepts events for this domain. Re-check if you move the site to a new host.'
+                              : 'Crease rejects events until the domain proves ownership. Add one of the records below, then check again.'}
+                          </p>
+                          {!verification?.verified && verification && (
+                            <div className={s.verifyRows}>
+                              <div className={s.verifyRow}>
+                                <span>DNS TXT record</span>
+                                <code>{verification.record}</code>
+                              </div>
+                              <div className={s.verifyRow}>
+                                <span>Root meta tag</span>
+                                <code>{verification.meta}</code>
+                              </div>
+                            </div>
+                          )}
+                          <button
+                            className={`${s.btn} ${s.btnSecondary}`}
+                            type="button"
+                            onClick={checkVerification}
+                            disabled={verificationBusy || verification?.verified}
+                          >
+                            {verificationBusy ? 'Checking…' : verification?.verified ? 'Verified' : 'Check verification'}
+                          </button>
+                          {verificationNotice && (
+                            <p className={s.verifyNotice} role="status">
+                              {verificationNotice}
+                            </p>
+                          )}
+                        </div>
                         <div className={s.codeCard}>
                           <div className={s.codeTop}>
                             <span>INSTALLATION CODE</span>

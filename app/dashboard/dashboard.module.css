@@ -2108,3 +2108,87 @@
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
+
+/* ---------- Domain verification ---------- */
+
+.verifyCard {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+}
+
+.verifyHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.verifyBadge {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--soft);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.verifyBadge[data-verified='true'] {
+  border-color: #1f7a4d;
+  background: #eaf6ef;
+  color: #1f7a4d;
+}
+
+.verifyDomain {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.verifyCopy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.verifyRows {
+  display: grid;
+  gap: 8px;
+}
+
+.verifyRow {
+  display: grid;
+  gap: 4px;
+}
+
+.verifyRow span {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.verifyRow code {
+  display: block;
+  overflow-x: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.verifyNotice {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}

@@ -1,9 +1,12 @@
 """Crease API. Configure GitHub OAuth and a PostgreSQL URL before deployment."""
+import asyncio
 import hashlib
+import ipaddress
 import json
 import os
 import re
 import secrets
+import socket
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
@@ -56,7 +59,7 @@ def setup():
             'CREATE TABLE IF NOT EXISTS users (id VARCHAR(64) PRIMARY KEY, github_id VARCHAR(64) UNIQUE NOT NULL, login VARCHAR(255) NOT NULL)',
             'CREATE TABLE IF NOT EXISTS sessions (token_hash VARCHAR(64) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, expires_at VARCHAR(32) NOT NULL)',
             'CREATE TABLE IF NOT EXISTS oauth_states (state_hash VARCHAR(64) PRIMARY KEY, expires_at VARCHAR(32) NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS projects (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, name VARCHAR(100) NOT NULL, domain VARCHAR(253) NOT NULL, retention_days INTEGER NOT NULL DEFAULT 90, write_key_hash VARCHAR(64))',
+            'CREATE TABLE IF NOT EXISTS projects (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, name VARCHAR(100) NOT NULL, domain VARCHAR(253) NOT NULL, retention_days INTEGER NOT NULL DEFAULT 90, write_key_hash VARCHAR(64), verification_token VARCHAR(64), verified_at VARCHAR(32))',
             'CREATE TABLE IF NOT EXISTS project_repositories (project_id VARCHAR(36) PRIMARY KEY, full_name VARCHAR(200) NOT NULL, installation_id BIGINT NOT NULL)',
             'CREATE TABLE IF NOT EXISTS github_connections (user_id VARCHAR(64) PRIMARY KEY, encrypted_token TEXT NOT NULL)',
             'CREATE TABLE IF NOT EXISTS vercel_connections (user_id VARCHAR(64) PRIMARY KEY, encrypted_token TEXT NOT NULL, team_id VARCHAR(128))',
@@ -66,15 +69,20 @@ def setup():
         ]: db.execute(text(sql))
         if DATABASE_URL.startswith('sqlite'):
             columns = {row[1] for row in db.execute(text('PRAGMA table_info(projects)'))}
-            if 'write_key_hash' not in columns:
-                db.execute(text('ALTER TABLE projects ADD COLUMN write_key_hash VARCHAR(64)'))
+            for column, ddl in (('write_key_hash', 'VARCHAR(64)'), ('verification_token', 'VARCHAR(64)'), ('verified_at', 'VARCHAR(32)')):
+                if column not in columns:
+                    db.execute(text(f'ALTER TABLE projects ADD COLUMN {column} {ddl}'))
         else:
-            db.execute(text('ALTER TABLE projects ADD COLUMN IF NOT EXISTS write_key_hash VARCHAR(64)'))
+            for column, ddl in (('write_key_hash', 'VARCHAR(64)'), ('verification_token', 'VARCHAR(64)'), ('verified_at', 'VARCHAR(32)')):
+                db.execute(text(f'ALTER TABLE projects ADD COLUMN IF NOT EXISTS {column} {ddl}'))
+        for row in db.execute(text('SELECT id FROM projects WHERE verification_token IS NULL')).mappings():
+            db.execute(text('UPDATE projects SET verification_token=:token WHERE id=:id'), {'token':secrets.token_urlsafe(24),'id':row['id']})
 
 setup()
 def now(): return datetime.now(timezone.utc)
 def digest(value): return hashlib.sha256(value.encode()).hexdigest()
 def new_write_key(): return 'crease_' + secrets.token_urlsafe(24)
+def new_verification_token(): return secrets.token_urlsafe(24)
 def stamp(value): return value.isoformat()
 async def session_user(crease_session: str | None = Cookie(default=None)):
     if not crease_session: raise HTTPException(401, 'Sign in required')
@@ -308,6 +316,7 @@ async def projects(user=Depends(session_user)):
     with engine.connect() as db:
         rows = db.execute(text('''SELECT p.id, p.name, p.domain, p.retention_days,
             (p.write_key_hash IS NOT NULL) AS has_write_key,
+            (p.verified_at IS NOT NULL) AS verified,
             (SELECT COUNT(DISTINCT e.visitor_id) FROM events e WHERE e.project_id=p.id AND e.occurred_at>=:since) AS visitors_7d,
             (SELECT COUNT(*) FROM events e WHERE e.project_id=p.id AND e.occurred_at>=:since) AS events_7d,
             (SELECT MAX(e.occurred_at) FROM events e WHERE e.project_id=p.id) AS last_event_at
@@ -321,8 +330,9 @@ async def create_project(data: ProjectInput, user=Depends(session_user)):
     if not data.name.strip(): raise HTTPException(422, 'Project name is required')
     result = {'id':str(uuid4()),'name':data.name.strip(),'domain':domain,'retention_days':90}
     write_key = new_write_key()
-    with engine.begin() as db: db.execute(text('INSERT INTO projects (id,user_id,name,domain,retention_days,write_key_hash) VALUES (:id,:user,:name,:domain,90,:key_hash)'), {**result,'user':user['id'],'key_hash':digest(write_key)})
-    return {**result, 'write_key': write_key}
+    verification_token = new_verification_token()
+    with engine.begin() as db: db.execute(text('INSERT INTO projects (id,user_id,name,domain,retention_days,write_key_hash,verification_token) VALUES (:id,:user,:name,:domain,90,:key_hash,:verification_token)'), {**result,'user':user['id'],'key_hash':digest(write_key),'verification_token':verification_token})
+    return {**result, 'write_key': write_key, 'verification_token': verification_token, 'verified': False}
 
 @app.post('/api/projects/{project_id}/write-key', status_code=201)
 async def rotate_write_key(project_id: str, user=Depends(session_user)):
@@ -331,6 +341,73 @@ async def rotate_write_key(project_id: str, user=Depends(session_user)):
         owned(db, project_id, user['id'])
         db.execute(text('UPDATE projects SET write_key_hash=:key_hash WHERE id=:id'), {'key_hash':digest(write_key),'id':project_id})
     return {'write_key': write_key}
+
+def verification_record(token): return 'crease-site-verification=' + token
+
+def public_host(domain):
+    try:
+        addresses = socket.getaddrinfo(domain, None)
+    except OSError:
+        return False
+    if not addresses:
+        return False
+    for address in addresses:
+        try:
+            ip = ipaddress.ip_address(address[4][0])
+        except ValueError:
+            return False
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+            return False
+    return True
+
+async def dns_has_token(domain, token):
+    try:
+        async with httpx.AsyncClient(timeout=6) as client:
+            response = await client.get('https://cloudflare-dns.com/dns-query', params={'name':domain,'type':'TXT'}, headers={'Accept':'application/dns-json'})
+        if response.status_code != 200: return False
+        answers = response.json().get('Answer', [])
+    except (httpx.RequestError, ValueError, AttributeError):
+        return False
+    expected = verification_record(token)
+    for answer in answers:
+        data = str(answer.get('data', '')).replace('"', '').strip()
+        if data == expected or token in data: return True
+    return False
+
+async def meta_has_token(domain, token):
+    if not await asyncio.to_thread(public_host, domain): return False
+    for scheme in ('https', 'http'):
+        try:
+            async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+                response = await client.get(f'{scheme}://{domain}/')
+            if response.status_code != 200: continue
+            text = response.text[:300_000]
+        except (httpx.RequestError, ValueError):
+            continue
+        for tag in re.findall(r'<meta\b[^>]*>', text, re.I):
+            if not re.search(r'name\s*=\s*["\']crease-site-verification["\']', tag, re.I): continue
+            if token in tag: return True
+    return False
+
+@app.get('/api/projects/{project_id}/verification')
+async def get_verification(project_id: str, user=Depends(session_user)):
+    with engine.connect() as db:
+        row = owned(db, project_id, user['id'])
+    return {'token':row['verification_token'],'verified':bool(row['verified_at']),'verified_at':row['verified_at'],'record':verification_record(row['verification_token']),'meta':f'<meta name="crease-site-verification" content="{row["verification_token"]}" />'}
+
+@app.post('/api/projects/{project_id}/verification/check')
+async def check_verification(project_id: str, user=Depends(session_user)):
+    with engine.connect() as db:
+        row = owned(db, project_id, user['id'])
+    token, domain = row['verification_token'], row['domain']
+    method = 'dns' if await dns_has_token(domain, token) else None
+    if not method and await meta_has_token(domain, token): method = 'meta'
+    checked_at = stamp(now())
+    if method:
+        with engine.begin() as db:
+            owned(db, project_id, user['id'])
+            db.execute(text('UPDATE projects SET verified_at=COALESCE(verified_at,:checked_at) WHERE id=:id'), {'checked_at':checked_at,'id':project_id})
+    return {'verified':bool(row['verified_at'] or method),'method':method,'checked_at':checked_at}
 
 @app.delete('/api/projects/{project_id}')
 async def delete_project(project_id: str, user=Depends(session_user)):
@@ -391,13 +468,15 @@ async def limits(request: Request, call_next):
 async def ingest(data: Batch, request: Request):
     origin = request.headers.get('origin', '')
     with engine.begin() as db:
-        project = db.execute(text('SELECT domain, write_key_hash FROM projects WHERE id=:id'), {'id':data.projectId}).mappings().first()
+        project = db.execute(text('SELECT domain, write_key_hash, verified_at FROM projects WHERE id=:id'), {'id':data.projectId}).mappings().first()
         if not project: raise HTTPException(404, 'Project not found')
         supplied = request.headers.get('x-crease-key', '')
         if not supplied and request.headers.get('authorization', '').lower().startswith('bearer '):
             supplied = request.headers['authorization'][7:].strip()
         if not project['write_key_hash'] or not supplied or not secrets.compare_digest(digest(supplied), project['write_key_hash']):
             raise HTTPException(401, 'Invalid project write key')
+        if not project['verified_at']:
+            raise HTTPException(403, 'Project domain is not verified')
         host = urlsplit(origin).hostname if origin else None
         domain = project['domain']
         alternate = domain[4:] if domain.startswith('www.') else 'www.' + domain
