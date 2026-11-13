@@ -139,8 +139,8 @@
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 14px;
-  width: min(476px, calc(100% - 32px));
+  gap: 18px;
+  width: min(520px, calc(100% - 32px));
   height: 44px;
   padding: 0 6px 0 16px;
   border: 1px solid var(--line);
@@ -168,8 +168,7 @@
 .navLinks {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-left: auto;
+  gap: 16px;
   font-size: 13px;
   color: var(--ink2);
 }
@@ -181,7 +180,8 @@
 .navEnd {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
+  margin-left: auto;
   flex: none;
 }
 
@@ -1712,10 +1712,6 @@
     justify-content: space-between;
     width: min(340px, calc(100% - 32px));
     padding-right: 5px;
-  }
-
-  .navLinks + .navAction {
-    margin-left: auto;
   }
 
   .ghostMock,
