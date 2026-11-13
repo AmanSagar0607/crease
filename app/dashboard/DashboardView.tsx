@@ -7,6 +7,7 @@ import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
 import ThemeToggle from '../theme-toggle';
 import LivingCat from '../mascot/living-cat';
+import AnalyticsCharts from './AnalyticsCharts';
 import { dispatchMascotEvent } from '../mascot/mascot-events';
 import s from './dashboard.module.css';
 
@@ -686,21 +687,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   const series = summary?.series ?? [];
   const totalEvents = summary?.metrics.events ?? 0;
-  const chartPoints = pointsFor(
-    series.map((point) => point.visitors),
-    720,
-    240,
-    14,
-    22,
-  );
-  const pageviewPoints = pointsFor(
-    series.map((point) => point.pageviews),
-    720,
-    240,
-    14,
-    22,
-  );
-  const lastPoint = chartPoints[chartPoints.length - 1];
   const rangeLabel = days === 7 ? 'Last 7 days' : days === 90 ? 'Last 90 days' : 'Last 30 days';
   const isLive = Boolean(project?.last_event_at) && Date.now() - new Date(project?.last_event_at ?? 0).getTime() < 7 * 864e5;
 
@@ -928,48 +914,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         />
                       </div>
 
-                      <section className={s.chartCard} aria-label="Traffic over time">
-                        <div className={s.cardTop}>
-                          <div>
-                            <h3>Traffic over time</h3>
-                            <p>{rangeLabel}, daily totals</p>
-                          </div>
-                          <div className={s.legend}>
-                            <span>
-                              <i aria-hidden="true" /> Visitors
-                            </span>
-                            <span>
-                              <i className={s.legendPageviews} aria-hidden="true" /> Page views
-                            </span>
-                          </div>
-                        </div>
-                        <div className={s.chartWrap}>
-                          <svg viewBox="0 0 720 240" preserveAspectRatio="none" role="img" aria-label="Daily visitors and page views">
-                            {[10, 65, 120, 175, 230].map((y) => (
-                              <line key={y} className={s.chartGrid} x1="0" y1={y} x2="720" y2={y} />
-                            ))}
-                            {series.length > 0 && (
-                              <>
-                                <path className={s.chartArea} d={areaPath(chartPoints, 240)} />
-                                <path className={s.chartPageviews} d={linePath(pageviewPoints)} />
-                                <path className={s.chartVisitors} d={linePath(chartPoints)} />
-                                {lastPoint && <circle className={s.chartPoint} cx={lastPoint[0]} cy={lastPoint[1]} r="3.5" />}
-                              </>
-                            )}
-                          </svg>
-                          {totalEvents === 0 && !summaryBusy && (
-                            <div className={s.chartEmpty}>
-                              <strong>No events in this range</strong>
-                              <span>Install the tracker to start collecting data.</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className={s.chartLabels}>
-                          <span>{series[0] ? shortDate(series[0].date) : '—'}</span>
-                          <span>{series[Math.floor(series.length / 2)] ? shortDate(series[Math.floor(series.length / 2)].date) : '—'}</span>
-                          <span>{series[series.length - 1] ? shortDate(series[series.length - 1].date) : '—'}</span>
-                        </div>
-                      </section>
+                      <AnalyticsCharts series={series} metrics={summary?.metrics ?? { events: 0, pageviews: 0, visitors: 0, sessions: 0 }} />
 
                       <div className={s.breakdownGrid}>
                         <BreakdownCard
