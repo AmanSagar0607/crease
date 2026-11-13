@@ -296,7 +296,14 @@ async def disconnect_project_git(project_id: str, user=Depends(session_user)):
 
 @app.get('/api/projects')
 async def projects(user=Depends(session_user)):
-    with engine.connect() as db: return [dict(r) for r in db.execute(text('SELECT id,name,domain,retention_days FROM projects WHERE user_id=:user'), {'user':user['id']}).mappings()]
+    since = stamp(now() - timedelta(days=7))
+    with engine.connect() as db:
+        rows = db.execute(text('''SELECT p.id, p.name, p.domain, p.retention_days,
+            (SELECT COUNT(DISTINCT e.visitor_id) FROM events e WHERE e.project_id=p.id AND e.occurred_at>=:since) AS visitors_7d,
+            (SELECT COUNT(*) FROM events e WHERE e.project_id=p.id AND e.occurred_at>=:since) AS events_7d,
+            (SELECT MAX(e.occurred_at) FROM events e WHERE e.project_id=p.id) AS last_event_at
+            FROM projects p WHERE p.user_id=:user ORDER BY p.name'''), {'user':user['id'], 'since':since}).mappings()
+        return [dict(r) for r in rows]
 
 @app.post('/api/projects', status_code=201)
 async def create_project(data: ProjectInput, user=Depends(session_user)):
@@ -389,13 +396,31 @@ async def ingest(data: Batch, request: Request):
 @app.get('/api/projects/{project_id}/summary')
 async def summary(project_id: str, days: int = 30, user=Depends(session_user)):
     if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
-    params={'id':project_id,'since':stamp(now()-timedelta(days=days))}
+    end = now()
+    start = end - timedelta(days=days-1)
+    previous_start = start - timedelta(days=days)
+    params={'id':project_id,'since':stamp(start)}
+    previous_params={'id':project_id,'since':stamp(previous_start),'until':stamp(start)}
     with engine.connect() as db:
         owned(db, project_id, user['id'])
-        metrics=db.execute(text("SELECT COUNT(*) AS events, SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews, COUNT(DISTINCT visitor_id) AS visitors, COUNT(DISTINCT session_id) AS sessions FROM events WHERE project_id=:id AND occurred_at>=:since"),params).mappings().one()
+        def metric_window(query_params, until=False):
+            clause = ' AND occurred_at<:until' if until else ''
+            row = db.execute(text(f"SELECT COUNT(*) AS events, SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews, COUNT(DISTINCT visitor_id) AS visitors, COUNT(DISTINCT session_id) AS sessions FROM events WHERE project_id=:id AND occurred_at>=:since{clause}"), query_params).mappings().one()
+            return {k:(v or 0) for k,v in row.items()}
+        metrics=metric_window(params)
+        previous=metric_window(previous_params, until=True)
+        last_event_at=db.execute(text('SELECT MAX(occurred_at) FROM events WHERE project_id=:id'), {'id':project_id}).scalar()
+        daily=db.execute(text("SELECT substr(occurred_at,1,10) AS day, COUNT(*) AS events, SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews, COUNT(DISTINCT visitor_id) AS visitors, COUNT(DISTINCT session_id) AS sessions FROM events WHERE project_id=:id AND occurred_at>=:since GROUP BY substr(occurred_at,1,10) ORDER BY day"), params).mappings()
+        daily_rows={row['day']:row for row in daily}
+        series=[]
+        day=start.date()
+        while day<=end.date():
+            row=daily_rows.get(day.isoformat())
+            series.append({'date':day.isoformat(),'events':int((row or {}).get('events') or 0),'pageviews':int((row or {}).get('pageviews') or 0),'visitors':int((row or {}).get('visitors') or 0),'sessions':int((row or {}).get('sessions') or 0)})
+            day += timedelta(days=1)
         def breakdown(column):
             return [dict(r) for r in db.execute(text(f'SELECT COALESCE({column}, :unknown) AS label, COUNT(*) AS count FROM events WHERE project_id=:id AND occurred_at>=:since AND name=:name GROUP BY {column} ORDER BY count DESC LIMIT 10'), {**params,'unknown':'Unknown','name':'pageview'}).mappings()]
-        return {'metrics':{k:(v or 0) for k,v in metrics.items()},'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'referrers':breakdown('referrer'),'days':days}
+        return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'referrers':breakdown('referrer'),'days':days}
 
 # Vercel access is per Crease account, encrypted at rest, and never sent to the browser.
 def vercel_cipher():
