@@ -122,7 +122,7 @@ export default function Home() {
           </Link>
           <div className={s.navLinks}>
             <a href="#how">How it works</a>
-            <a href="#pricing">Pricing</a>
+            <Link href="/pricing">Pricing</Link>
             <Link href="/docs">Docs</Link>
           </div>
           <div className={s.navEnd}>
@@ -611,7 +611,7 @@ export default function Home() {
           </div>
           <p className={s.footnote}>
             No credit card. No trial timer. Paid plans may arrive after early access — existing
-            projects will hear first. <Link href="/docs">See the docs</Link>
+            projects will hear first. <Link href="/pricing">See all plan details</Link>.
           </p>
         </section>
 
@@ -710,7 +710,7 @@ export default function Home() {
                 <a href="#how">How it works</a>
               </li>
               <li>
-                <a href="#pricing">Pricing</a>
+                <Link href="/pricing">Pricing</Link>
               </li>
               <li>
                 <Link href="/docs">Documentation</Link>

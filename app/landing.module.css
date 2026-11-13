@@ -1317,6 +1317,7 @@
 .price {
   display: flex;
   align-items: baseline;
+  justify-content: center;
   gap: 8px;
   margin-top: 14px;
 }
