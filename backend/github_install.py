@@ -1,5 +1,6 @@
 """Prepare a narrowly scoped GitHub installation pull request."""
 import base64
+import json
 import re
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -20,23 +21,38 @@ async def create_install_pr(token: str, repository: str, path: str, project_id: 
     origin = 'https://' + parsed.netloc
     headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'}
     async with httpx.AsyncClient(base_url='https://api.github.com', headers=headers, timeout=20) as client:
-        async def call(method, route, **kwargs):
+        async def call(method, route, missing_ok=False, **kwargs):
             try: response = await client.request(method, route, **kwargs)
             except httpx.RequestError as exc: raise HTTPException(503, 'Could not connect to GitHub') from exc
+            if response.status_code == 404 and missing_ok: return None
             if response.status_code >= 400:
-                raise HTTPException(400, f'GitHub rejected the request (HTTP {response.status_code}). Check repository access and token permissions.')
+                raise HTTPException(400, f'GitHub rejected {method} {route} (HTTP {response.status_code}). Check that the GitHub App has Contents and Pull requests write access and that the installation accepted those permissions.')
             return response.json()
         repo = await call('GET', f'/repos/{repository}')
         base = repo['default_branch']
-        contents = await call('GET', f'/repos/{repository}/contents/{path}', params={'ref':base})
+        contents = await call('GET', f'/repos/{repository}/contents/{path}', params={'ref':base}, missing_ok=True)
+        kind = 'html'
+        if contents is None and path == 'index.html':
+            for candidate in ('src/app/layout.tsx', 'src/app/layout.jsx', 'app/layout.tsx', 'app/layout.jsx'):
+                contents = await call('GET', f'/repos/{repository}/contents/{candidate}', params={'ref':base}, missing_ok=True)
+                if contents is not None:
+                    path, kind = candidate, 'next'
+                    break
+        if contents is None:
+            raise HTTPException(422, 'No supported root index.html or Next.js App Router layout was found, or the GitHub App cannot read repository contents. Grant Contents read and write access to the installation and try again.')
         if contents.get('encoding') != 'base64' or contents.get('size', 0) > 500_000:
             raise HTTPException(422, 'The file must be a text HTML file smaller than 500 KB')
         try: source = base64.b64decode(contents['content']).decode('utf-8')
         except (ValueError, UnicodeError): raise HTTPException(422, 'The HTML file must be UTF-8')
         if 'data-crease-install' in source: raise HTTPException(409, 'This file already contains a Crease installation')
-        if not re.search(r'</head\s*>', source, re.I): raise HTTPException(422, 'The HTML file needs a closing head tag')
+        closing = r'</head\s*>' if kind == 'html' else r'</body\s*>'
+        if len(re.findall(closing, source, re.I)) != 1:
+            raise HTTPException(422, 'The entry file must contain exactly one closing head tag (HTML) or body tag (Next.js layout).')
         snippet = f'''\n<!-- Crease: dispatch crease:consent after visitor consent is granted. -->\n<script src="{origin}/crease.js" data-crease-install defer></script>\n<script>\n  window.addEventListener('crease:consent', function () {{\n    if (window.crease) window.crease.init({{ projectId: '{project_id}', endpoint: '{origin}/api/events' }});\n  }});\n</script>\n'''
-        updated = re.sub(r'</head\s*>', lambda match: snippet + match.group(), source, count=1, flags=re.I)
+        if kind == 'next':
+            script = "window.addEventListener('crease:consent', function () { var s = document.createElement('script'); s.src = " + json.dumps(origin+'/crease.js') + "; s.onload = function () { if (window.crease) window.crease.init({ projectId: " + json.dumps(project_id) + ", endpoint: " + json.dumps(origin+'/api/events') + " }); }; document.head.appendChild(s); }, { once: true });"
+            snippet = '\n<script data-crease-install dangerouslySetInnerHTML={{ __html: '+json.dumps(script)+' }} />\n'
+        updated = re.sub(closing, lambda match: snippet + match.group(), source, count=1, flags=re.I)
         branch_info = await call('GET', f'/repos/{repository}/branches/{base}')
         branch = 'crease/install-' + uuid4().hex[:12]
         await call('POST', f'/repos/{repository}/git/refs', json={'ref':'refs/heads/'+branch,'sha':branch_info['commit']['sha']})

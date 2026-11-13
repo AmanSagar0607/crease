@@ -3,6 +3,8 @@ import tempfile
 import unittest
 from unittest.mock import patch, AsyncMock
 import asyncio
+import base64
+import httpx
 from cryptography.fernet import Fernet
 from urllib.parse import parse_qs, urlsplit
 from datetime import timedelta
@@ -13,6 +15,7 @@ os.environ['DATABASE_URL'] = 'sqlite:///' + str(Path(tmp.name) / 'test.db').repl
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 import main
+import github_install
 
 def tearDownModule():
     main.engine.dispose()
@@ -84,6 +87,30 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(repos[-1]['full_name'], 'owner/last')
         self.assertFalse(truncated)
         self.assertEqual(request.await_count, 2)
+
+    def test_installation_detects_next_layout_and_preserves_consent_gate(self):
+        writes = []
+        source = 'export default function Layout() { return <html><body>Site</body></html>; }'
+        def handler(request):
+            path = request.url.path
+            if request.method == 'GET' and path == '/repos/owner/site': return httpx.Response(200, json={'default_branch':'main'})
+            if path.endswith('/contents/index.html'): return httpx.Response(404, json={'message':'Not Found'})
+            if request.method == 'GET' and path.endswith('/contents/src/app/layout.tsx'):
+                return httpx.Response(200, json={'encoding':'base64', 'size':len(source), 'content':base64.b64encode(source.encode()).decode(), 'sha':'file-sha'})
+            if path.endswith('/branches/main'): return httpx.Response(200, json={'commit':{'sha':'commit-sha'}})
+            if request.method == 'POST' and path.endswith('/git/refs'): return httpx.Response(201, json={})
+            if request.method == 'PUT' and path.endswith('/contents/src/app/layout.tsx'):
+                writes.append(main.json.loads(request.content)); return httpx.Response(200, json={})
+            if request.method == 'POST' and path.endswith('/pulls'): return httpx.Response(201, json={'html_url':'https://github.com/owner/site/pull/1'})
+            return httpx.Response(404, json={'message':'Not Found'})
+        real_client = httpx.AsyncClient
+        with patch.object(github_install.httpx, 'AsyncClient', side_effect=lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw)):
+            result = asyncio.run(github_install.create_install_pr('token','owner/site','index.html','project-id','https://crease.example'))
+        updated = base64.b64decode(writes[0]['content']).decode()
+        self.assertEqual(result['url'], 'https://github.com/owner/site/pull/1')
+        self.assertIn('data-crease-install', updated)
+        self.assertIn('crease:consent', updated)
+        self.assertLess(updated.index('data-crease-install'), updated.index('</body>'))
 
     def test_project_git_connection_is_owner_scoped(self):
         headers = {'origin':main.FRONTEND_URL}
