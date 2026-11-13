@@ -1,6 +1,6 @@
 import os
-import tempfile
 import unittest
+from uuid import uuid4
 from unittest.mock import patch, AsyncMock
 import asyncio
 import base64
@@ -8,24 +8,38 @@ import httpx
 from cryptography.fernet import Fernet
 from urllib.parse import parse_qs, urlsplit
 from datetime import timedelta
-from pathlib import Path
+from sqlalchemy.engine import make_url
+from sqlalchemy import create_engine, text
 
-tmp = tempfile.TemporaryDirectory()
-os.environ['DATABASE_URL'] = 'sqlite:///' + str(Path(tmp.name) / 'test.db').replace('\\', '/')
+test_database_url = os.getenv('TEST_DATABASE_URL')
+if not test_database_url or not test_database_url.startswith(('postgresql://', 'postgresql+')):
+    raise RuntimeError('Set TEST_DATABASE_URL to an isolated PostgreSQL test database; SQLite and the production DATABASE_URL are not used by this suite.')
+test_schema = 'crease_test_' + uuid4().hex
+admin_url = make_url(test_database_url)
+if admin_url.drivername == 'postgresql':
+    admin_url = admin_url.set(drivername='postgresql+psycopg')
+admin_engine = create_engine(admin_url)
+with admin_engine.begin() as db:
+    db.execute(text(f'CREATE SCHEMA "{test_schema}"'))
+test_url = admin_url.set(query={**admin_url.query, 'options':f'-csearch_path={test_schema}'}).render_as_string(hide_password=False)
+os.environ['DATABASE_URL'] = test_url
 from fastapi.testclient import TestClient
-from sqlalchemy import text
 import main
 import github_install
 
 def tearDownModule():
     main.engine.dispose()
-    tmp.cleanup()
+    try:
+        with admin_engine.begin() as db:
+            db.execute(text(f'DROP SCHEMA IF EXISTS "{test_schema}" CASCADE'))
+    finally:
+        admin_engine.dispose()
 
 class ApiTest(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(main.app)
         with main.engine.begin() as db:
-            for table in ('events', 'project_repositories', 'project_vercel', 'vercel_connections', 'github_connections', 'projects', 'sessions', 'users'): db.execute(text('DELETE FROM '+table))
+            for table in ('rate_limits', 'analytics_sessions', 'events', 'project_repositories', 'project_vercel', 'vercel_connections', 'github_connections', 'projects', 'sessions', 'users'): db.execute(text('DELETE FROM '+table))
             db.execute(text("INSERT INTO users VALUES ('u1','g1','first'),('u2','g2','second')"))
             for user in ('u1','u2'):
                 db.execute(text('INSERT INTO sessions VALUES (:token,:user,:expiry)'), {'token':main.digest(user),'user':user,'expiry':main.stamp(main.now()+timedelta(days=1))})
@@ -33,6 +47,51 @@ class ApiTest(unittest.TestCase):
     def verify_project(self, project_id):
         with main.engine.begin() as db:
             db.execute(text('UPDATE projects SET verified_at=:at WHERE id=:id'), {'at':main.stamp(main.now()),'id':project_id})
+
+    def test_rate_limiter_instances_share_one_counter(self):
+        second_engine = create_engine(main.DATABASE_URL)
+        try:
+            first = main.RateLimiter(main.engine, clock=lambda: 1_700_000_000)
+            second = main.RateLimiter(second_engine, clock=lambda: 1_700_000_000)
+            for _ in range(4):
+                self.assertTrue(first.consume('shared-test', 5))
+            self.assertTrue(second.consume('shared-test', 5))
+            self.assertFalse(first.consume('shared-test', 5))
+            with main.engine.connect() as db:
+                self.assertEqual(db.execute(text("SELECT hits FROM rate_limits WHERE bucket='shared-test'")).scalar_one(), 6)
+        finally:
+            second_engine.dispose()
+
+    def test_event_rate_limits_are_durable_per_ip_and_project(self):
+        headers = {'origin':main.FRONTEND_URL}
+        self.client.cookies.set('crease_session', 'u1')
+        p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
+        self.verify_project(p['id'])
+        event = {'name':'pageview','timestamp':main.stamp(main.now()),'path':'/hello','visitorId':'v','sessionId':'s'}
+        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        original_ip, original_project = main.RATE_LIMIT_IP_PER_MINUTE, main.RATE_LIMIT_PROJECT_PER_MINUTE
+        try:
+            main.RATE_LIMIT_IP_PER_MINUTE = 2
+            main.RATE_LIMIT_PROJECT_PER_MINUTE = 10
+            for event_id in ('a','b'):
+                self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[dict(event, id=event_id)]}, headers=event_headers).status_code, 200)
+            limited = self.client.post('/api/events', json={'projectId':p['id'],'events':[dict(event, id='c')]}, headers=event_headers)
+            self.assertEqual(limited.status_code, 429)
+            self.assertEqual(limited.headers.get('retry-after'), '60')
+            with main.engine.connect() as db:
+                self.assertEqual(db.execute(text("SELECT hits FROM rate_limits WHERE bucket LIKE 'ip:%'")).scalar_one(), 3)
+
+            with main.engine.begin() as db:
+                db.execute(text('DELETE FROM rate_limits'))
+            main.RATE_LIMIT_IP_PER_MINUTE = 100
+            main.RATE_LIMIT_PROJECT_PER_MINUTE = 2
+            for event_id in ('d','e'):
+                self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[dict(event, id=event_id)]}, headers=event_headers).status_code, 200)
+            self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[dict(event, id='f')]}, headers=event_headers).status_code, 429)
+            with main.engine.connect() as db:
+                self.assertEqual(db.execute(text("SELECT hits FROM rate_limits WHERE bucket=:bucket"), {'bucket':'project:'+p['id']}).scalar_one(), 3)
+        finally:
+            main.RATE_LIMIT_IP_PER_MINUTE, main.RATE_LIMIT_PROJECT_PER_MINUTE = original_ip, original_project
 
     def test_project_isolation_dedup_and_deletion(self):
         headers = {'origin':main.FRONTEND_URL}
@@ -63,6 +122,33 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.delete('/api/projects/'+p['id'], headers=headers).status_code,404)
         self.client.cookies.set('crease_session', 'u1')
         self.assertEqual(self.client.delete('/api/projects/'+p['id'], headers=headers).status_code,200)
+        with main.engine.connect() as db:
+            self.assertEqual(db.execute(text('SELECT COUNT(*) FROM analytics_sessions WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
+
+    def test_event_sessions_aggregate_pageviews_and_follow_retention(self):
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
+        self.verify_project(p['id'])
+        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        timestamp = main.stamp(main.now())
+        events = [
+            {'id':'s1','name':'pageview','timestamp':timestamp,'path':'/entry','visitorId':'visitor','sessionId':'session'},
+            {'id':'s2','name':'signup','timestamp':timestamp,'path':'/exit','visitorId':'visitor','sessionId':'session'},
+        ]
+        response = self.client.post('/api/events', json={'projectId':p['id'],'events':events}, headers=event_headers)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[events[0]]}, headers=event_headers).json()['accepted'],0)
+        with main.engine.connect() as db:
+            session = db.execute(text('SELECT visitor_id,entry_page,exit_page,pageview_count FROM analytics_sessions WHERE project_id=:id'), {'id':p['id']}).mappings().one()
+        self.assertEqual(dict(session), {'visitor_id':'visitor','entry_page':'/entry','exit_page':'/exit','pageview_count':1})
+        self.assertEqual(self.client.patch('/api/projects/'+p['id']+'/retention', json={'retention_days':1}, headers={'origin':main.FRONTEND_URL}).status_code,200)
+        with main.engine.connect() as db:
+            self.assertEqual(db.execute(text('SELECT COUNT(*) FROM analytics_sessions WHERE project_id=:id'), {'id':p['id']}).scalar_one(),1)
+
+    def test_event_preflight_allows_sdk_write_key_header(self):
+        response = self.client.options('/api/events', headers={'origin':'https://example.com','access-control-request-method':'POST','access-control-request-headers':'content-type,x-crease-key'})
+        self.assertEqual(response.status_code,204)
+        self.assertIn('X-Crease-Key',response.headers['access-control-allow-headers'])
         with main.engine.connect() as db: self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events')).scalar_one(),0)
 
     def test_events_require_project_write_key(self):

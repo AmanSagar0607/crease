@@ -210,6 +210,24 @@ The npm account must own the `@crease` scope. If it does not, choose a package n
 6. **Security/production review.** In-memory rate limits are per-process. Domain ownership is not verified. Public event ingestion can be forged. Review before a broader public launch.
 7. **Package release automation.** Add npm provenance/CI and a release workflow after manual publishing works.
 
+## Production hardening work in progress (local, not deployed)
+
+- Both `sdk/crease.js` and `packages/crease-analytics/index.js` now observe `pushState`, `replaceState`, query-only route changes, and `popstate`; duplicate URLs are suppressed and navigation is not blocked.
+- SDK visitor and session IDs now use shared first-party local storage. Session IDs rotate after 30 minutes idle or 24 hours. API `analytics_sessions` records first/last event time, entry/exit path, visitor ID, and pageview count. Duration is approximate based on received events.
+- The ingestion OPTIONS response now permits `X-Crease-Key`, which the SDK sends.
+- `backend/expire.py` deletes expired session records with expired events. Project deletion and retention-setting updates also clear corresponding session records.
+- API/SDK documentation was updated. The current API test suite stalls during the first focused API test in this Windows environment; no API test result should be assumed. The SDK test file passes five tests.
+- The backend now requires `DATABASE_URL` and refuses SQLite URLs. This prevents the Windows development environment or a misconfigured deployment from silently creating a local SQLite database.
+- `/health` now verifies the configured database with `SELECT 1` and does not return credentials.
+- Neon was checked read-only: it contains one user, one project, and 16 events, with eight distinct event session IDs. The local SQLite file is an older copy of that same GitHub identity/site, with different IDs and zero events, so copying its rows would create duplicates. No local SQLite records were imported.
+- API startup applies additive idempotent schema setup and backfills `analytics_sessions` from existing event history using replacement upserts, so a restart will not double-count. Production still lacks `analytics_sessions` and `rate_limits` until the new backend starts against Neon. This is not versioned Alembic migration yet.
+- Render service `crease-api` exists on `deploy/crease-mvp`, uses `https://crease-api-u8uy.onrender.com`, and auto-deploys on commits. The available Render connector does not expose a safe read-only check of secret environment-variable presence. Verify `DATABASE_URL` is configured in Render without printing its value.
+- Direct database connections from this Windows environment time out; the Neon MCP read-only query path works. Full backend tests remain unverified here. SDK tests passed 5/5 and Python compilation passed before the last database guard/backfill edits; rerun compilation after them.
+- The temporary Neon test branch `codex-test-session-hardening` expires automatically and was created only for isolated testing; it was not promoted to production.
+- These code changes are not pushed or deployed. The current branch is `deploy/crease-mvp`; preserve existing unrelated edits, especially `docs/IMPROVEMENT_AUDIT.md`.
+- Other production hardening items remain open: event schemas/idempotency quotas beyond current controls, versioned migrations, Vercel project discovery, property filtering, scheduled retention, account deletion, and complete security/tenant review.
+- The requested `/dashboard` visual update based on the attached dark sidebar analytics screenshot is still unimplemented.
+
 ## User-facing behavior to preserve
 
 - Do not show the full repository search/list for a project that already has a connected repository.
