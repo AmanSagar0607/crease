@@ -32,6 +32,34 @@ The dashboard can also create a GitHub pull request for a static HTML file, rega
 
 Before creating a pull request, deploy Crease to a publicly reachable HTTPS origin where `/crease.js` and `/api/events` work and set `CREASE_PUBLIC_ORIGIN` once on the server. The pull request adds a consent-gated snippet: the site must dispatch `crease:consent` after any required consent. Creating the pull request writes a new branch to GitHub; it does not merge or deploy it. Only a root `index.html` is supported currently. Next.js and other non-HTML entry points, Netlify account connections, and edge injection are not implemented yet.
 
+## Publish the npm package
+
+The reusable client package lives in [`packages/crease-analytics`](packages/crease-analytics). It exports a framework-neutral `init()` API and a Next.js `<Analytics />` component.
+
+Before publishing, sign in to the npm account or organization that owns the `@crease` scope:
+
+```bash
+npm login
+```
+
+Check the package contents and publish a public release:
+
+```bash
+cd packages/crease-analytics
+npm pack --dry-run
+npm publish --access public
+```
+
+After publishing, Next.js applications can install it with `npm i @crease/analytics` and add the component below to their root layout:
+
+```tsx
+import { Analytics } from '@crease/analytics/next';
+
+<Analytics projectId="YOUR_CREASE_PROJECT_ID" />
+```
+
+For a JavaScript site, import `init` from `@crease/analytics`, pass the project ID, and call `track()` for custom events. Only initialize analytics when the site's consent policy permits it.
+
 ### Vercel Git settings (experimental)
 
 Register a separate connectable-account integration in Vercel with Project read/write access and redirect URL `http://localhost:3000/api/vercel/callback` for local testing. Set `VERCEL_INTEGRATION_SLUG`, `VERCEL_INTEGRATION_CLIENT_ID`, `VERCEL_INTEGRATION_CLIENT_SECRET`, and an independently generated `VERCEL_TOKEN_KEY` in `backend/.env`, then restart the API. Use the Vercel panel in Crease to authorize the integration and link a project. Access tokens are encrypted server-side. Disconnecting removes Crease's stored token and project mappings but does not uninstall the integration at Vercel. Settings are read and written against the linked Vercel project. Inherited team settings are identified separately from project overrides. Project discovery is currently limited to the first 100 projects. Deploy hooks use Vercel's project API, but the published integration scope list does not explicitly include those endpoints; Vercel may deny access. Hook URLs are secrets shown only at creation. Concurrent edits in Vercel can race with Crease updates. This integration needs a real Vercel integration registration and end-to-end verification before production use.
