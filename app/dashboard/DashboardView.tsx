@@ -91,6 +91,8 @@ function celebrateFirstPageview(projectId: string, summary: Summary, project?: P
 
 const TABS = ['analytics', 'installation', 'integrations', 'settings'] as const;
 type Tab = (typeof TABS)[number];
+const ANALYTICS_SECTIONS = ['overview', 'visitors', 'pages', 'referrers', 'countries', 'events'] as const;
+type AnalyticsSection = (typeof ANALYTICS_SECTIONS)[number];
 
 class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -250,6 +252,13 @@ const ChevronIcon = ({ className }: { className?: string }) => (
   </Svg>
 );
 
+const ArrowLeftIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="M19 12H5" />
+    <path d="m12 19-7-7 7-7" />
+  </Svg>
+);
+
 /* ---------- Formatting helpers ---------- */
 
 function compact(value: number) {
@@ -322,12 +331,14 @@ function Sparkline({ values }: { values: number[] }) {
 /* ---------- Small building blocks ---------- */
 
 function BreakdownCard({
+  id,
   title,
   icon,
   rows,
   total,
   empty,
 }: {
+  id?: string;
   title: string;
   icon: ReactNode;
   rows: Breakdown[];
@@ -339,7 +350,7 @@ function BreakdownCard({
   const max = rows[0]?.count || 1;
 
   return (
-    <section className={s.breakdownCard}>
+    <section className={s.breakdownCard} id={id}>
       <div className={s.cardTop}>
         <h3>
           {icon}
@@ -384,6 +395,7 @@ function BreakdownCard({
 }
 
 function Kpi({
+  id,
   label,
   icon,
   value,
@@ -391,6 +403,7 @@ function Kpi({
   hint,
   series,
 }: {
+  id?: string;
   label: string;
   icon: ReactNode;
   value?: number;
@@ -399,7 +412,7 @@ function Kpi({
   series: number[];
 }) {
   return (
-    <article className={s.kpi}>
+    <article className={s.kpi} id={id}>
       <div className={s.kpiTop}>
         <span className={s.kpiIcon}>{icon}</span>
         <span>{label}</span>
@@ -419,6 +432,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [user, setUser] = useState<User | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState('');
+  const [showProjects, setShowProjects] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [busy, setBusy] = useState(true);
   const [summaryBusy, setSummaryBusy] = useState(false);
@@ -438,7 +452,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [verificationNotice, setVerificationNotice] = useState('');
   const [origin, setOrigin] = useState('');
   const [tab, setTab] = useState<Tab>('analytics');
-  const project = projects.find((item) => item.id === selected);
+  const [activeSection, setActiveSection] = useState<AnalyticsSection>('overview');
+  const project = showProjects ? undefined : projects.find((item) => item.id === selected);
   const projectRef = useRef<Project | undefined>(undefined);
   projectRef.current = project;
 
@@ -448,7 +463,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setUser(current);
       const list = await api<Project[]>('/api/projects');
       setProjects(list);
-      setSelected(projectId && list.some((project) => project.id === projectId) ? projectId : '');
+      const viewingProjects = !projectId && new URLSearchParams(window.location.search).get('view') === 'projects';
+      setShowProjects(viewingProjects);
+      setSelected(projectId ? (list.some((project) => project.id === projectId) ? projectId : '') : !viewingProjects && list.length === 1 ? list[0].id : '');
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         router.replace('/login');
@@ -463,6 +480,18 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const syncWorkspaceView = () => {
+      if (projectId) return;
+      const viewingProjects = new URLSearchParams(window.location.search).get('view') === 'projects';
+      setShowProjects(viewingProjects);
+      if (viewingProjects) setSelected('');
+      else if (projects.length === 1) setSelected(projects[0].id);
+    };
+    window.addEventListener('popstate', syncWorkspaceView);
+    return () => window.removeEventListener('popstate', syncWorkspaceView);
+  }, [projectId, projects]);
 
   const loadSummary = useCallback(async () => {
     if (!selected) {
@@ -492,8 +521,16 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   useEffect(() => {
     setOrigin(window.location.origin);
     const read = () => {
-      const candidate = window.location.hash.slice(1) as Tab;
-      setTab(TABS.includes(candidate) ? candidate : 'analytics');
+      const candidate = window.location.hash.slice(1);
+      if (ANALYTICS_SECTIONS.includes(candidate as AnalyticsSection)) {
+        setTab('analytics');
+        setActiveSection(candidate as AnalyticsSection);
+      } else if (TABS.includes(candidate as Tab)) {
+        setTab(candidate as Tab);
+      } else {
+        setTab('analytics');
+        setActiveSection('overview');
+      }
     };
     read();
     window.addEventListener('hashchange', read);
@@ -682,7 +719,18 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   function selectTab(next: Tab) {
     setTab(next);
+    if (next === 'analytics') setActiveSection('overview');
     window.history.replaceState(null, '', `#${next}`);
+  }
+
+  function selectAnalyticsSection(section: AnalyticsSection) {
+    setTab('analytics');
+    setActiveSection(section);
+    window.history.replaceState(null, '', `#${section}`);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+      document.getElementById(section)?.scrollIntoView({ behavior, block: 'start' });
+    }));
   }
 
   const series = summary?.series ?? [];
@@ -691,12 +739,51 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const isLive = Boolean(project?.last_event_at) && Date.now() - new Date(project?.last_event_at ?? 0).getTime() < 7 * 864e5;
 
   return (
-    <div className={s.dashboard}>
+    <div className={`${s.dashboard} ${project ? s.analyticsDashboard : ''}`}>
       <a className={s.skip} href="#main">
         Skip to content
       </a>
 
-      <header className={s.header}>
+      {project && (
+        <aside className={s.projectSidebar} aria-label="Project navigation">
+          <Link className={s.sidebarBrand} href="/">
+            <span aria-hidden="true">✳</span> crease.
+          </Link>
+          <div className={s.sidebarProject}>
+            <span className={s.sidebarProjectMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
+            <span className={s.sidebarProjectText}><strong>{project.domain}</strong><small>personal workspace</small></span>
+          </div>
+          <label className={s.sidebarSwitcher}>
+            <span className={s.srOnly}>Switch project</span>
+            <select value={selected} onChange={(event) => router.push(`/dashboard/projects/${encodeURIComponent(event.target.value)}`)}>
+              {projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}
+            </select>
+            <ChevronIcon />
+          </label>
+          <Link className={s.sidebarAllProjects} href="/dashboard?view=projects" onClick={() => { setShowProjects(true); setSelected(''); }}><ArrowLeftIcon className={s.iconSm} /> All projects</Link>
+          <nav className={s.sidebarNav} aria-label="Analytics sections">
+            {ANALYTICS_SECTIONS.map((section) => (
+              <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-current={tab === 'analytics' && activeSection === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectAnalyticsSection(section); }}>
+                {section[0].toUpperCase() + section.slice(1)}
+              </a>
+            ))}
+          </nav>
+          <span className={s.sidebarCaption}>PROJECT</span>
+          <nav className={s.sidebarNav} aria-label="Project settings">
+            {(['installation', 'integrations', 'settings'] as const).map((section) => (
+              <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-current={tab === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectTab(section); }}>
+                {section[0].toUpperCase() + section.slice(1)}
+              </a>
+            ))}
+          </nav>
+          <div className={s.sidebarAccount}>
+            {user && <span className={s.sidebarUser}><span className={s.avatar} aria-hidden="true">{user.login.slice(0, 1).toUpperCase()}</span><span>{user.login}</span></span>}
+            <button className={s.signOut} type="button" onClick={logout}>Sign out</button>
+          </div>
+        </aside>
+      )}
+
+      <header className={`${s.header} ${project ? s.analyticsHeader : ''}`}>
         <div className={s.headerInner}>
           <Link className={s.brand} href="/">
             <span className={s.brandMark}>✳</span>
@@ -705,7 +792,15 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           <span className={s.headerDivider} aria-hidden="true" />
           <span className={s.workspaceLabel}>WORKSPACE</span>
           <nav className={s.breadcrumb} aria-label="Breadcrumb">
-            <Link href="/dashboard">Projects</Link>
+            <Link
+              href="/dashboard?view=projects"
+              onClick={() => {
+                setShowProjects(true);
+                setSelected('');
+              }}
+            >
+              Projects
+            </Link>
             {project && (
               <>
                 <span aria-hidden="true">/</span>
@@ -773,7 +868,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
               </div>
             )}
 
-            {projectId && project ? (
+            {project ? (
               <>
                 <section className={s.projectHero} aria-labelledby="project-title">
                   <span className={s.projectMark} aria-hidden="true">
@@ -843,9 +938,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                 <div className={s.tabPanel} key={tab}>
                   {tab === 'analytics' && (
                     <>
-                      <div className={s.analyticsBar}>
+                      <div className={s.analyticsBar} id="overview" tabIndex={-1}>
                         <div>
-                          <h2>Analytics</h2>
+                          <h2>Overview</h2>
                           <p>
                             {rangeLabel} · {project.domain}
                           </p>
@@ -879,8 +974,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         </div>
                       </div>
 
-                      <div className={s.kpiGrid}>
+                      <div className={s.kpiGrid} id="visitors">
                         <Kpi
+                          id="visitor-metric"
                           label="Visitors"
                           icon={<UsersIcon />}
                           value={summary?.metrics.visitors}
@@ -905,6 +1001,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           series={series.map((point) => point.sessions)}
                         />
                         <Kpi
+                          id="events"
                           label="Events"
                           icon={<ZapIcon />}
                           value={summary?.metrics.events}
@@ -918,6 +1015,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
                       <div className={s.breakdownGrid}>
                         <BreakdownCard
+                          id="pages"
                           title="Top pages"
                           icon={<FileIcon />}
                           rows={summary?.pages ?? []}
@@ -925,6 +1023,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           empty="Pages will appear once events arrive."
                         />
                         <BreakdownCard
+                          id="referrers"
                           title="Referrers"
                           icon={<LinkIcon />}
                           rows={summary?.referrers ?? []}
@@ -939,6 +1038,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           empty="No device data yet."
                         />
                         <BreakdownCard
+                          id="countries"
                           title="Countries"
                           icon={<GlobeIcon />}
                           rows={summary?.countries ?? []}

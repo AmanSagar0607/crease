@@ -2249,3 +2249,413 @@
   font-size: 11px;
   line-height: 1.5;
 }
+
+/* ---------- Dark project analytics workspace ---------- */
+
+.analyticsDashboard.dashboard {
+  --ink: #f2f1ec;
+  --ink2: #c6c5c0;
+  --muted: #969590;
+  --line: #2a2a29;
+  --lineStrong: #42413e;
+  --paper: #111110;
+  --soft: #171716;
+  --soft2: #232321;
+  --page: #0b0b0b;
+  --positive: #a5dfbb;
+  --positiveBg: #142218;
+  --negative: #f2aaa5;
+  --negativeBg: #291614;
+  --warning: #ecd79c;
+  --warningBg: #25200f;
+  --border: #2a2a29;
+  --focus: #f2f1ec;
+  --blue: #91b5ff;
+  --headerBg: #0b0b0b;
+  --markBg: #f2f1ec;
+  --markInk: #0b0b0b;
+  --btnQuietHover: #262624;
+  --negativeLine: #59322f;
+  --positiveLine: #294a35;
+  --positiveDot: #54b479;
+  --legendAlt: #575650;
+  --chartArea: rgba(242, 241, 236, 0.07);
+  --chartAlt: #aaa79f;
+  --chartThird: #8db7a0;
+  --chartFourth: #d5ad78;
+  --chartEmptyBg: rgba(11, 11, 11, 0.9);
+  --dangerBg: #1b1110;
+  display: block;
+  background: var(--page);
+  color-scheme: dark;
+}
+
+.projectSidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: 218px;
+  padding: 18px 14px 12px;
+  border-right: 1px solid var(--line);
+  background: #10100f;
+  color: var(--ink);
+}
+
+.sidebarBrand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 7px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.sidebarBrand span {
+  color: #d6d4ce;
+  font-size: 14px;
+}
+
+.sidebarProject {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  margin: 20px 0 14px;
+  padding: 10px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #151514;
+}
+
+.sidebarProjectMark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 27px;
+  height: 27px;
+  border-radius: 7px;
+  background: #efeee9;
+  color: #111110;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sidebarProjectText {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.sidebarProjectText strong,
+.sidebarProjectText small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebarProjectText strong {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.sidebarProjectText small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.sidebarSwitcher {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 0 2px 15px;
+}
+
+.sidebarSwitcher select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  appearance: none;
+  padding: 0 28px 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #111110;
+  color: var(--ink2);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.sidebarSwitcher svg {
+  position: absolute;
+  right: 9px;
+  width: 13px;
+  height: 13px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.sidebarAllProjects {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 33px;
+  padding: 0 9px;
+  border-radius: 6px;
+  color: var(--ink2);
+  font-size: 11px;
+}
+
+.sidebarAllProjects:hover {
+  background: #1d1d1b;
+}
+
+.sidebarAllProjects svg {
+  width: 13px;
+  height: 13px;
+}
+
+.sidebarNav {
+  display: grid;
+  gap: 3px;
+  margin-top: 8px;
+}
+
+.sidebarNavItem {
+  display: flex;
+  align-items: center;
+  min-height: 31px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: #c1c0bb;
+  font-size: 11px;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.sidebarNavItem:hover {
+  background: #1a1a18;
+  color: #fff;
+}
+
+.sidebarNavItem[aria-current='page'] {
+  background: #242422;
+  color: #fff;
+  font-weight: 550;
+}
+
+.sidebarCaption {
+  margin: 23px 10px 0;
+  color: #aaa8a2;
+  font-size: 9px;
+  font-weight: 550;
+  letter-spacing: 0.12em;
+}
+
+.sidebarAccount {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding: 10px 3px 3px;
+  border-top: 1px solid var(--line);
+}
+
+.sidebarUser {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--ink2);
+  font-size: 10px;
+}
+
+.sidebarUser > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analyticsHeader {
+  position: fixed;
+  inset: 0 0 auto 218px;
+  z-index: 50;
+  height: 56px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(11, 11, 11, 0.96);
+  backdrop-filter: blur(10px);
+}
+
+.analyticsHeader .headerInner {
+  width: min(1280px, calc(100% - 48px));
+  height: 55px;
+  margin-inline: auto;
+}
+
+.analyticsHeader .brand,
+.analyticsHeader .headerDivider,
+.analyticsHeader .workspaceLabel {
+  display: none;
+}
+
+.analyticsHeader .breadcrumb {
+  color: var(--muted);
+}
+
+.analyticsHeader .breadcrumb strong {
+  color: var(--ink);
+}
+
+.analyticsHeader .account {
+  margin-left: auto;
+}
+
+.analyticsHeader .headerLink {
+  border-radius: 7px;
+  color: var(--ink2);
+}
+
+.analyticsDashboard .main {
+  width: auto;
+  max-width: none;
+  margin: 0 0 0 218px;
+  padding: 78px clamp(20px, 3vw, 42px) 54px;
+}
+
+.analyticsDashboard .projectHero,
+.analyticsDashboard .tabs,
+.analyticsDashboard .dashboardCat {
+  display: none;
+}
+
+.analyticsDashboard .analyticsBar {
+  align-items: center;
+  margin-bottom: 17px;
+}
+
+.analyticsDashboard .analyticsBar h2 {
+  font-size: 22px;
+  font-weight: 550;
+  letter-spacing: -0.03em;
+}
+
+.analyticsDashboard .analyticsBar p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.analyticsDashboard .kpi {
+  border-radius: 12px;
+  background: #111110;
+}
+
+.analyticsDashboard .chartCard,
+.analyticsDashboard .breakdownCard,
+.analyticsDashboard .settingCard,
+.analyticsDashboard .installCopy,
+.analyticsDashboard .codeCard {
+  border-radius: 12px;
+  background: #111110;
+}
+
+.analyticsDashboard :target {
+  scroll-margin-top: 76px;
+}
+
+.analyticsDashboard .footer {
+  margin-left: 218px;
+  border-top-color: var(--line);
+  background: #0b0b0b;
+}
+
+@media (max-width: 760px) {
+  .projectSidebar {
+    position: sticky;
+    inset: 0 auto auto 0;
+    width: 100%;
+    height: auto;
+    padding: 10px 14px 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .sidebarBrand,
+  .sidebarAllProjects,
+  .sidebarCaption,
+  .sidebarAccount {
+    display: none;
+  }
+
+  .sidebarProject {
+    margin: 0 0 8px;
+    padding: 5px 7px;
+  }
+
+  .sidebarSwitcher {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    width: min(45%, 230px);
+    margin: 0;
+  }
+
+  .sidebarNav {
+    display: flex;
+    gap: 3px;
+    margin-top: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .sidebarNav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sidebarNavItem {
+    flex: none;
+    min-height: 30px;
+    padding: 0 9px;
+    font-size: 10px;
+  }
+
+  .analyticsHeader {
+    position: relative;
+    inset: auto;
+    height: auto;
+  }
+
+  .analyticsHeader .headerInner {
+    width: calc(100% - 28px);
+    height: 48px;
+  }
+
+  .analyticsHeader .account {
+    gap: 7px;
+  }
+
+  .analyticsHeader .headerLink,
+  .analyticsHeader .userChip {
+    display: none;
+  }
+
+  .analyticsDashboard .main {
+    margin: 0;
+    padding: 22px 14px 38px;
+  }
+
+  .analyticsDashboard .footer {
+    margin-left: 0;
+  }
+}
+
+.sidebarNavItem:focus-visible,
+.sidebarAllProjects:focus-visible,
+.sidebarSwitcher select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
