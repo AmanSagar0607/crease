@@ -480,10 +480,14 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         method: 'POST',
         body: JSON.stringify({ name, domain }),
       });
+      const isFirstProject = projects.length === 0;
       setProjects((list) => [...list, created]);
       setSelected(created.id);
       setName('');
       setDomain('');
+      if (isFirstProject) {
+        dispatchMascotEvent({ kind: 'project-created', projectName: created.name });
+      }
       router.push(`/dashboard/projects/${encodeURIComponent(created.id)}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create the project.');
