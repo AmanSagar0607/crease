@@ -26,7 +26,7 @@
     var batch = queue.slice(0, 20);
     queue = queue.slice(batch.length);
     root.fetch(options.endpoint, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Crease-Key': options.writeKey },
       body: JSON.stringify({ projectId: options.projectId, events: batch }),
       keepalive: true, credentials: 'omit'
     }).then(function (response) {
@@ -56,10 +56,11 @@
   function pageview() { var path = safePath(); if (path !== currentPath) { currentPath = path; capture('pageview'); } }
   function init(config) {
     if (enabled || !config || !config.projectId || !config.endpoint) return;
+    if (typeof config.writeKey !== 'string' || !/^crease_[A-Za-z0-9_-]{16,}$/.test(config.writeKey)) return;
     var endpoint;
     try { endpoint = new URL(config.endpoint, root.location.href); } catch (_) { return; }
     if (endpoint.protocol !== 'https:' && endpoint.hostname !== 'localhost') return;
-    options = { projectId: String(config.projectId), endpoint: endpoint.href };
+    options = { projectId: String(config.projectId), endpoint: endpoint.href, writeKey: config.writeKey };
     enabled = true; currentPath = null; pageview();
     root.addEventListener('popstate', pageview);
     root.addEventListener('pagehide', flush);

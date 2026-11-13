@@ -18,14 +18,14 @@ export default function Docs() {
     <Code>{`import { Analytics } from '@crease/analytics/next';
 
 export default function RootLayout({ children }) {
-  return <html><body>{children}<Analytics projectId="YOUR_PROJECT_ID" /></body></html>;
+  return <html><body>{children}<Analytics projectId="YOUR_PROJECT_ID" writeKey="crease_YOUR_PROJECT_WRITE_KEY" /></body></html>;
 }`}</Code>
     <h2>3. Deploy and visit your site</h2>
     <p>Deploy the change, visit your site, then open your Crease project to see page views. Content blockers can prevent browser analytics from loading.</p>
     <h2>Custom events</h2>
     <Code>{`import { init } from '@crease/analytics';
 
-const analytics = init({ projectId: 'YOUR_PROJECT_ID' });
+const analytics = init({ projectId: 'YOUR_PROJECT_ID', writeKey: 'crease_YOUR_PROJECT_WRITE_KEY' });
 analytics.track('signup_completed', { plan: 'free' });`}</Code>
     <p>Only initialize analytics when your consent policy permits it.</p>
   </main>;

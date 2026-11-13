@@ -56,7 +56,7 @@ def setup():
             'CREATE TABLE IF NOT EXISTS users (id VARCHAR(64) PRIMARY KEY, github_id VARCHAR(64) UNIQUE NOT NULL, login VARCHAR(255) NOT NULL)',
             'CREATE TABLE IF NOT EXISTS sessions (token_hash VARCHAR(64) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, expires_at VARCHAR(32) NOT NULL)',
             'CREATE TABLE IF NOT EXISTS oauth_states (state_hash VARCHAR(64) PRIMARY KEY, expires_at VARCHAR(32) NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS projects (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, name VARCHAR(100) NOT NULL, domain VARCHAR(253) NOT NULL, retention_days INTEGER NOT NULL DEFAULT 90)',
+            'CREATE TABLE IF NOT EXISTS projects (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, name VARCHAR(100) NOT NULL, domain VARCHAR(253) NOT NULL, retention_days INTEGER NOT NULL DEFAULT 90, write_key_hash VARCHAR(64))',
             'CREATE TABLE IF NOT EXISTS project_repositories (project_id VARCHAR(36) PRIMARY KEY, full_name VARCHAR(200) NOT NULL, installation_id BIGINT NOT NULL)',
             'CREATE TABLE IF NOT EXISTS github_connections (user_id VARCHAR(64) PRIMARY KEY, encrypted_token TEXT NOT NULL)',
             'CREATE TABLE IF NOT EXISTS vercel_connections (user_id VARCHAR(64) PRIMARY KEY, encrypted_token TEXT NOT NULL, team_id VARCHAR(128))',
@@ -64,10 +64,17 @@ def setup():
             'CREATE TABLE IF NOT EXISTS events (project_id VARCHAR(36) NOT NULL, id VARCHAR(64) NOT NULL, name VARCHAR(64) NOT NULL, occurred_at VARCHAR(40) NOT NULL, path VARCHAR(512) NOT NULL, visitor_id VARCHAR(64), session_id VARCHAR(64), country VARCHAR(2), device VARCHAR(16), referrer VARCHAR(253), properties TEXT NOT NULL, PRIMARY KEY(project_id,id))',
             'CREATE INDEX IF NOT EXISTS events_project_time ON events(project_id, occurred_at)',
         ]: db.execute(text(sql))
+        if DATABASE_URL.startswith('sqlite'):
+            columns = {row[1] for row in db.execute(text('PRAGMA table_info(projects)'))}
+            if 'write_key_hash' not in columns:
+                db.execute(text('ALTER TABLE projects ADD COLUMN write_key_hash VARCHAR(64)'))
+        else:
+            db.execute(text('ALTER TABLE projects ADD COLUMN IF NOT EXISTS write_key_hash VARCHAR(64)'))
 
 setup()
 def now(): return datetime.now(timezone.utc)
 def digest(value): return hashlib.sha256(value.encode()).hexdigest()
+def new_write_key(): return 'crease_' + secrets.token_urlsafe(24)
 def stamp(value): return value.isoformat()
 async def session_user(crease_session: str | None = Cookie(default=None)):
     if not crease_session: raise HTTPException(401, 'Sign in required')
@@ -136,6 +143,7 @@ class GitHubInstallInput(BaseModel):
     repository: str = Field(min_length=3, max_length=200)
     path: str = Field(min_length=1, max_length=250)
     installation_id: int = Field(gt=0)
+    write_key: str = Field(min_length=1, max_length=200)
 
 class GitRepositoryInput(BaseModel):
     repository: str = Field(min_length=3, max_length=200, pattern=r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
@@ -254,7 +262,7 @@ async def github_install(project_id: str, data: GitHubInstallInput, crease_app_t
     token = app_user_token(crease_app_token, user)
     result, _ = await github_app_pages(token, f'/user/installations/{data.installation_id}/repositories', 'repositories')
     if not any(repo['full_name'].lower() == data.repository.lower() for repo in result): raise HTTPException(403, 'Repository is not accessible to this account')
-    return await create_install_pr(token, data.repository, data.path, project_id, CREASE_PUBLIC_ORIGIN)
+    return await create_install_pr(token, data.repository, data.path, project_id, CREASE_PUBLIC_ORIGIN, data.write_key)
 
 @app.post('/api/projects/{project_id}/github-install/enable-tracking')
 async def enable_github_tracking(project_id: str, crease_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
@@ -299,6 +307,7 @@ async def projects(user=Depends(session_user)):
     since = stamp(now() - timedelta(days=7))
     with engine.connect() as db:
         rows = db.execute(text('''SELECT p.id, p.name, p.domain, p.retention_days,
+            (p.write_key_hash IS NOT NULL) AS has_write_key,
             (SELECT COUNT(DISTINCT e.visitor_id) FROM events e WHERE e.project_id=p.id AND e.occurred_at>=:since) AS visitors_7d,
             (SELECT COUNT(*) FROM events e WHERE e.project_id=p.id AND e.occurred_at>=:since) AS events_7d,
             (SELECT MAX(e.occurred_at) FROM events e WHERE e.project_id=p.id) AS last_event_at
@@ -311,8 +320,17 @@ async def create_project(data: ProjectInput, user=Depends(session_user)):
     if not re.fullmatch(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', domain): raise HTTPException(422, 'Enter a hostname without a scheme or path')
     if not data.name.strip(): raise HTTPException(422, 'Project name is required')
     result = {'id':str(uuid4()),'name':data.name.strip(),'domain':domain,'retention_days':90}
-    with engine.begin() as db: db.execute(text('INSERT INTO projects (id,user_id,name,domain,retention_days) VALUES (:id,:user,:name,:domain,90)'), {**result,'user':user['id']})
-    return result
+    write_key = new_write_key()
+    with engine.begin() as db: db.execute(text('INSERT INTO projects (id,user_id,name,domain,retention_days,write_key_hash) VALUES (:id,:user,:name,:domain,90,:key_hash)'), {**result,'user':user['id'],'key_hash':digest(write_key)})
+    return {**result, 'write_key': write_key}
+
+@app.post('/api/projects/{project_id}/write-key', status_code=201)
+async def rotate_write_key(project_id: str, user=Depends(session_user)):
+    write_key = new_write_key()
+    with engine.begin() as db:
+        owned(db, project_id, user['id'])
+        db.execute(text('UPDATE projects SET write_key_hash=:key_hash WHERE id=:id'), {'key_hash':digest(write_key),'id':project_id})
+    return {'write_key': write_key}
 
 @app.delete('/api/projects/{project_id}')
 async def delete_project(project_id: str, user=Depends(session_user)):
@@ -373,8 +391,13 @@ async def limits(request: Request, call_next):
 async def ingest(data: Batch, request: Request):
     origin = request.headers.get('origin', '')
     with engine.begin() as db:
-        project = db.execute(text('SELECT domain FROM projects WHERE id=:id'), {'id':data.projectId}).mappings().first()
+        project = db.execute(text('SELECT domain, write_key_hash FROM projects WHERE id=:id'), {'id':data.projectId}).mappings().first()
         if not project: raise HTTPException(404, 'Project not found')
+        supplied = request.headers.get('x-crease-key', '')
+        if not supplied and request.headers.get('authorization', '').lower().startswith('bearer '):
+            supplied = request.headers['authorization'][7:].strip()
+        if not project['write_key_hash'] or not supplied or not secrets.compare_digest(digest(supplied), project['write_key_hash']):
+            raise HTTPException(401, 'Invalid project write key')
         host = urlsplit(origin).hostname if origin else None
         domain = project['domain']
         alternate = domain[4:] if domain.startswith('www.') else 'www.' + domain

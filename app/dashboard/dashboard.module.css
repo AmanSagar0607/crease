@@ -2060,3 +2060,51 @@
   --catInk: #111;
   --catBlush: #d3d3d3;
 }
+
+/* ---------- Project write key ---------- */
+
+.keyNotice {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--soft);
+}
+
+.keyNotice strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.keyNotice p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.keyStatus {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.keyRotate {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.keyRotate:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
