@@ -2,10 +2,12 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
+import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
 import ThemeToggle from '../theme-toggle';
+import LivingCat from '../mascot/living-cat';
+import { dispatchMascotEvent } from '../mascot/mascot-events';
 import s from './dashboard.module.css';
 
 type User = { id: string; login: string };
@@ -33,6 +35,27 @@ type Summary = {
   days: number;
 };
 type Delta = { label: string; dir: 'up' | 'down' | 'flat' };
+
+const firstPageviewSeen = new Set<string>();
+
+function celebrateFirstPageview(projectId: string, summary: Summary, project?: Project) {
+  if (!project || summary.metrics.pageviews <= 0 || !project.last_event_at) return;
+
+  const lastEvent = new Date(project.last_event_at).getTime();
+  if (!Number.isFinite(lastEvent) || Date.now() - lastEvent > 10 * 60 * 1000) return;
+  if (firstPageviewSeen.has(projectId)) return;
+  firstPageviewSeen.add(projectId);
+
+  try {
+    const key = `crease-mascot-first-pageview:${projectId}`;
+    if (window.localStorage.getItem(key)) return;
+    window.localStorage.setItem(key, String(Date.now()));
+  } catch {
+    // Storage can be unavailable; the in-memory guard still prevents repeats.
+  }
+
+  dispatchMascotEvent({ kind: 'first-pageview', projectName: project.name });
+}
 
 const TABS = ['analytics', 'installation', 'integrations', 'settings'] as const;
 type Tab = (typeof TABS)[number];
@@ -378,6 +401,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [settingsMessage, setSettingsMessage] = useState('');
   const [origin, setOrigin] = useState('');
   const [tab, setTab] = useState<Tab>('analytics');
+  const project = projects.find((item) => item.id === selected);
+  const projectRef = useRef<Project | undefined>(undefined);
+  projectRef.current = project;
 
   const load = useCallback(async () => {
     try {
@@ -408,7 +434,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     }
     setSummaryBusy(true);
     try {
-      setSummary(await api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=${days}`));
+      const result = await api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=${days}`);
+      setSummary(result);
+      celebrateFirstPageview(selected, result, projectRef.current);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         router.replace('/login');
@@ -435,7 +463,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     return () => window.removeEventListener('hashchange', read);
   }, []);
 
-  const project = projects.find((item) => item.id === selected);
   useEffect(() => {
     if (project) setRetention(project.retention_days);
   }, [project?.id, project?.retention_days]);
@@ -602,6 +629,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       </header>
 
       <main className={s.main} id="main">
+        <div className={s.dashboardCat}>
+          <LivingCat variant="dashboard" listen />
+        </div>
         {busy ? (
           <div className={s.loadingPage} role="status" aria-label="Loading your workspace">
             <span className={s.loadingBar} style={{ width: '22%' }} />

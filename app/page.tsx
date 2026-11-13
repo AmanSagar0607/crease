@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import ThemeToggle from './theme-toggle';
 import PlatformLogo, { platforms } from './platform-logos';
+import LivingCat from './mascot/living-cat';
 import s from './landing.module.css';
 
 const repo = 'https://github.com/AmanSagar0607/crease';
@@ -168,6 +169,9 @@ export default function Home() {
 
         <section className={s.mockWrap} aria-label="Crease analytics dashboard preview">
           <Ghost className={s.ghostMock} />
+          <div className={s.catPerch}>
+            <LivingCat variant="hero" listen />
+          </div>
           <div className={s.mockPanel}>
             <div className={s.window}>
               <div className={s.windowTop}>

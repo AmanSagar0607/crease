@@ -316,6 +316,16 @@
   height: 68px;
 }
 
+/* ---------- Living cat ---------- */
+
+.catPerch {
+  position: absolute;
+  right: 118px;
+  top: -96px;
+  z-index: 4;
+  width: 132px;
+}
+
 @keyframes bob {
   from {
     transform: translateY(0);
@@ -403,6 +413,14 @@
   position: relative;
   width: min(var(--container), calc(100% - 48px));
   margin: 62px auto 0;
+}
+
+.catPerch {
+  position: absolute;
+  z-index: 4;
+  top: -96px;
+  right: 7%;
+  width: 132px;
 }
 
 .mockPanel {
@@ -1741,6 +1759,12 @@
 
   .mockWrap {
     width: calc(100% - 32px);
+  }
+
+  .catPerch {
+    top: -77px;
+    right: 4%;
+    width: 104px;
   }
 
   .mockPanel {

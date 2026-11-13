@@ -1,0 +1,628 @@
+.cat {
+  --catBody: #f8f5ee;
+  --catSoft: #e9e4d8;
+  --catInk: #171612;
+  --catMark: #171612;
+  --catBlush: #edb5ab;
+  --catShadow: rgba(20, 18, 13, 0.16);
+  --catGlow: rgba(20, 18, 13, 0.08);
+  position: relative;
+  display: block;
+  width: 132px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--catInk);
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  filter: drop-shadow(0 16px 22px var(--catGlow));
+  transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:global([data-theme='dark']) .cat {
+  --catBody: #f0ede4;
+  --catSoft: #dfdacd;
+  --catInk: #14130f;
+  --catMark: #f2f1ec;
+  --catBlush: #dd9f97;
+  --catShadow: rgba(0, 0, 0, 0.46);
+  --catGlow: rgba(0, 0, 0, 0.3);
+}
+
+.cat:hover {
+  transform: translateY(-2px);
+}
+
+.cat:active {
+  transform: translateY(1px) scale(0.985);
+}
+
+.cat:focus-visible {
+  outline: 2px solid var(--catMark);
+  outline-offset: 7px;
+  border-radius: 28px;
+}
+
+.hero {
+  width: 132px;
+}
+
+.dashboard {
+  width: 88px;
+}
+
+.toast {
+  width: 72px;
+  cursor: default;
+  filter: drop-shadow(0 10px 14px var(--catGlow));
+}
+
+.toast:hover,
+.toast:active {
+  transform: none;
+}
+
+.art {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.shadow {
+  fill: var(--catShadow);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: shadowBreathe 5.2s ease-in-out infinite;
+}
+
+.posture,
+.headPosture,
+.tailWrap,
+.eye,
+.closedEyes,
+.zs,
+.sparkles {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.posture {
+  transform-origin: 50% 100%;
+  transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.body {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: breathe 5.2s ease-in-out infinite;
+}
+
+.head {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: headBob 6.4s ease-in-out infinite;
+}
+
+.headPosture {
+  transform-origin: 50% 100%;
+  transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tailWrap {
+  transform-origin: 0% 50%;
+  transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tail {
+  transform-box: fill-box;
+  transform-origin: 0% 50%;
+  animation: tailSway 6.8s ease-in-out infinite;
+}
+
+.earLeft,
+.earRight {
+  transform-box: fill-box;
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.earLeft {
+  transform-origin: 100% 100%;
+}
+
+.earRight {
+  transform-origin: 0% 100%;
+}
+
+.eye {
+  transition: transform 110ms ease;
+}
+
+.closedEyes {
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.zs,
+.sparkles {
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+
+.z1 {
+  animation: zFloat 4.4s ease-in-out infinite;
+}
+
+.z2 {
+  animation: zFloat 4.4s ease-in-out 2.2s infinite;
+}
+
+.sparkles {
+  opacity: 0;
+}
+
+.sparkle1 {
+  animation: sparkle 1.15s ease-in-out infinite;
+}
+
+.sparkle2 {
+  animation: sparkle 1.15s ease-in-out 0.18s infinite;
+}
+
+.sparkle3 {
+  animation: sparkle 1.15s ease-in-out 0.36s infinite;
+}
+
+.sparkle4 {
+  animation: sparkle 1.15s ease-in-out 0.54s infinite;
+}
+
+.boopMark {
+  opacity: 0;
+}
+
+.stripes,
+.whiskers {
+  opacity: 0.32;
+}
+
+.cheeks {
+  opacity: 0.72;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 180ms ease, transform 220ms ease;
+}
+
+/* ---------- Sleeping ---------- */
+
+.cat[data-mood='sleeping'] .posture {
+  transform: translateY(2px) scaleY(0.99);
+}
+
+.cat[data-mood='sleeping'] .headPosture {
+  transform: translateY(3px) rotate(-1.5deg);
+}
+
+.cat[data-mood='sleeping'] .tailWrap {
+  transform: rotate(-3deg);
+}
+
+.cat[data-mood='sleeping'] .body {
+  animation-duration: 7.2s;
+}
+
+.cat[data-mood='sleeping'] .head {
+  animation-duration: 8.4s;
+}
+
+.cat[data-mood='sleeping'] .tail {
+  animation-duration: 9.4s;
+}
+
+.cat[data-mood='sleeping'] .shadow {
+  animation-duration: 7.2s;
+}
+
+.cat[data-mood='sleeping'] .eye {
+  transform: scaleY(0.06);
+  transition-duration: 520ms;
+}
+
+.cat[data-mood='sleeping'] .closedEyes {
+  opacity: 1;
+}
+
+.cat[data-mood='sleeping'] .zs {
+  opacity: 1;
+}
+
+.cat[data-mood='sleeping'] .earLeft {
+  transform: rotate(2deg);
+}
+
+.cat[data-mood='sleeping'] .earRight {
+  transform: rotate(-2deg);
+}
+
+.cat[data-mood='sleeping'] .cheeks {
+  opacity: 0.55;
+  transform: scale(0.94);
+}
+
+/* ---------- Waking ---------- */
+
+.cat[data-mood='waking'] .posture {
+  transform: translateY(-1px);
+}
+
+.cat[data-mood='waking'] .headPosture {
+  transform: translateY(-1px);
+}
+
+.cat[data-mood='waking'] .eye {
+  transform: scaleY(0.35);
+  transition-duration: 420ms;
+}
+
+.cat[data-mood='waking'] .closedEyes {
+  opacity: 0.4;
+}
+
+.cat[data-mood='waking'] .zs {
+  opacity: 0;
+}
+
+/* ---------- Idle ---------- */
+
+.cat[data-mood='idle'] .posture,
+.cat[data-mood='idle'] .headPosture,
+.cat[data-mood='idle'] .tailWrap {
+  transform: none;
+}
+
+.cat[data-mood='idle'] .eye {
+  transform: scaleY(1);
+}
+
+.cat[data-mood='idle'] .closedEyes,
+.cat[data-mood='idle'] .zs {
+  opacity: 0;
+}
+
+/* ---------- Happy ---------- */
+
+.cat[data-mood='happy'] .posture {
+  transform: translateY(-1px);
+}
+
+.cat[data-mood='happy'] .headPosture {
+  transform: translateY(-3px) rotate(-1.2deg);
+}
+
+.cat[data-mood='happy'] .tailWrap {
+  transform: rotate(2deg);
+}
+
+.cat[data-mood='happy'] .eye {
+  transform: scaleY(1);
+}
+
+.cat[data-mood='happy'] .closedEyes,
+.cat[data-mood='happy'] .zs {
+  opacity: 0;
+}
+
+.cat[data-mood='happy'] .tail {
+  animation-duration: 3.4s;
+}
+
+.cat[data-mood='happy'] .cheeks,
+.cat[data-mood='celebrating'] .cheeks {
+  opacity: 1;
+  transform: scale(1.12, 1.2);
+}
+
+/* ---------- Blink / twitch ---------- */
+
+.cat[data-blinking='true'] .eye {
+  transform: scaleY(0.06);
+  transition-duration: 90ms;
+}
+
+.cat[data-blinking='true'] .closedEyes {
+  opacity: 1;
+}
+
+.cat[data-twitch='true'] .earLeft {
+  transform: rotate(-7deg);
+}
+
+.cat[data-twitch='true'] .earRight {
+  transform: rotate(4deg);
+}
+
+/* ---------- Click ---------- */
+
+.cat[data-boop='true'] .posture {
+  animation: boop 620ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.cat[data-boop='true'] .headPosture {
+  animation: boopHead 620ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.cat[data-boop='true'] .boopMark {
+  animation: boopMark 620ms ease-out;
+}
+
+/* ---------- Celebration ---------- */
+
+.cat[data-mood='celebrating'] .posture {
+  animation: hop 720ms cubic-bezier(0.2, 0.9, 0.25, 1) 3;
+}
+
+.cat[data-mood='celebrating'] .body,
+.cat[data-mood='celebrating'] .head {
+  animation: none;
+}
+
+.cat[data-mood='celebrating'] .headPosture {
+  animation: celebrateHead 720ms cubic-bezier(0.2, 0.9, 0.25, 1) 3;
+}
+
+.cat[data-mood='celebrating'] .tail {
+  animation: tailWag 240ms ease-in-out infinite;
+}
+
+.cat[data-mood='celebrating'] .tailWrap {
+  transform: none;
+}
+
+.cat[data-mood='celebrating'] .shadow {
+  animation: shadowHop 720ms ease-in-out 3;
+}
+
+.cat[data-mood='celebrating'] .eye {
+  transform: scaleY(1.12) scaleX(1.06);
+  transition-duration: 220ms;
+}
+
+.cat[data-mood='celebrating'] .closedEyes,
+.cat[data-mood='celebrating'] .zs {
+  opacity: 0;
+}
+
+.cat[data-mood='celebrating'] .sparkles {
+  opacity: 1;
+}
+
+.cat[data-mood='celebrating'] .earLeft {
+  transform: rotate(-5deg);
+}
+
+.cat[data-mood='celebrating'] .earRight {
+  transform: rotate(5deg);
+}
+
+/* ---------- Keyframes ---------- */
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scaleY(1) translateY(0);
+  }
+  50% {
+    transform: scaleY(1.018) translateY(-1px);
+  }
+}
+
+@keyframes headBob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  35% {
+    transform: translateY(-1.2px) rotate(-0.6deg);
+  }
+  70% {
+    transform: translateY(0.6px) rotate(0.4deg);
+  }
+}
+
+@keyframes tailSway {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes shadowBreathe {
+  0%,
+  100% {
+    transform: scaleX(1);
+    opacity: 0.16;
+  }
+  50% {
+    transform: scaleX(0.96);
+    opacity: 0.12;
+  }
+}
+
+@keyframes zFloat {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-7px);
+  }
+}
+
+@keyframes sparkle {
+  0%,
+  100% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  70% {
+    transform: scale(0.8);
+    opacity: 0.55;
+  }
+}
+
+@keyframes boop {
+  0% {
+    transform: scale(1);
+  }
+  28% {
+    transform: scale(1.045, 0.94) translateY(2px);
+  }
+  55% {
+    transform: scale(0.975, 1.03) translateY(-2px);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes boopHead {
+  0% {
+    transform: rotate(0deg) translateY(0);
+  }
+  30% {
+    transform: rotate(-2.5deg) translateY(-2px);
+  }
+  62% {
+    transform: rotate(1.6deg) translateY(0);
+  }
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+}
+
+@keyframes boopMark {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) translateY(4px);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1) translateY(-2px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.8) translateY(-7px);
+  }
+}
+
+@keyframes hop {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  22% {
+    transform: translateY(-11px) scale(1.025, 0.975);
+  }
+  44% {
+    transform: translateY(0) scale(0.97, 1.03);
+  }
+  66% {
+    transform: translateY(-6px) scale(1.01, 0.99);
+  }
+  84% {
+    transform: translateY(0) scale(0.985, 1.015);
+  }
+}
+
+@keyframes celebrateHead {
+  0%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+  22% {
+    transform: rotate(-3.5deg) translateY(-2px);
+  }
+  48% {
+    transform: rotate(3.5deg) translateY(0);
+  }
+  72% {
+    transform: rotate(-1.8deg) translateY(-1px);
+  }
+}
+
+@keyframes tailWag {
+  0%,
+  100% {
+    transform: rotate(-11deg);
+  }
+  50% {
+    transform: rotate(12deg);
+  }
+}
+
+@keyframes shadowHop {
+  0%,
+  100% {
+    transform: scaleX(1);
+    opacity: 0.16;
+  }
+  22% {
+    transform: scaleX(0.78);
+    opacity: 0.1;
+  }
+  44% {
+    transform: scaleX(1.06);
+    opacity: 0.18;
+  }
+  66% {
+    transform: scaleX(0.86);
+    opacity: 0.12;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .body,
+  .head,
+  .tail,
+  .shadow,
+  .z1,
+  .z2,
+  .sparkle1,
+  .sparkle2,
+  .sparkle3,
+  .sparkle4,
+  .posture,
+  .headPosture,
+  .boopMark {
+    animation: none !important;
+  }
+
+  .cat,
+  .eye,
+  .closedEyes,
+  .posture,
+  .headPosture,
+  .tailWrap,
+  .earLeft,
+  .earRight {
+    transition-duration: 0.01ms !important;
+  }
+
+  .cat:hover,
+  .cat:active {
+    transform: none;
+  }
+}
