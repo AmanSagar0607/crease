@@ -29,6 +29,7 @@ export default function GitHubInstall({ projectId }: { projectId: string }) {
   const [installStatus, setInstallStatus] = useState<InstallStatus | null>(null);
   const [installError, setInstallError] = useState('');
   const [checkingInstall, setCheckingInstall] = useState(false);
+  const [activating, setActivating] = useState(false);
   const searchId = useId();
   const filtered = useMemo(() => repos.filter(repo => repo.full_name.toLowerCase().includes(search.trim().toLowerCase())), [repos, search]);
   const selectedRepo = savedRepo || repos.find(repo => `${repo.installation_id}:${repo.full_name}` === selected);
@@ -123,6 +124,17 @@ export default function GitHubInstall({ projectId }: { projectId: string }) {
     finally { setBusy(false); }
   }
 
+  async function enableTracking() {
+    setActivating(true); setMessage(''); setPr('');
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/github-install/enable-tracking`, { method: 'POST' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Could not prepare the tracking pull request.');
+      setPr(body.url);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not prepare the tracking pull request.'); }
+    finally { setActivating(false); }
+  }
+
   return <section className="repo-connect" aria-labelledby="github-install-title">
     <div className="repo-connect-heading">
       <div><p className="eyebrow">INSTALLATION OPTIONS <span aria-hidden="true">/</span> GITHUB</p><h2 id="github-install-title">Connect your repository<span className="blue">.</span></h2><p>Use this project’s connected repository to prepare an analytics installation for review.</p></div>
@@ -148,6 +160,7 @@ export default function GitHubInstall({ projectId }: { projectId: string }) {
           <div className="git-connect-action"><span>Connect the selected repository to this project.</span><button className="repo-action" type="button" onClick={() => void updateConnection()} disabled={!selectedRepo || savingRepo}>{savingRepo ? 'Connecting…' : 'Connect repository'} <span aria-hidden="true">↗</span></button></div>
           </>}
           {savedRepo && <div className="repo-note" role="status"><strong>{installError ? 'Installation status unavailable' : !installStatus ? 'Checking installation…' : installStatus.state === 'installed' ? 'Installation found in repository' : installStatus.state === 'different_project' ? 'Installation belongs to another project' : 'Installation not found'}</strong><p>{installError || (installStatus ? `${installStatus.path} on ${installStatus.branch}. ${installStatus.state === 'installed' ? installStatus.analytics.event_count > 0 ? `${installStatus.analytics.event_count.toLocaleString()} analytics event${installStatus.analytics.event_count === 1 ? '' : 's'} received${installStatus.analytics.latest_event ? `; latest: ${new Date(installStatus.analytics.latest_event).toLocaleString()}.` : '.'}` : 'No analytics events received yet. Open the live site after consent is granted, then check again.' : installStatus.state === 'different_project' ? 'Review the existing installation before making changes.' : 'Prepare an installation for review on GitHub.'}` : 'Checking the default branch on GitHub.')}</p><button type="button" className="repo-action" onClick={() => void checkInstallation()} disabled={checkingInstall}>{checkingInstall ? 'Checking…' : 'Check again'}</button></div>}
+          {savedRepo && installStatus?.state === 'installed' && installStatus.analytics.event_count === 0 && <div className="repo-note"><strong>Enable tracking on page load</strong><p>Your site does not dispatch the consent event that the existing installation waits for. Crease can prepare a pull request that starts tracking after page load. Review your consent requirements before merging.</p><button type="button" className="repo-action" onClick={() => void enableTracking()} disabled={activating}>{activating ? 'Preparing…' : 'Prepare tracking pull request'} <span aria-hidden="true">↗</span></button></div>}
           {savedRepo && installStatus?.state === 'not_installed' && reviewing && selectedRepo && <div className="repo-note" role="status"><strong>Review installation for {selectedRepo.full_name}</strong><p>Crease will propose a change to a supported static HTML or Next.js App Router entry file on a new branch. You can review it on GitHub before merging. Tracking starts only after your site signals consent.</p>{!status.public_origin_configured && <p>Next, deploy Crease over HTTPS and set CREASE_PUBLIC_ORIGIN on the server. This step cannot create a working installation while Crease is only on localhost.</p>}<button type="button" className="repo-action" onClick={() => setReviewing(false)}>Back</button></div>}
           {savedRepo && installStatus?.state === 'not_installed' && <div className="repo-form-footer"><div><strong>{selectedRepo?.full_name}</strong><p>{reviewing ? 'A GitHub pull request will be created for your review.' : 'Review the installation before creating any changes.'}</p></div><button className="button primary repo-submit" disabled={busy || !selectedRepo || (reviewing && !status.public_origin_configured)} type="submit">{busy ? 'Preparing installation…' : reviewing ? 'Prepare installation' : 'Continue'} <span aria-hidden="true">↗</span></button></div>}
         </form>}

@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import IntegrityError
-from github_install import create_install_pr, installation_status
+from github_install import create_install_pr, enable_tracking_pr, installation_status
 from cryptography.fernet import Fernet, InvalidToken
 
 load_dotenv(Path(__file__).with_name('.env'))
@@ -255,6 +255,15 @@ async def github_install(project_id: str, data: GitHubInstallInput, crease_app_t
     result, _ = await github_app_pages(token, f'/user/installations/{data.installation_id}/repositories', 'repositories')
     if not any(repo['full_name'].lower() == data.repository.lower() for repo in result): raise HTTPException(403, 'Repository is not accessible to this account')
     return await create_install_pr(token, data.repository, data.path, project_id, CREASE_PUBLIC_ORIGIN)
+
+@app.post('/api/projects/{project_id}/github-install/enable-tracking')
+async def enable_github_tracking(project_id: str, crease_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        repo = db.execute(text('SELECT full_name FROM project_repositories WHERE project_id=:id'), {'id':project_id}).mappings().first()
+    if not repo: raise HTTPException(404, 'Connect a repository first')
+    token = app_user_token(crease_app_token, user)
+    return await enable_tracking_pr(token, repo['full_name'], project_id)
 
 @app.get('/api/projects/{project_id}/git')
 async def get_project_git(project_id: str, user=Depends(session_user)):

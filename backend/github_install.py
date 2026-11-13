@@ -33,6 +33,36 @@ async def installation_status(token: str, repository: str, project_id: str):
     except httpx.RequestError as exc: raise HTTPException(503, 'Could not connect to GitHub') from exc
     raise HTTPException(422, 'No supported entry file found, or GitHub App Contents access is missing.')
 
+async def enable_tracking_pr(token: str, repository: str, project_id: str):
+    """Create a reviewable PR that changes Crease's consent listener to page-load tracking."""
+    status = await installation_status(token, repository, project_id)
+    if status['state'] != 'installed':
+        raise HTTPException(409, 'Crease installation was not found for this project')
+    headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'}
+    try:
+        async with httpx.AsyncClient(base_url='https://api.github.com', headers=headers, timeout=20) as client:
+            repo_response = await client.get(f'/repos/{repository}')
+            if repo_response.status_code != 200: raise HTTPException(403, 'Cannot access this repository')
+            base = repo_response.json()['default_branch']
+            content_response = await client.get(f"/repos/{repository}/contents/{status['path']}", params={'ref':base})
+            if content_response.status_code != 200: raise HTTPException(403, 'Cannot read the installed entry file')
+            content = content_response.json()
+            source = base64.b64decode(content['content']).decode('utf-8')
+            old = "window.addEventListener('crease:consent',"
+            if old not in source: raise HTTPException(409, 'This installation does not use Crease’s consent listener')
+            updated = source.replace(old, "window.addEventListener('load',", 1)
+            branch_response = await client.get(f'/repos/{repository}/branches/{base}')
+            if branch_response.status_code != 200: raise HTTPException(403, 'Cannot create a branch in this repository')
+            branch = 'crease/enable-tracking-' + uuid4().hex[:12]
+            create_branch = await client.post(f'/repos/{repository}/git/refs', json={'ref':'refs/heads/'+branch,'sha':branch_response.json()['commit']['sha']})
+            if create_branch.status_code >= 400: raise HTTPException(400, 'GitHub could not create the tracking branch')
+            update = await client.put(f"/repos/{repository}/contents/{status['path']}", json={'message':'Enable Crease tracking on page load','content':base64.b64encode(updated.encode()).decode(),'sha':content['sha'],'branch':branch})
+            if update.status_code >= 400: raise HTTPException(400, 'GitHub could not update the installation file')
+            pull = await client.post(f'/repos/{repository}/pulls', json={'title':'Enable Crease tracking on page load','head':branch,'base':base,'body':'Updates the existing Crease installation to initialize on page load. Review your consent requirements before merging.'})
+            if pull.status_code >= 400: raise HTTPException(400, 'GitHub could not create the pull request')
+            return {'url':pull.json()['html_url']}
+    except httpx.RequestError as exc: raise HTTPException(503, 'Could not connect to GitHub') from exc
+
 async def create_install_pr(token: str, repository: str, path: str, project_id: str, public_url: str):
     if not REPO.fullmatch(repository) or '..' in repository:
         raise HTTPException(422, 'Enter a GitHub repository as owner/name')
