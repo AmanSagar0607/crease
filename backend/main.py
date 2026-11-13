@@ -355,7 +355,10 @@ async def ingest(data: Batch, request: Request):
     with engine.begin() as db:
         project = db.execute(text('SELECT domain FROM projects WHERE id=:id'), {'id':data.projectId}).mappings().first()
         if not project: raise HTTPException(404, 'Project not found')
-        if not origin or urlsplit(origin).hostname != project['domain']: raise HTTPException(403, 'Origin does not match project')
+        host = urlsplit(origin).hostname if origin else None
+        domain = project['domain']
+        alternate = domain[4:] if domain.startswith('www.') else 'www.' + domain
+        if host not in (domain, alternate): raise HTTPException(403, 'Origin does not match project')
         inserted = 0
         for e in data.events:
             if not e.path.startswith('/') or '?' in e.path or '#' in e.path: raise HTTPException(422, 'Invalid path')
