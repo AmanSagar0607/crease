@@ -1574,6 +1574,43 @@
 
 /* ---------- Auth ---------- */
 
+.loginMain {
+  display: flex;
+  align-items: center;
+}
+
+.loginMain > .authWrap {
+  flex: 1;
+}
+
+.redirecting {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 96px 0;
+  text-align: center;
+}
+
+.redirecting h1 {
+  font-size: clamp(26px, 3.6vw, 36px);
+  font-weight: 400;
+  letter-spacing: -0.03em;
+}
+
+.redirecting p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.redirecting a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.redirecting a:hover {
+  color: var(--ink);
+}
+
 .authWrap {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr);
