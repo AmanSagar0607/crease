@@ -16,3 +16,6 @@ backend/.wrangler/
 backend/.tools/
 backend/.venv-workers/
 backend/.worker-build-script.sh
+
+.agents/
+.codex/

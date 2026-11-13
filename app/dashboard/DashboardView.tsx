@@ -2,66 +2,1152 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
+import s from './dashboard.module.css';
 
 type User = { id: string; login: string };
-type Project = { id: string; name: string; domain: string; retention_days: number };
+type Project = {
+  id: string;
+  name: string;
+  domain: string;
+  retention_days: number;
+  visitors_7d?: number;
+  events_7d?: number;
+  last_event_at?: string | null;
+};
 type Breakdown = { label: string; count: number };
-type Summary = { metrics: { events: number; pageviews: number; visitors: number; sessions: number }; pages: Breakdown[]; devices: Breakdown[]; countries: Breakdown[]; referrers: Breakdown[]; days: unknown };
-class ApiError extends Error { constructor(message: string, readonly status: number) { super(message); } }
+type SeriesPoint = { date: string; events: number; pageviews: number; visitors: number; sessions: number };
+type Metrics = { events: number; pageviews: number; visitors: number; sessions: number };
+type Summary = {
+  metrics: Metrics;
+  previous: Metrics;
+  series: SeriesPoint[];
+  last_event_at: string | null;
+  pages: Breakdown[];
+  devices: Breakdown[];
+  countries: Breakdown[];
+  referrers: Breakdown[];
+  days: number;
+};
+type Delta = { label: string; dir: 'up' | 'down' | 'flat' };
+
+const TABS = ['analytics', 'installation', 'integrations', 'settings'] as const;
+type Tab = (typeof TABS)[number];
+
+class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, { ...init, credentials: 'same-origin', headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers } });
-  if (!response.ok) { let message = `Request failed (${response.status}).`; try { const json = await response.json(); if (typeof json.detail === 'string') message = json.detail; } catch {} throw new ApiError(message, response.status); }
+  const response = await fetch(path, {
+    ...init,
+    credentials: 'same-origin',
+    headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers },
+  });
+  if (!response.ok) {
+    let message = `Request failed (${response.status}).`;
+    try {
+      const json = await response.json();
+      if (typeof json.detail === 'string') message = json.detail;
+    } catch {}
+    throw new ApiError(message, response.status);
+  }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
-function Table({ title, rows, empty }: { title: string; rows: Breakdown[]; empty: string }) {
-  return <section className="panel breakdown"><div className="panel-head"><h3>{title}</h3><span>COUNT</span></div>{rows?.length ? <ul>{rows.map((r, index) => <li key={`${r.label}-${index}`}><span>{r.label || 'Unknown'}</span><strong>{r.count.toLocaleString()}</strong></li>)}</ul> : <p className="empty-row">{empty}</p>}</section>;
+
+/* ---------- Icons ---------- */
+
+function Svg({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className ?? s.icon}
+    >
+      {children}
+    </svg>
+  );
 }
+
+const UsersIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </Svg>
+);
+
+const EyeIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+    <circle cx="12" cy="12" r="3" />
+  </Svg>
+);
+
+const ActivityIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="M22 12h-4l-3 8-6-16-3 8H2" />
+  </Svg>
+);
+
+const ZapIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />
+  </Svg>
+);
+
+const GlobeIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18" />
+    <path d="M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z" />
+  </Svg>
+);
+
+const MonitorIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <rect x="2" y="4" width="20" height="13" rx="2" />
+    <path d="M8 21h8M12 17v4" />
+  </Svg>
+);
+
+const LinkIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2" />
+    <path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2" />
+  </Svg>
+);
+
+const FileIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+    <path d="M14 2v6h6" />
+  </Svg>
+);
+
+const CopyIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <rect x="9" y="9" width="12" height="12" rx="2" />
+    <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+  </Svg>
+);
+
+const CheckIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="m20 6-11 11-5-5" />
+  </Svg>
+);
+
+const AlertIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 8v5M12 16h.01" />
+  </Svg>
+);
+
+const RefreshIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+    <path d="M21 3v6h-6" />
+  </Svg>
+);
+
+const ArrowUpRightIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="M7 17 17 7M8 7h9v9" />
+  </Svg>
+);
+
+const ArrowRightIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="M5 12h14M13 6l6 6-6 6" />
+  </Svg>
+);
+
+const CodeIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="m8 6-6 6 6 6M16 6l6 6-6 6" />
+  </Svg>
+);
+
+const TrashIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6M14 11v6" />
+  </Svg>
+);
+
+const ChevronIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="m6 9 6 6 6-6" />
+  </Svg>
+);
+
+/* ---------- Formatting helpers ---------- */
+
+function compact(value: number) {
+  return value.toLocaleString('en-US');
+}
+
+function shortDate(iso: string) {
+  const date = new Date(`${iso}T00:00:00Z`);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function relativeWhen(iso?: string | null) {
+  if (!iso) return 'No events yet';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return 'No events yet';
+  const minutes = Math.round((Date.now() - then) / 60000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.round(days / 30)}mo ago`;
+}
+
+function getDelta(current?: number, previous?: number): Delta | null {
+  if (current === undefined || previous === undefined) return null;
+  if (previous === 0) return current === 0 ? { label: '0%', dir: 'flat' } : { label: 'New', dir: 'up' };
+  const pct = ((current - previous) / previous) * 100;
+  const dir: Delta['dir'] = pct > 0.05 ? 'up' : pct < -0.05 ? 'down' : 'flat';
+  return { label: `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`, dir };
+}
+
+function deltaClass(dir: Delta['dir']) {
+  return dir === 'up' ? s.deltaUp : dir === 'down' ? s.deltaDown : s.deltaFlat;
+}
+
+/* ---------- Chart geometry ---------- */
+
+function pointsFor(values: number[], width: number, height: number, padTop: number, padBottom: number) {
+  const max = Math.max(1, ...values);
+  const inner = height - padTop - padBottom;
+  return values.map((value, index) => {
+    const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width;
+    return [x, padTop + inner - (value / max) * inner] as const;
+  });
+}
+
+function linePath(points: ReadonlyArray<readonly [number, number]>) {
+  return points.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+}
+
+function areaPath(points: ReadonlyArray<readonly [number, number]>, height: number) {
+  if (!points.length) return '';
+  const last = points[points.length - 1];
+  const first = points[0];
+  return `${linePath(points)} L${last[0].toFixed(1)} ${height} L${first[0].toFixed(1)} ${height} Z`;
+}
+
+function Sparkline({ values }: { values: number[] }) {
+  const points = pointsFor(values.length ? values : [0, 0], 120, 36, 3, 3);
+  return (
+    <svg className={s.spark} viewBox="0 0 120 36" preserveAspectRatio="none" aria-hidden="true">
+      <path d={areaPath(points, 36)} fill="rgba(17,17,17,.05)" />
+      <path d={linePath(points)} fill="none" stroke="currentColor" strokeWidth="1.4" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+/* ---------- Small building blocks ---------- */
+
+function BreakdownCard({
+  title,
+  icon,
+  rows,
+  total,
+  empty,
+}: {
+  title: string;
+  icon: ReactNode;
+  rows: Breakdown[];
+  total: number;
+  empty: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? rows : rows.slice(0, 5);
+  const max = rows[0]?.count || 1;
+
+  return (
+    <section className={s.breakdownCard}>
+      <div className={s.cardTop}>
+        <h3>
+          {icon}
+          {title}
+        </h3>
+        <span className={s.cardCount}>{rows.length ? `${rows.length} SOURCES` : 'NO DATA'}</span>
+      </div>
+      {shown.length ? (
+        <>
+          <ul className={s.breakdownList}>
+            {shown.map((row, index) => (
+              <li className={s.breakdownRow} key={`${row.label}-${index}`}>
+                <div className={s.breakdownLine}>
+                  <span className={s.breakdownLabel} title={row.label || 'Unknown'}>
+                    {row.label || 'Unknown'}
+                  </span>
+                  <span className={s.breakdownValue}>
+                    {compact(row.count)}
+                    {total > 0 && <em>{Math.round((row.count / total) * 100)}%</em>}
+                  </span>
+                </div>
+                <span className={s.barTrack} aria-hidden="true">
+                  <span className={s.barFill} style={{ width: `${Math.max(2, (row.count / max) * 100)}%` }} />
+                </span>
+              </li>
+            ))}
+          </ul>
+          {rows.length > 5 && (
+            <button className={s.breakdownMore} type="button" onClick={() => setExpanded((value) => !value)}>
+              {expanded ? 'Show fewer' : `Show all ${rows.length}`}
+            </button>
+          )}
+        </>
+      ) : (
+        <div className={s.emptyBlock}>
+          <FileIcon />
+          <span>{empty}</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Kpi({
+  label,
+  icon,
+  value,
+  delta,
+  hint,
+  series,
+}: {
+  label: string;
+  icon: ReactNode;
+  value?: number;
+  delta: Delta | null;
+  hint: string;
+  series: number[];
+}) {
+  return (
+    <article className={s.kpi}>
+      <div className={s.kpiTop}>
+        <span className={s.kpiIcon}>{icon}</span>
+        <span>{label}</span>
+        {delta && <span className={`${s.kpiDelta} ${deltaClass(delta.dir)}`}>{delta.label}</span>}
+      </div>
+      <strong className={s.kpiValue}>{value === undefined ? '—' : compact(value)}</strong>
+      <span className={s.kpiHint}>{hint}</span>
+      <Sparkline values={series} />
+    </article>
+  );
+}
+
+/* ---------- Main component ---------- */
+
 export default function DashboardView({ projectId }: { projectId?: string }) {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null), [projects, setProjects] = useState<Project[]>([]), [selected, setSelected] = useState('');
-  const [summary, setSummary] = useState<Summary | null>(null), [busy, setBusy] = useState(true), [saving, setSaving] = useState(false);
-  const [name, setName] = useState(''), [domain, setDomain] = useState(''), [error, setError] = useState(''), [copied, setCopied] = useState(false);
-  const [days, setDays] = useState(30), [retention, setRetention] = useState(30), [settingsBusy, setSettingsBusy] = useState(false), [settingsMessage, setSettingsMessage] = useState('');
+  const [user, setUser] = useState<User | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selected, setSelected] = useState('');
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [summaryBusy, setSummaryBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState('');
+  const [domain, setDomain] = useState('');
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [days, setDays] = useState(30);
+  const [retention, setRetention] = useState(30);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState('');
+  const [origin, setOrigin] = useState('');
+  const [tab, setTab] = useState<Tab>('analytics');
+
   const load = useCallback(async () => {
-    try { const current = await api<User>('/api/me'); setUser(current); const list = await api<Project[]>('/api/projects'); setProjects(list); setSelected(projectId && list.some(p => p.id === projectId) ? projectId : ''); }
-    catch (e) { if (e instanceof ApiError && e.status === 401) setUser(null); else setError(e instanceof Error ? e.message : 'Could not load your workspace.'); }
-    finally { setBusy(false); }
+    try {
+      const current = await api<User>('/api/me');
+      setUser(current);
+      const list = await api<Project[]>('/api/projects');
+      setProjects(list);
+      setSelected(projectId && list.some((project) => project.id === projectId) ? projectId : '');
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) setUser(null);
+      else setError(e instanceof Error ? e.message : 'Could not load your workspace.');
+    } finally {
+      setBusy(false);
+    }
   }, [projectId]);
-  useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (!selected) { setSummary(null); return; } let cancelled = false; setSummary(null); api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=${days}`).then(data => { if (!cancelled) setSummary(data); }).catch(e => { if (!cancelled) setError(e.message); }); return () => { cancelled = true; }; }, [selected, days]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const loadSummary = useCallback(async () => {
+    if (!selected) {
+      setSummary(null);
+      return;
+    }
+    setSummaryBusy(true);
+    try {
+      setSummary(await api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=${days}`));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load analytics.');
+    } finally {
+      setSummaryBusy(false);
+    }
+  }, [selected, days]);
+
+  useEffect(() => {
+    void loadSummary();
+  }, [loadSummary]);
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+    const read = () => {
+      const candidate = window.location.hash.slice(1) as Tab;
+      setTab(TABS.includes(candidate) ? candidate : 'analytics');
+    };
+    read();
+    window.addEventListener('hashchange', read);
+    return () => window.removeEventListener('hashchange', read);
+  }, []);
+
+  const project = projects.find((item) => item.id === selected);
+  useEffect(() => {
+    if (project) setRetention(project.retention_days);
+  }, [project?.id, project?.retention_days]);
+
+  useEffect(() => {
+    setSettingsMessage('');
+  }, [selected]);
+
   async function createProject(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError(''); setSaving(true);
-    try { const project = await api<Project>('/api/projects', { method: 'POST', body: JSON.stringify({ name, domain }) }); setProjects(list => [...list, project]); setSelected(project.id); setName(''); setDomain(''); router.push(`/dashboard/projects/${encodeURIComponent(project.id)}`); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not create the project.'); } finally { setSaving(false); }
+    event.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      const created = await api<Project>('/api/projects', {
+        method: 'POST',
+        body: JSON.stringify({ name, domain }),
+      });
+      setProjects((list) => [...list, created]);
+      setSelected(created.id);
+      setName('');
+      setDomain('');
+      router.push(`/dashboard/projects/${encodeURIComponent(created.id)}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not create the project.');
+    } finally {
+      setSaving(false);
+    }
   }
-  async function logout() { try { await api('/api/logout', { method: 'POST' }); setUser(null); setProjects([]); setSelected(''); } catch (e) { setError(e instanceof Error ? e.message : 'Could not sign out.'); } }
-  const project = projects.find(p => p.id === selected);
-  useEffect(() => { if (project) setRetention(project.retention_days); }, [project?.id, project?.retention_days]);
-  useEffect(() => { setSettingsMessage(''); }, [selected]);
+
+  async function logout() {
+    try {
+      await api('/api/logout', { method: 'POST' });
+      setUser(null);
+      setProjects([]);
+      setSelected('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not sign out.');
+    }
+  }
+
   async function updateRetention(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!project) return; setError(''); setSettingsMessage(''); setSettingsBusy(true);
-    try { await api(`/api/projects/${encodeURIComponent(project.id)}/retention`, { method: 'PATCH', body: JSON.stringify({ retention_days: retention }) }); setProjects(list => list.map(p => p.id === project.id ? { ...p, retention_days: retention } : p)); setSettingsMessage('Retention updated.'); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not update retention.'); } finally { setSettingsBusy(false); }
+    event.preventDefault();
+    if (!project) return;
+    setError('');
+    setSettingsMessage('');
+    setSettingsBusy(true);
+    try {
+      await api(`/api/projects/${encodeURIComponent(project.id)}/retention`, {
+        method: 'PATCH',
+        body: JSON.stringify({ retention_days: retention }),
+      });
+      setProjects((list) =>
+        list.map((item) => (item.id === project.id ? { ...item, retention_days: retention } : item)),
+      );
+      setSettingsMessage('Retention updated.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update retention.');
+    } finally {
+      setSettingsBusy(false);
+    }
   }
+
   async function deleteProject() {
     if (!project || !window.confirm(`Delete ${project.name} and its analytics data? This cannot be undone.`)) return;
-    setError(''); setSettingsMessage(''); setSettingsBusy(true);
-    try { await api(`/api/projects/${encodeURIComponent(project.id)}`, { method: 'DELETE' }); const remaining = projects.filter(p => p.id !== project.id); setProjects(remaining); setSelected(''); router.push('/dashboard'); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not delete the project.'); } finally { setSettingsBusy(false); }
+    setError('');
+    setSettingsMessage('');
+    setSettingsBusy(true);
+    try {
+      await api(`/api/projects/${encodeURIComponent(project.id)}`, { method: 'DELETE' });
+      setProjects((list) => list.filter((item) => item.id !== project.id));
+      setSelected('');
+      router.push('/dashboard');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not delete the project.');
+    } finally {
+      setSettingsBusy(false);
+    }
   }
-  const [origin, setOrigin] = useState('');
-  useEffect(() => { setOrigin(window.location.origin); }, []);
+
   const collector = process.env.NEXT_PUBLIC_COLLECTOR_URL || (origin ? `${origin}/api/events` : '');
-  const snippet = `<script src="${origin}/crease.js" defer></script>\n<script>\n  window.addEventListener('load', function () {\n    crease.init({ projectId: '${project?.id || ''}', endpoint: '${collector}' });\n  });\n</script>`;
-  async function copySnippet() { try { await navigator.clipboard.writeText(snippet); setCopied(true); window.setTimeout(() => setCopied(false), 2500); } catch { setError('Could not copy. Select the installation code and copy it manually.'); } }
-  return <><a className="skip" href="#main">Skip to content</a><header className="app-header"><div className="app-header-inner"><Link className="brand" href="/"><span className="brand-icon">✳</span>crease<span className="blue">.</span></Link><span className="header-separator"/><span className="workspace-label">YOUR WORKSPACE</span>{user && <div className="account"><span>{user.login}</span><button className="plain-button" onClick={logout}>Sign out ↗</button></div>}</div></header>
-    <main className="dashboard-main" id="main">{busy ? <div className="loading" role="status">Loading your workspace…</div> : !user ? <section className="auth-state"><p className="eyebrow"><span className="dot"/> YOUR ANALYTICS WORKSPACE</p><h1>Know what’s<br/><em>working.</em></h1><p>Sign in to connect your projects and see how people use the things you make.</p><a className="button primary" href="/api/auth/github">Continue with GitHub <span>↗</span></a>{error && <p className="error" role="alert">{error}</p>}<p className="auth-note">New here? Signing in creates your account.</p></section> : <><div className="dashboard-title"><div>{projectId && <Link className="project-back" href="/dashboard">← All projects</Link>}<p className="eyebrow">WORKSPACE / {projectId ? 'PROJECT' : 'PROJECTS'}</p><h1>{projectId ? (project?.name || 'Project') : 'Your projects'}<span className="blue">.</span></h1><p>{projectId ? 'Analytics and settings for your site.' : 'All your sites, together in one workspace.'}</p></div></div>{error && <p className="error" role="alert">{error}</p>}
-    {!projectId && <section className="project-overview" aria-labelledby="projects-heading"><div className="panel-head"><h2 id="projects-heading">Projects</h2><span>{projects.length} TOTAL</span></div>{projects.length ? <div className="project-cards">{projects.map(p => <Link className="project-card" key={p.id} href={`/dashboard/projects/${encodeURIComponent(p.id)}`}><span className="project-card-icon" aria-hidden="true">✳</span><span className="project-card-meta"><strong>{p.name}</strong><span>{p.domain}</span></span><span className="project-card-arrow" aria-hidden="true">↗</span></Link>)}</div> : <p className="project-empty">No projects yet. Create your first project below.</p>}</section>}
-    {projectId && project ? <><nav className="project-nav" aria-label="Project sections"><a href="#analytics">Analytics</a><a href="#installation">Installation</a><a href="#integrations">Integrations</a><a href="#settings">Settings</a></nav><div id="analytics" className="site-line"><span><span className="dot"/> {project.domain}</span><label className="range-control">REPORTING PERIOD <select value={days} onChange={e => { setError(''); setDays(Number(e.target.value)); }}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></select></label></div><div className="metric-grid">{([['Visitors', summary?.metrics.visitors], ['Page views', summary?.metrics.pageviews], ['Sessions', summary?.metrics.sessions], ['Events', summary?.metrics.events]] as const).map(([label, value], i) => <div className="metric" key={label}><div><span>{label}</span><small>0{i+1}</small></div><strong>{value === undefined ? '—' : value.toLocaleString()}</strong><p>{value === undefined ? 'Loading' : `Last ${days} days`}</p></div>)}</div><div className="dashboard-grid"><Table title="Top pages" rows={summary?.pages || []} empty="Pages will appear once events arrive."/><Table title="Countries" rows={summary?.countries || []} empty="No country data yet."/><Table title="Referrers" rows={summary?.referrers || []} empty="No referrer data yet."/><Table title="Devices" rows={summary?.devices || []} empty="No device data yet."/></div><section id="installation" className="install panel"><div><p className="eyebrow">GET CONNECTED / 01</p><h2>Bring your site into focus.</h2><p>Add this snippet to your site after obtaining any required visitor consent. The collector URL must be publicly reachable by your visitors.</p></div><div><div className="code-head"><span>INSTALLATION CODE</span><button className="plain-button" onClick={copySnippet}>{copied ? 'Copied' : 'Copy code ↗'}</button></div><pre tabIndex={0}><code>{snippet}</code></pre><p className="install-note">Only initialize tracking when your consent policy allows it.</p></div></section><section id="settings" className="settings-section panel"><div><p className="eyebrow">PROJECT SETTINGS</p><h2>Data retention</h2><p>Set how long analytics events are kept, from 1 to 90 days.</p></div><div><form className="retention-form" onSubmit={updateRetention}><label>Retention in days<input type="number" required min={1} max={90} step={1} value={retention} onChange={e => setRetention(Number(e.target.value))}/></label><button className="button secondary" disabled={settingsBusy} type="submit">{settingsBusy ? 'Saving…' : 'Save retention'}</button></form><p className="settings-feedback" role="status">{settingsMessage}</p><button className="delete-button" disabled={settingsBusy} onClick={deleteProject}>Delete project and data</button></div></section></> : projectId ? <section className="empty-project panel"><h2>Project not found.</h2><p>This project may have been deleted or you may not have access.</p><Link href="/dashboard">Back to projects</Link></section> : null}
-    {projectId && project && <div id="integrations"><GitHubInstall key={project.id} projectId={project.id} /><VercelGitSettings key={`vercel-${project.id}`} projectId={project.id} /></div>}{!projectId && <section className="create-section"><div><p className="eyebrow">YOUR PROJECTS / {String(projects.length).padStart(2,'0')}</p><h2>{project ? 'Add another project.' : 'Create a project.'}</h2><p>One workspace for all the things you make.</p></div><form onSubmit={createProject} className="create-form"><label>Project name<input required maxLength={100} value={name} onChange={e => setName(e.target.value)} placeholder="My website"/></label><label>Domain<input required maxLength={253} value={domain} onChange={e => setDomain(e.target.value)} placeholder="example.com" autoCapitalize="none"/></label><button className="button primary" disabled={saving} type="submit">{saving ? 'Creating…' : 'Create project'} <span>↗</span></button></form></section>}</>}</main><footer className="app-footer"><span>CREASE / YOUR WORK, UNDERSTOOD</span><a href="https://github.com/AmanSagar0607/crease">OPEN SOURCE ↗</a></footer></>;
+  const snippet = `<script src="${origin}/crease.js" defer></script>
+<script>
+  window.addEventListener('load', function () {
+    crease.init({ projectId: '${project?.id || ''}', endpoint: '${collector}' });
+  });
+</script>`;
+
+  async function copySnippet() {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2500);
+    } catch {
+      setError('Could not copy. Select the installation code and copy it manually.');
+    }
+  }
+
+  function selectTab(next: Tab) {
+    setTab(next);
+    window.history.replaceState(null, '', `#${next}`);
+  }
+
+  const series = summary?.series ?? [];
+  const totalEvents = summary?.metrics.events ?? 0;
+  const chartPoints = pointsFor(
+    series.map((point) => point.visitors),
+    720,
+    240,
+    14,
+    22,
+  );
+  const pageviewPoints = pointsFor(
+    series.map((point) => point.pageviews),
+    720,
+    240,
+    14,
+    22,
+  );
+  const lastPoint = chartPoints[chartPoints.length - 1];
+  const rangeLabel = days === 7 ? 'Last 7 days' : days === 90 ? 'Last 90 days' : 'Last 30 days';
+  const isLive = Boolean(project?.last_event_at) && Date.now() - new Date(project?.last_event_at ?? 0).getTime() < 7 * 864e5;
+
+  return (
+    <div className={s.dashboard}>
+      <a className={s.skip} href="#main">
+        Skip to content
+      </a>
+
+      <header className={s.header}>
+        <div className={s.headerInner}>
+          <Link className={s.brand} href="/">
+            <span className={s.brandMark}>✳</span>
+            crease.
+          </Link>
+          <span className={s.headerDivider} aria-hidden="true" />
+          <span className={s.workspaceLabel}>WORKSPACE</span>
+          <nav className={s.breadcrumb} aria-label="Breadcrumb">
+            <Link href="/dashboard">Projects</Link>
+            {project && (
+              <>
+                <span aria-hidden="true">/</span>
+                <strong>{project.name}</strong>
+              </>
+            )}
+          </nav>
+          <div className={s.account}>
+            {user && (
+              <span className={s.userChip}>
+                <span className={s.avatar} aria-hidden="true">
+                  {user.login.slice(0, 1).toUpperCase()}
+                </span>
+                <span>{user.login}</span>
+              </span>
+            )}
+            <Link className={s.headerLink} href="/docs">
+              Docs
+            </Link>
+            {user && (
+              <button className={s.signOut} type="button" onClick={logout}>
+                Sign out
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <main className={s.main} id="main">
+        {busy ? (
+          <div className={s.loadingPage} role="status" aria-label="Loading your workspace">
+            <span className={s.loadingBar} style={{ width: '22%' }} />
+            <span className={s.loadingBar} style={{ width: '46%', height: 34 }} />
+            <div className={s.loadingCards}>
+              {[0, 1, 2, 3].map((item) => (
+                <span className={s.loadingCard} key={item} />
+              ))}
+            </div>
+            <div className={s.loadingCards}>
+              <span className={s.loadingCard} key="a" />
+              <span className={s.loadingCard} key="b" />
+            </div>
+          </div>
+        ) : !user ? (
+          <div className={s.authWrap}>
+            <section className={s.authCopy}>
+              <p className={s.eyebrow}>YOUR ANALYTICS WORKSPACE</p>
+              <h1>
+                Know what&rsquo;s
+                <br />
+                <span className={s.muted}>working.</span>
+              </h1>
+              <p>
+                A quiet analytics workspace for the things you make. Connect a project, install the tracker, and read
+                the numbers that actually move your work forward.
+              </p>
+              <div className={s.authActions}>
+                <a className={`${s.btn} ${s.btnPrimary}`} href="/api/auth/github">
+                  Continue with GitHub
+                  <ArrowUpRightIcon className={s.iconSm} />
+                </a>
+                <Link className={`${s.btn} ${s.btnSecondary}`} href="/docs">
+                  Read the docs
+                </Link>
+              </div>
+              <p className={s.authNote}>New here? Signing in creates your account. No credit card required.</p>
+            </section>
+
+            <aside className={s.authPreview} aria-label="Example analytics preview">
+              <div className={s.authPreviewInner}>
+                <div className={s.authPreviewTop}>
+                  <strong>crease.app</strong>
+                  <span>LIVE PREVIEW</span>
+                </div>
+                <div className={s.previewMetrics}>
+                  {[
+                    ['Visitors', '4,182'],
+                    ['Page views', '9,406'],
+                    ['Sessions', '5,731'],
+                  ].map(([label, value]) => (
+                    <div className={s.previewMetric} key={label}>
+                      <span>{label}</span>
+                      <strong>{value}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div className={s.authPreviewFoot}>
+                  <span>Last 30 days</span>
+                  <span>2.4 pages / session</span>
+                </div>
+              </div>
+            </aside>
+          </div>
+        ) : (
+          <>
+            {error && (
+              <div className={s.alert} role="alert">
+                <AlertIcon className={`${s.icon} ${s.alertIcon}`} />
+                <span>{error}</span>
+                <button type="button" onClick={() => setError('')}>
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {projectId && project ? (
+              <>
+                <section className={s.projectHero} aria-labelledby="project-title">
+                  <span className={s.projectMark} aria-hidden="true">
+                    {project.name.slice(0, 1).toUpperCase()}
+                  </span>
+                  <div className={s.projectHeroBody}>
+                    <p className={s.eyebrow}>PROJECT</p>
+                    <h1 id="project-title">{project.name}</h1>
+                    <a className={s.domainLink} href={`https://${project.domain}`} target="_blank" rel="noreferrer">
+                      {project.domain}
+                      <ArrowUpRightIcon className={s.iconXs} />
+                    </a>
+                    <div className={s.projectMeta}>
+                      <span className={`${s.metaChip} ${isLive ? s.isLive : ''}`}>
+                        <span className={s.statusDot} aria-hidden="true" />
+                        {isLive ? 'Receiving events' : 'Waiting for events'}
+                      </span>
+                      <span className={s.metaChip}>
+                        <span className={s.statusDot} aria-hidden="true" />
+                        Last event {relativeWhen(project.last_event_at)}
+                      </span>
+                      <span className={s.metaChip}>
+                        <span className={s.statusDot} aria-hidden="true" />
+                        {project.retention_days} day retention
+                      </span>
+                    </div>
+                  </div>
+                  <div className={s.projectActions}>
+                    <label className={s.switcher}>
+                      <span className={s.srOnly}>Switch project</span>
+                      <select
+                        value={selected}
+                        onChange={(event) => router.push(`/dashboard/projects/${encodeURIComponent(event.target.value)}`)}
+                      >
+                        {projects.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronIcon />
+                    </label>
+                    <button className={`${s.btn} ${s.btnQuiet}`} type="button" onClick={() => selectTab('installation')}>
+                      <CodeIcon className={s.iconSm} />
+                      Install tracker
+                    </button>
+                  </div>
+                </section>
+
+                <nav className={s.tabs} aria-label="Project sections">
+                  {TABS.map((item) => (
+                    <a
+                      key={item}
+                      className={s.tab}
+                      href={`#${item}`}
+                      aria-current={tab === item ? 'page' : undefined}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        selectTab(item);
+                      }}
+                    >
+                      {item === 'analytics' ? 'Analytics' : item === 'installation' ? 'Installation' : item[0].toUpperCase() + item.slice(1)}
+                    </a>
+                  ))}
+                </nav>
+
+                <div className={s.tabPanel} key={tab}>
+                  {tab === 'analytics' && (
+                    <>
+                      <div className={s.analyticsBar}>
+                        <div>
+                          <h2>Analytics</h2>
+                          <p>
+                            {rangeLabel} · {project.domain}
+                          </p>
+                        </div>
+                        <div className={s.controls}>
+                          <div className={s.range} role="group" aria-label="Reporting period">
+                            {[7, 30, 90].map((option) => (
+                              <button
+                                key={option}
+                                type="button"
+                                aria-pressed={days === option}
+                                onClick={() => {
+                                  setError('');
+                                  setDays(option);
+                                }}
+                              >
+                                {option}d
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            className={s.refresh}
+                            type="button"
+                            onClick={() => void loadSummary()}
+                            disabled={summaryBusy}
+                            aria-label="Refresh analytics"
+                          >
+                            <RefreshIcon className={`${s.icon} ${summaryBusy ? s.spinning : ''}`} />
+                          </button>
+                          <span className={s.updated}>Updated {relativeWhen(project.last_event_at)}</span>
+                        </div>
+                      </div>
+
+                      <div className={s.kpiGrid}>
+                        <Kpi
+                          label="Visitors"
+                          icon={<UsersIcon />}
+                          value={summary?.metrics.visitors}
+                          delta={getDelta(summary?.metrics.visitors, summary?.previous?.visitors)}
+                          hint={`Unique visitors · vs previous ${days} days`}
+                          series={series.map((point) => point.visitors)}
+                        />
+                        <Kpi
+                          label="Page views"
+                          icon={<EyeIcon />}
+                          value={summary?.metrics.pageviews}
+                          delta={getDelta(summary?.metrics.pageviews, summary?.previous?.pageviews)}
+                          hint={`Pageview events · vs previous ${days} days`}
+                          series={series.map((point) => point.pageviews)}
+                        />
+                        <Kpi
+                          label="Sessions"
+                          icon={<ActivityIcon />}
+                          value={summary?.metrics.sessions}
+                          delta={getDelta(summary?.metrics.sessions, summary?.previous?.sessions)}
+                          hint={`Distinct sessions · vs previous ${days} days`}
+                          series={series.map((point) => point.sessions)}
+                        />
+                        <Kpi
+                          label="Events"
+                          icon={<ZapIcon />}
+                          value={summary?.metrics.events}
+                          delta={getDelta(summary?.metrics.events, summary?.previous?.events)}
+                          hint={`All tracked events · vs previous ${days} days`}
+                          series={series.map((point) => point.events)}
+                        />
+                      </div>
+
+                      <section className={s.chartCard} aria-label="Traffic over time">
+                        <div className={s.cardTop}>
+                          <div>
+                            <h3>Traffic over time</h3>
+                            <p>{rangeLabel}, daily totals</p>
+                          </div>
+                          <div className={s.legend}>
+                            <span>
+                              <i aria-hidden="true" /> Visitors
+                            </span>
+                            <span>
+                              <i className={s.legendPageviews} aria-hidden="true" /> Page views
+                            </span>
+                          </div>
+                        </div>
+                        <div className={s.chartWrap}>
+                          <svg viewBox="0 0 720 240" preserveAspectRatio="none" role="img" aria-label="Daily visitors and page views">
+                            {[10, 65, 120, 175, 230].map((y) => (
+                              <line key={y} className={s.chartGrid} x1="0" y1={y} x2="720" y2={y} />
+                            ))}
+                            {series.length > 0 && (
+                              <>
+                                <path className={s.chartArea} d={areaPath(chartPoints, 240)} />
+                                <path className={s.chartPageviews} d={linePath(pageviewPoints)} />
+                                <path className={s.chartVisitors} d={linePath(chartPoints)} />
+                                {lastPoint && <circle className={s.chartPoint} cx={lastPoint[0]} cy={lastPoint[1]} r="3.5" />}
+                              </>
+                            )}
+                          </svg>
+                          {totalEvents === 0 && !summaryBusy && (
+                            <div className={s.chartEmpty}>
+                              <strong>No events in this range</strong>
+                              <span>Install the tracker to start collecting data.</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className={s.chartLabels}>
+                          <span>{series[0] ? shortDate(series[0].date) : '—'}</span>
+                          <span>{series[Math.floor(series.length / 2)] ? shortDate(series[Math.floor(series.length / 2)].date) : '—'}</span>
+                          <span>{series[series.length - 1] ? shortDate(series[series.length - 1].date) : '—'}</span>
+                        </div>
+                      </section>
+
+                      <div className={s.breakdownGrid}>
+                        <BreakdownCard
+                          title="Top pages"
+                          icon={<FileIcon />}
+                          rows={summary?.pages ?? []}
+                          total={summary?.metrics.pageviews ?? 0}
+                          empty="Pages will appear once events arrive."
+                        />
+                        <BreakdownCard
+                          title="Referrers"
+                          icon={<LinkIcon />}
+                          rows={summary?.referrers ?? []}
+                          total={summary?.metrics.pageviews ?? 0}
+                          empty="No referrer data yet."
+                        />
+                        <BreakdownCard
+                          title="Devices"
+                          icon={<MonitorIcon />}
+                          rows={summary?.devices ?? []}
+                          total={summary?.metrics.pageviews ?? 0}
+                          empty="No device data yet."
+                        />
+                        <BreakdownCard
+                          title="Countries"
+                          icon={<GlobeIcon />}
+                          rows={summary?.countries ?? []}
+                          total={summary?.metrics.pageviews ?? 0}
+                          empty="No country data yet."
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {tab === 'installation' && (
+                    <div className={s.installGrid}>
+                      <section className={s.installCopy}>
+                        <p className={s.eyebrow}>GET CONNECTED / 01</p>
+                        <h2>Bring your site into focus.</h2>
+                        <p>
+                          Add this snippet to your site after obtaining any required visitor consent. The collector URL
+                          must be publicly reachable by your visitors.
+                        </p>
+                        <div className={s.stepList}>
+                          {[
+                            ['Paste the snippet', 'Place it in your document head so every page loads the tracker.'],
+                            ['Set your endpoint', 'Point the tracker at your own collector or the hosted endpoint.'],
+                            ['Watch data arrive', 'Open the analytics tab — events appear within seconds.'],
+                          ].map(([title, copy], index) => (
+                            <div className={s.stepItem} key={title}>
+                              <span className={s.stepNum} aria-hidden="true">
+                                0{index + 1}
+                              </span>
+                              <div>
+                                <strong>{title}</strong>
+                                <p>{copy}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className={s.installFooter}>
+                          <button className={`${s.btn} ${s.btnSecondary}`} type="button" onClick={copySnippet}>
+                            {copied ? <CheckIcon className={s.iconSm} /> : <CopyIcon className={s.iconSm} />}
+                            {copied ? 'Copied' : 'Copy installation code'}
+                          </button>
+                          <button className={`${s.btn} ${s.btnQuiet}`} type="button" onClick={() => selectTab('integrations')}>
+                            Open integrations
+                          </button>
+                        </div>
+                      </section>
+
+                      <div>
+                        <div className={s.codeCard}>
+                          <div className={s.codeTop}>
+                            <span>INSTALLATION CODE</span>
+                            <button className={s.copyButton} type="button" onClick={copySnippet}>
+                              {copied ? <CheckIcon /> : <CopyIcon />}
+                              {copied ? 'Copied' : 'Copy'}
+                            </button>
+                          </div>
+                          <pre className={s.code} tabIndex={0}>
+                            <code>{snippet}</code>
+                          </pre>
+                          <div className={s.codeMeta}>
+                            <span>Project {project.id.slice(0, 8)}</span>
+                            <span>Async · defer</span>
+                            <span>No cookies required</span>
+                          </div>
+                        </div>
+                        <p className={s.updated} style={{ marginTop: 10 }}>
+                          Consent-first by default. Only initialize tracking when your policy allows it.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {tab === 'integrations' && (
+                    <div className={s.integrations}>
+                      <GitHubInstall key={project.id} projectId={project.id} />
+                      <VercelGitSettings key={`vercel-${project.id}`} projectId={project.id} />
+                    </div>
+                  )}
+
+                  {tab === 'settings' && (
+                    <div className={s.settingsGrid}>
+                      <section className={s.settingCard}>
+                        <h3>Data retention</h3>
+                        <p>Set how long analytics events are kept, from 1 to 90 days. Older events are removed automatically.</p>
+                        <form className={s.retentionForm} onSubmit={updateRetention}>
+                          <label className={s.field}>
+                            Retention in days
+                            <input
+                              type="number"
+                              required
+                              min={1}
+                              max={90}
+                              step={1}
+                              value={retention}
+                              onChange={(event) => setRetention(Number(event.target.value))}
+                            />
+                          </label>
+                          <button className={`${s.btn} ${s.btnPrimary}`} disabled={settingsBusy} type="submit">
+                            {settingsBusy ? 'Saving…' : 'Save retention'}
+                          </button>
+                        </form>
+                        <p className={s.feedback} role="status">
+                          {settingsMessage}
+                        </p>
+                      </section>
+
+                      <section className={s.settingCard}>
+                        <h3>Project details</h3>
+                        <p>Identifiers used by the tracker and collector.</p>
+                        <dl className={s.detailList}>
+                          <div className={s.detailRow}>
+                            <dt>Name</dt>
+                            <dd>{project.name}</dd>
+                          </div>
+                          <div className={s.detailRow}>
+                            <dt>Domain</dt>
+                            <dd>{project.domain}</dd>
+                          </div>
+                          <div className={s.detailRow}>
+                            <dt>Project ID</dt>
+                            <dd>{project.id}</dd>
+                          </div>
+                          <div className={s.detailRow}>
+                            <dt>Retention</dt>
+                            <dd>{project.retention_days} days</dd>
+                          </div>
+                        </dl>
+                      </section>
+
+                      <section className={`${s.settingCard} ${s.dangerCard}`}>
+                        <h3>Delete project</h3>
+                        <p>Permanently remove this project, its installation, and all retained analytics events.</p>
+                        <button className={s.dangerButton} type="button" disabled={settingsBusy} onClick={deleteProject}>
+                          <TrashIcon className={s.iconSm} />
+                          Delete project and data
+                        </button>
+                      </section>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : projectId ? (
+              <section className={s.notFound}>
+                <h2>Project not found.</h2>
+                <p>This project may have been deleted or you may not have access.</p>
+                <Link className={`${s.btn} ${s.btnSecondary}`} href="/dashboard">
+                  Back to projects
+                </Link>
+              </section>
+            ) : (
+              <>
+                <div className={s.pageHead}>
+                  <div>
+                    <p className={s.eyebrow}>YOUR WORKSPACE</p>
+                    <h1>Your projects.</h1>
+                    <p>Every site you track, in one place. Open a project to read its analytics or finish setup.</p>
+                  </div>
+                  <div className={s.pageActions}>
+                    <Link className={`${s.btn} ${s.btnSecondary}`} href="/docs">
+                      Read the docs
+                      <ArrowUpRightIcon className={s.iconSm} />
+                    </Link>
+                  </div>
+                </div>
+
+                <div className={s.sectionHead}>
+                  <div>
+                    <h2>All projects</h2>
+                    <p>Last 7 days at a glance.</p>
+                  </div>
+                  <div className={s.sectionHeadActions}>
+                    <span className={s.updated}>{projects.length} total</span>
+                  </div>
+                </div>
+
+                {projects.length ? (
+                  <div className={s.projectGrid}>
+                    {projects.map((item) => {
+                      const live = Boolean(item.last_event_at) && Date.now() - new Date(item.last_event_at!).getTime() < 7 * 864e5;
+                      return (
+                        <Link className={s.projectCard} key={item.id} href={`/dashboard/projects/${encodeURIComponent(item.id)}`}>
+                          <span className={s.projectCardTop}>
+                            <span className={s.projectCardMark} aria-hidden="true">
+                              {item.name.slice(0, 1).toUpperCase()}
+                            </span>
+                            <span className={s.projectCardName}>
+                              <strong>{item.name}</strong>
+                              <span>{item.domain}</span>
+                            </span>
+                            <span className={s.projectCardArrow} aria-hidden="true">
+                              <ArrowRightIcon />
+                            </span>
+                          </span>
+                          <span className={s.projectStats}>
+                            <span className={s.projectStat}>
+                              <strong>{compact(item.visitors_7d ?? 0)}</strong>
+                              <span>VISITORS / 7D</span>
+                            </span>
+                            <span className={s.projectStat}>
+                              <strong>{compact(item.events_7d ?? 0)}</strong>
+                              <span>EVENTS / 7D</span>
+                            </span>
+                          </span>
+                          <span className={s.projectFoot}>
+                            <span className={`${s.statusLine} ${live ? s.isLive : ''}`}>
+                              <i aria-hidden="true" />
+                              {live ? 'Receiving events' : 'No recent events'}
+                            </span>
+                            <span>{item.retention_days}d retention</span>
+                          </span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className={s.emptyProjects}>
+                    <span className={s.emptyIcon} aria-hidden="true">
+                      <ZapIcon />
+                    </span>
+                    <strong>No projects yet</strong>
+                    <p>Create your first project below, then install the tracker to start collecting analytics.</p>
+                  </div>
+                )}
+
+                <section className={s.createPanel}>
+                  <div>
+                    <p className={s.eyebrow}>GET STARTED</p>
+                    <h2>Create a project.</h2>
+                    <p>
+                      Add a domain, install the tracker, and events show up here. You can keep every site in one
+                      workspace.
+                    </p>
+                  </div>
+                  <form className={s.createForm} onSubmit={createProject}>
+                    <label>
+                      Project name
+                      <input required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="My website" />
+                    </label>
+                    <label>
+                      Domain
+                      <input
+                        required
+                        maxLength={253}
+                        value={domain}
+                        onChange={(event) => setDomain(event.target.value)}
+                        placeholder="example.com"
+                        autoCapitalize="none"
+                      />
+                    </label>
+                    <button className={`${s.btn} ${s.btnPrimary}`} disabled={saving} type="submit">
+                      {saving ? 'Creating…' : 'Create project'}
+                      <ArrowRightIcon className={s.iconSm} />
+                    </button>
+                  </form>
+                </section>
+              </>
+            )}
+          </>
+        )}
+      </main>
+
+      <footer className={s.footer}>
+        <div className={s.footerInner}>
+          <span>CREASE / YOUR WORK, UNDERSTOOD</span>
+          <div className={s.footerLinks}>
+            <Link href="/docs">DOCS</Link>
+            <a href="https://github.com/AmanSagar0607/crease">OPEN SOURCE</a>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
 }
