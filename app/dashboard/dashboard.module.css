@@ -2048,3 +2048,15 @@
     transform: none;
   }
 }
+.dashboardCat {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 8px 8px 0;
+}
+
+.dashboardCat button {
+  --catBody: #fff;
+  --catSoft: #e5e5e5;
+  --catInk: #111;
+  --catBlush: #d3d3d3;
+}

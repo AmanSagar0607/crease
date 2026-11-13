@@ -10,7 +10,7 @@ import {
 type Mood = 'sleeping' | 'waking' | 'idle' | 'happy' | 'celebrating';
 
 type LivingCatProps = {
-  variant?: 'hero' | 'toast';
+  variant?: 'hero' | 'dashboard' | 'toast';
   interactive?: boolean;
   listen?: boolean;
   celebration?: MascotEventDetail | null;

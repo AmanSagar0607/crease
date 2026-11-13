@@ -316,6 +316,16 @@
   height: 68px;
 }
 
+/* ---------- Living cat ---------- */
+
+.catPerch {
+  position: absolute;
+  right: 118px;
+  top: -96px;
+  z-index: 4;
+  width: 132px;
+}
+
 @keyframes bob {
   from {
     transform: translateY(0);

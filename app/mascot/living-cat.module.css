@@ -49,6 +49,10 @@
   width: 132px;
 }
 
+.dashboard {
+  width: 88px;
+}
+
 .toast {
   width: 72px;
   cursor: default;
