@@ -1,10 +1,14 @@
 import Link from 'next/link';
+import ThemeToggle from '../theme-toggle';
 
-const Code = ({ children }: { children: string }) => <pre style={{ overflowX: 'auto', padding: 16, border: '1px solid #ececec', borderRadius: 10, background: '#f8f8f7' }}><code>{children}</code></pre>;
+const Code = ({ children }: { children: string }) => <pre style={{ overflowX: 'auto', padding: 16, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--soft)' }}><code>{children}</code></pre>;
 
 export default function Docs() {
-  return <main style={{ maxWidth: 780, margin: '0 auto', padding: '72px 24px', fontFamily: 'Arial, sans-serif', lineHeight: 1.55 }}>
-    <Link href="/">← Crease</Link>
+  return <main style={{ maxWidth: 780, margin: '0 auto', padding: '72px 24px', fontFamily: 'var(--font)', lineHeight: 1.55 }}>
+    <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+      <Link href="/">✳ Crease</Link>
+      <ThemeToggle />
+    </header>
     <p style={{ fontSize: 12, letterSpacing: '.1em', marginTop: 48 }}>CREASE ANALYTICS / NPM</p>
     <h1 style={{ fontSize: 42, letterSpacing: '-.05em' }}>Get started.</h1>
     <p>Count page views and send custom events from Next.js, React, and any JavaScript site.</p>

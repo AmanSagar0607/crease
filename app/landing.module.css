@@ -12,6 +12,17 @@
   --footerBg: #0b0b0b;
   --footerInk: #ffffff;
   --footerMuted: #8c8c88;
+  --btnBg: #111111;
+  --btnInk: #ffffff;
+  --btnBgHover: #2a2a2a;
+  --navBg: rgba(255, 255, 255, 0.94);
+  --dots: #dedcd6;
+  --sidebarBg: #fcfcfa;
+  --bar: #e6e4de;
+  --barAlt: #b9b5ab;
+  --weekEmpty: #c4c0b6;
+  --diffMuted: #6f6b61;
+  --surface3: #eae8e3;
   --pill: 999px;
   --panel: 32px;
   --cardRadius: 16px;
@@ -28,6 +39,33 @@
   font-size: 16px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+}
+
+:global([data-theme='dark']) .landing {
+  --bg: #0a0a0a;
+  --surface: #151514;
+  --surface2: #1d1d1b;
+  --surface3: #262624;
+  --card: #111110;
+  --ink: #f3f1ec;
+  --ink2: #c9c6be;
+  --muted: #9a978f;
+  --line: #2a2926;
+  --footerBg: #050505;
+  --footerInk: #f3f1ec;
+  --footerMuted: #8c8c88;
+  --btnBg: #f0efea;
+  --btnInk: #0a0a0a;
+  --btnBgHover: #ffffff;
+  --navBg: rgba(12, 12, 11, 0.9);
+  --dots: #3a3936;
+  --sidebarBg: #121211;
+  --bar: #2e2d2a;
+  --barAlt: #4a4842;
+  --weekEmpty: #4a4842;
+  --diffMuted: #a3a09a;
+  --shadowFloat: 0 8px 30px rgba(0, 0, 0, 0.5);
+  --shadowCard: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 .landing *,
@@ -77,13 +115,13 @@
   padding: 10px 14px;
   border-radius: var(--chip);
   background: var(--ink);
-  color: #fff;
+  color: var(--bg);
   font-size: 13px;
 }
 
 .skip:focus {
   top: 12px;
-  color: #fff;
+  color: var(--bg);
 }
 
 /* ---------- Nav ---------- */
@@ -101,13 +139,13 @@
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 14px;
-  width: min(430px, calc(100% - 32px));
+  gap: 18px;
+  width: min(520px, calc(100% - 32px));
   height: 44px;
   padding: 0 6px 0 16px;
   border: 1px solid var(--line);
   border-radius: var(--pill);
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--navBg);
   box-shadow: var(--shadowFloat);
   backdrop-filter: blur(10px);
 }
@@ -130,14 +168,21 @@
 .navLinks {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-left: auto;
+  gap: 16px;
   font-size: 13px;
   color: var(--ink2);
 }
 
 .navLinks a:hover {
   color: var(--ink);
+}
+
+.navEnd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  flex: none;
 }
 
 .navAction {
@@ -147,8 +192,8 @@
   height: 34px;
   padding: 0 14px;
   border-radius: var(--pill);
-  background: var(--ink);
-  color: #fff;
+  background: var(--btnBg);
+  color: var(--btnInk);
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
@@ -156,8 +201,8 @@
 }
 
 .navAction:hover {
-  background: #2a2a2a;
-  color: #fff;
+  background: var(--btnBgHover);
+  color: var(--btnInk);
 }
 
 /* ---------- Buttons ---------- */
@@ -178,24 +223,24 @@
 }
 
 .btnPrimary {
-  background: var(--ink);
-  color: #fff;
+  background: var(--btnBg);
+  color: var(--btnInk);
 }
 
 .btnPrimary:hover {
-  background: #2a2a2a;
-  color: #fff;
+  background: var(--btnBgHover);
+  color: var(--btnInk);
 }
 
 /* Links inherit ink from `.landing a`; keep filled CTAs readable. */
 .landing a.navAction,
 .landing a.btnPrimary {
-  color: #fff;
+  color: var(--btnInk);
 }
 
 .landing a.navAction:hover,
 .landing a.btnPrimary:hover {
-  color: #fff;
+  color: var(--btnInk);
 }
 
 .btnSecondary {
@@ -205,7 +250,7 @@
 }
 
 .btnSecondary:hover {
-  background: #eae8e3;
+  background: var(--surface3);
   color: var(--ink);
 }
 
@@ -346,6 +391,12 @@
   letter-spacing: 0.02em;
 }
 
+.logoChip svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
 /* ---------- Hero mockup ---------- */
 
 .mockWrap {
@@ -391,7 +442,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #dedcd6;
+  background: var(--dots);
 }
 
 .windowUrl {
@@ -412,7 +463,7 @@
 .sidebar {
   padding: 8px 12px 18px;
   border-right: 1px solid var(--line);
-  background: #fcfcfa;
+  background: var(--sidebarBg);
 }
 
 .workspace {
@@ -430,8 +481,8 @@
   width: 20px;
   height: 20px;
   border-radius: 6px;
-  background: var(--ink);
-  color: #fff;
+  background: var(--btnBg);
+  color: var(--btnInk);
   font-size: 10px;
 }
 
@@ -604,7 +655,7 @@
   flex: 1;
   min-height: 6px;
   border-radius: 3px 3px 0 0;
-  background: #e6e4de;
+  background: var(--bar);
 }
 
 .barLast {
@@ -678,8 +729,8 @@
   gap: 10px;
   padding: 9px 14px;
   border-radius: var(--pill);
-  background: var(--ink);
-  color: #fff;
+  background: var(--btnBg);
+  color: var(--btnInk);
   font-size: 12px;
   box-shadow: var(--shadowFloat);
   transform: translateX(-50%);
@@ -690,12 +741,12 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--btnInk);
   opacity: 0.7;
 }
 
 .toast a {
-  color: #fff;
+  color: var(--btnInk);
   opacity: 0.66;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -817,11 +868,11 @@
   flex: 1;
   min-height: 3px;
   border-radius: 1px;
-  background: #e6e4de;
+  background: var(--bar);
 }
 
 .miniBars i:nth-child(3n) {
-  background: #b9b5ab;
+  background: var(--barAlt);
 }
 
 .weekEmpty {
@@ -830,7 +881,7 @@
   min-height: 66px;
   border: 1px dashed var(--line);
   border-radius: 12px;
-  color: #c4c0b6;
+  color: var(--weekEmpty);
   font-size: 12px;
 }
 
@@ -882,8 +933,8 @@
 }
 
 .browserTabs .browserTabActive {
-  background: var(--ink);
-  color: #fff;
+  background: var(--btnBg);
+  color: var(--btnInk);
 }
 
 .searchField {
@@ -1070,8 +1121,8 @@
   height: 32px;
   margin-top: 10px;
   border-radius: var(--pill);
-  background: var(--ink);
-  color: #fff;
+  background: var(--btnBg);
+  color: var(--btnInk);
   font-size: 11px;
   font-weight: 500;
 }
@@ -1098,8 +1149,8 @@
   width: 20px;
   height: 20px;
   border-radius: 5px;
-  background: var(--ink);
-  color: #fff;
+  background: var(--btnBg);
+  color: var(--btnInk);
   font-size: 9px;
   font-weight: 600;
 }
@@ -1164,7 +1215,7 @@
 }
 
 .prDiff span {
-  color: #6f6b61;
+  color: var(--diffMuted);
 }
 
 .prFile {
@@ -1266,6 +1317,7 @@
 .price {
   display: flex;
   align-items: baseline;
+  justify-content: center;
   gap: 8px;
   margin-top: 14px;
 }
@@ -1667,10 +1719,6 @@
     justify-content: space-between;
     width: min(340px, calc(100% - 32px));
     padding-right: 5px;
-  }
-
-  .navLinks + .navAction {
-    margin-left: auto;
   }
 
   .ghostMock,

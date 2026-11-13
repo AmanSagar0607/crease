@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
+import ThemeToggle from '../theme-toggle';
 import s from './dashboard.module.css';
 
 type User = { id: string; login: string };
@@ -386,12 +387,15 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setProjects(list);
       setSelected(projectId && list.some((project) => project.id === projectId) ? projectId : '');
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) setUser(null);
-      else setError(e instanceof Error ? e.message : 'Could not load your workspace.');
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setError(e instanceof Error ? e.message : 'Could not load your workspace.');
     } finally {
       setBusy(false);
     }
-  }, [projectId]);
+  }, [projectId, router]);
 
   useEffect(() => {
     void load();
@@ -406,11 +410,15 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     try {
       setSummary(await api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=${days}`));
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace('/login');
+        return;
+      }
       setError(e instanceof Error ? e.message : 'Could not load analytics.');
     } finally {
       setSummaryBusy(false);
     }
-  }, [selected, days]);
+  }, [selected, days, router]);
 
   useEffect(() => {
     void loadSummary();
@@ -460,9 +468,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   async function logout() {
     try {
       await api('/api/logout', { method: 'POST' });
-      setUser(null);
-      setProjects([]);
-      setSelected('');
+      router.replace('/login');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not sign out.');
     }
@@ -574,6 +580,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
             )}
           </nav>
           <div className={s.account}>
+            <ThemeToggle />
             {user && (
               <span className={s.userChip}>
                 <span className={s.avatar} aria-hidden="true">
@@ -610,54 +617,12 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
             </div>
           </div>
         ) : !user ? (
-          <div className={s.authWrap}>
-            <section className={s.authCopy}>
-              <p className={s.eyebrow}>YOUR ANALYTICS WORKSPACE</p>
-              <h1>
-                Know what&rsquo;s
-                <br />
-                <span className={s.muted}>working.</span>
-              </h1>
-              <p>
-                A quiet analytics workspace for the things you make. Connect a project, install the tracker, and read
-                the numbers that actually move your work forward.
-              </p>
-              <div className={s.authActions}>
-                <a className={`${s.btn} ${s.btnPrimary}`} href="/api/auth/github">
-                  Continue with GitHub
-                  <ArrowUpRightIcon className={s.iconSm} />
-                </a>
-                <Link className={`${s.btn} ${s.btnSecondary}`} href="/docs">
-                  Read the docs
-                </Link>
-              </div>
-              <p className={s.authNote}>New here? Signing in creates your account. No credit card required.</p>
-            </section>
-
-            <aside className={s.authPreview} aria-label="Example analytics preview">
-              <div className={s.authPreviewInner}>
-                <div className={s.authPreviewTop}>
-                  <strong>crease.app</strong>
-                  <span>LIVE PREVIEW</span>
-                </div>
-                <div className={s.previewMetrics}>
-                  {[
-                    ['Visitors', '4,182'],
-                    ['Page views', '9,406'],
-                    ['Sessions', '5,731'],
-                  ].map(([label, value]) => (
-                    <div className={s.previewMetric} key={label}>
-                      <span>{label}</span>
-                      <strong>{value}</strong>
-                    </div>
-                  ))}
-                </div>
-                <div className={s.authPreviewFoot}>
-                  <span>Last 30 days</span>
-                  <span>2.4 pages / session</span>
-                </div>
-              </div>
-            </aside>
+          <div className={s.redirecting} role="status">
+            <p className={s.eyebrow}>SIGNED OUT</p>
+            <h1>Taking you to sign in…</h1>
+            <p>
+              If nothing happens, <Link href="/login">open the sign-in page</Link>.
+            </p>
           </div>
         ) : (
           <>

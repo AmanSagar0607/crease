@@ -19,6 +19,18 @@
   --border: #e9e7e2;
   --focus: #111111;
   --blue: #286bdb;
+  --headerBg: rgba(251, 250, 248, 0.92);
+  --markBg: #111111;
+  --markInk: #ffffff;
+  --btnQuietHover: #eae8e2;
+  --negativeLine: #e9c5c1;
+  --positiveLine: #d5e9dd;
+  --positiveDot: #228455;
+  --legendAlt: #c9c5bb;
+  --chartArea: rgba(17, 17, 17, 0.06);
+  --chartAlt: #b8b3a7;
+  --chartEmptyBg: rgba(255, 255, 255, 0.86);
+  --dangerBg: #fffdfd;
   --font: Geist, "Inter Tight", "Instrument Sans", Arial, sans-serif;
   min-height: 100vh;
   background: var(--page);
@@ -27,6 +39,39 @@
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
+}
+
+:global([data-theme='dark']) .dashboard {
+  --ink: #f2f1ec;
+  --ink2: #c9c6be;
+  --muted: #9a978f;
+  --line: #2a2926;
+  --lineStrong: #3a3833;
+  --paper: #111110;
+  --soft: #181817;
+  --soft2: #1d1d1b;
+  --page: #0b0b0b;
+  --positive: #8fd8ae;
+  --positiveBg: #10251a;
+  --negative: #f0a8a2;
+  --negativeBg: #2a1210;
+  --warning: #e5c98c;
+  --warningBg: #241d0f;
+  --border: #2a2926;
+  --focus: #f2f1ec;
+  --blue: #8ab4ff;
+  --headerBg: rgba(11, 11, 11, 0.9);
+  --markBg: #f0efea;
+  --markInk: #0a0a0a;
+  --btnQuietHover: #262624;
+  --negativeLine: #5a2a24;
+  --positiveLine: #1f4631;
+  --positiveDot: #3fae74;
+  --legendAlt: #4a4842;
+  --chartArea: rgba(242, 241, 236, 0.07);
+  --chartAlt: #7a766c;
+  --chartEmptyBg: rgba(11, 11, 11, 0.86);
+  --dangerBg: #1a0f0e;
 }
 
 .dashboard *,
@@ -66,13 +111,13 @@
   padding: 10px 14px;
   border-radius: 999px;
   background: var(--ink);
-  color: #fff;
+  color: var(--page);
   font-size: 13px;
 }
 
 .skip:focus {
   top: 12px;
-  color: #fff;
+  color: var(--page);
 }
 
 .shell {
@@ -87,7 +132,7 @@
   top: 0;
   z-index: 50;
   border-bottom: 1px solid var(--line);
-  background: rgba(251, 250, 248, 0.92);
+  background: var(--headerBg);
   backdrop-filter: blur(14px);
 }
 
@@ -174,8 +219,8 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--ink);
-  color: #fff;
+  background: var(--markBg);
+  color: var(--markInk);
   font-size: 9px;
   font-weight: 600;
 }
@@ -282,7 +327,7 @@
 }
 
 .btnQuiet:hover {
-  background: #eae8e2;
+  background: var(--btnQuietHover);
   color: var(--ink);
 }
 
@@ -330,7 +375,7 @@
   gap: 10px;
   margin: 16px 0;
   padding: 12px 14px;
-  border: 1px solid #e9c5c1;
+  border: 1px solid var(--negativeLine);
   border-radius: 12px;
   background: var(--negativeBg);
   color: var(--negative);
@@ -443,8 +488,8 @@
   width: 52px;
   height: 52px;
   border-radius: 15px;
-  background: var(--ink);
-  color: #fff;
+  background: var(--markBg);
+  color: var(--markInk);
   font-size: 20px;
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -506,13 +551,13 @@
 }
 
 .metaChip.isLive {
-  border-color: #d5e9dd;
+  border-color: var(--positiveLine);
   background: var(--positiveBg);
   color: var(--positive);
 }
 
 .metaChip.isLive .statusDot {
-  background: #228455;
+  background: var(--positiveDot);
 }
 
 .projectActions {
@@ -835,7 +880,7 @@
 }
 
 .legend .legendPageviews {
-  background: #c9c5bb;
+  background: var(--legendAlt);
 }
 
 .chartWrap {
@@ -858,7 +903,7 @@
 }
 
 .chartArea {
-  fill: rgba(17, 17, 17, 0.06);
+  fill: var(--chartArea);
 }
 
 .chartVisitors {
@@ -872,7 +917,7 @@
 
 .chartPageviews {
   fill: none;
-  stroke: #b8b3a7;
+  stroke: var(--chartAlt);
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -902,7 +947,7 @@
   place-content: center;
   gap: 6px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--chartEmptyBg);
   text-align: center;
 }
 
@@ -1204,7 +1249,7 @@
 }
 
 .statusLine.isLive i {
-  background: #228455;
+  background: var(--positiveDot);
 }
 
 .statusLine.isLive {
@@ -1350,8 +1395,8 @@
   width: 23px;
   height: 23px;
   border-radius: 50%;
-  background: var(--ink);
-  color: #fff;
+  background: var(--markBg);
+  color: var(--markInk);
   font-size: 9px;
   font-weight: 600;
 }
@@ -1540,8 +1585,8 @@
 }
 
 .dangerCard {
-  border-color: #e9c5c1;
-  background: #fffdfd;
+  border-color: var(--negativeLine);
+  background: var(--dangerBg);
 }
 
 .dangerCard h3 {
@@ -1553,7 +1598,7 @@
   align-items: center;
   gap: 6px;
   margin-top: 16px;
-  border: 1px solid #e9c5c1;
+  border: 1px solid var(--negativeLine);
   border-radius: 999px;
   background: var(--paper);
   padding: 7px 12px;
@@ -1573,6 +1618,43 @@
 }
 
 /* ---------- Auth ---------- */
+
+.loginMain {
+  display: flex;
+  align-items: center;
+}
+
+.loginMain > .authWrap {
+  flex: 1;
+}
+
+.redirecting {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 96px 0;
+  text-align: center;
+}
+
+.redirecting h1 {
+  font-size: clamp(26px, 3.6vw, 36px);
+  font-weight: 400;
+  letter-spacing: -0.03em;
+}
+
+.redirecting p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.redirecting a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.redirecting a:hover {
+  color: var(--ink);
+}
 
 .authWrap {
   display: grid;

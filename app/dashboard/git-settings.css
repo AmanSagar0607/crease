@@ -34,3 +34,18 @@
 .git-provider-footer a { color: var(--ink); font-weight: 600; }
 @media (max-width: 780px) { .git-provider-grid { grid-template-columns: 1fr; } .git-provider-group + .git-provider-group { border-left: 0; border-top: 1px solid var(--border); } .git-provider-group > p { min-height: 0; } }
 @media (max-width: 520px) { .git-connected, .git-provider-header { padding: 18px; } .git-connected-heading, .git-provider-header, .git-connect-action, .git-provider-footer { align-items: flex-start; flex-direction: column; } .git-connect-action button { width: 100%; } .git-connected-repo { flex-wrap: wrap; } .git-disconnect { width: 100%; } .git-provider-group { padding: 18px; } }
+
+[data-theme='dark'] .git-pill.is-live {
+  border-color: #1f4631;
+  background: #10251a;
+  color: #8fd8ae;
+}
+
+[data-theme='dark'] .git-disconnect:hover:not(:disabled) {
+  background: #2a1210;
+  color: #f0a8a2;
+}
+
+[data-theme='dark'] .git-notice {
+  color: #8fd8ae;
+}
