@@ -391,6 +391,12 @@
   letter-spacing: 0.02em;
 }
 
+.logoChip svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
 /* ---------- Hero mockup ---------- */
 
 .mockWrap {

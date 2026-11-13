@@ -1,16 +1,9 @@
 import Link from 'next/link';
 import ThemeToggle from './theme-toggle';
+import PlatformLogo, { platforms } from './platform-logos';
 import s from './landing.module.css';
 
 const repo = 'https://github.com/AmanSagar0607/crease';
-
-const platforms = [
-  { glyph: 'N', label: 'Next.js' },
-  { glyph: '⚛', label: 'React' },
-  { glyph: '</>', label: 'HTML' },
-  { glyph: 'GH', label: 'GitHub' },
-  { glyph: '▲', label: 'Vercel' },
-];
 
 const bars = [38, 50, 42, 58, 47, 68, 55, 63, 78, 67, 85, 76, 92, 100];
 
@@ -166,7 +159,7 @@ export default function Home() {
             <div className={s.logos} role="img" aria-label="Next.js, React, HTML, GitHub, and Vercel">
               {platforms.map((platform) => (
                 <span className={s.logoChip} key={platform.label} aria-hidden="true">
-                  {platform.glyph}
+                  <PlatformLogo id={platform.id} />
                 </span>
               ))}
             </div>
