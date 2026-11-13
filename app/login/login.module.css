@@ -1,0 +1,541 @@
+/* Sign-in — dark split layout. */
+
+.page {
+  --bg: #090909;
+  --panel: #181818;
+  --panel2: #111111;
+  --panel3: #161616;
+  --line: #2a2a2a;
+  --line2: #3a3a3a;
+  --text: #f4f4f2;
+  --muted: #a2a29f;
+  --muted2: #777773;
+  --light: #e9e8e4;
+  --font: Geist, "Inter Tight", "Instrument Sans", Arial, sans-serif;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+.page *,
+.page *::before,
+.page *::after {
+  box-sizing: border-box;
+}
+
+.page :where(h1, h2, h3, p) {
+  margin: 0;
+}
+
+.page a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.page a:hover {
+  color: inherit;
+}
+
+.page :focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.skip {
+  position: absolute;
+  left: 16px;
+  top: -80px;
+  z-index: 100;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: var(--light);
+  color: #0a0a0a;
+  font-size: 13px;
+}
+
+.skip:focus {
+  top: 14px;
+}
+
+/* ---------- Left column ---------- */
+
+.left {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 26px 40px 30px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 18px;
+}
+
+.plans {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.plans:hover {
+  color: var(--muted);
+}
+
+.formWrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  width: min(360px, 100%);
+  margin-inline: auto;
+  padding: 44px 0;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+
+.brandMark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--light);
+  color: #0a0a0a;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.title {
+  margin: 28px 0 26px;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+}
+
+.githubButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 46px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--light);
+  color: #0a0a0a;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 150ms ease;
+}
+
+.page a.githubButton {
+  color: #0a0a0a;
+}
+
+.page a.githubButton:hover {
+  background: #ffffff;
+  color: #0a0a0a;
+}
+
+.githubButton svg {
+  width: 17px;
+  height: 17px;
+  flex: none;
+}
+
+.note {
+  margin-top: 14px;
+  color: #8d8d89;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.access {
+  margin-top: 28px;
+  padding: 14px 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel2);
+}
+
+.accessTitle {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted2);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+
+.access p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  color: #8d8d89;
+  font-size: 11px;
+}
+
+.legal a:hover {
+  color: var(--text);
+}
+
+/* ---------- Right panel ---------- */
+
+.preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: calc(100vh - 32px);
+  margin: 16px 16px 16px 0;
+  padding: 44px 40px 0;
+  overflow: hidden;
+  border-radius: 24px;
+  background: var(--panel);
+}
+
+.previewHead {
+  flex: none;
+}
+
+.previewHead h2 {
+  max-width: 470px;
+  font-size: clamp(25px, 2.2vw, 34px);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.14;
+}
+
+.previewHead p {
+  max-width: 440px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+/* ---------- Mockup ---------- */
+
+.mock {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  margin-top: 30px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 16px 16px 0 0;
+  background: var(--panel2);
+}
+
+.mockTop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  height: 34px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  background: #141414;
+}
+
+.mockDots {
+  display: flex;
+  gap: 4px;
+}
+
+.mockDots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #333333;
+}
+
+.mockUrl {
+  margin-inline: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted2);
+  font-size: 9px;
+}
+
+.mockBody {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.mockSide {
+  min-width: 0;
+  padding: 14px 10px;
+  border-right: 1px solid var(--line);
+}
+
+.mockBrand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.mockBrandMark {
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  border-radius: 5px;
+  background: var(--light);
+  color: #0a0a0a;
+  font-size: 8px;
+}
+
+.mockNav {
+  display: grid;
+  gap: 1px;
+}
+
+.mockNav span {
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.mockNav .active {
+  background: #232323;
+  color: var(--text);
+}
+
+.mockLabel {
+  margin: 14px 8px 4px;
+  color: var(--muted2);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+
+.mockMain {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px 18px 20px;
+}
+
+.mockHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mockHead h3 {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.mockHead p {
+  margin-top: 3px;
+  color: var(--muted2);
+  font-size: 9px;
+}
+
+.mockBadge {
+  flex: none;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted2);
+  font-size: 7px;
+  letter-spacing: 0.1em;
+}
+
+.mockMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.mockMetric {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel3);
+}
+
+.mockMetric span {
+  color: var(--muted2);
+  font-size: 8px;
+}
+
+.mockMetric strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+}
+
+.mockMetric em {
+  display: block;
+  margin-top: 2px;
+  color: #8aa894;
+  font-size: 7px;
+  font-style: normal;
+}
+
+.mockChart {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 108px;
+  max-height: 400px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.mockChartTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted2);
+  font-size: 8px;
+}
+
+.mockBars {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  gap: 5px;
+  min-height: 64px;
+  margin-top: 10px;
+}
+
+.mockBars i {
+  flex: 1;
+  min-width: 0;
+  border-radius: 2px 2px 0 0;
+  background: #2e2e2e;
+}
+
+.mockBars i:last-child {
+  background: var(--light);
+}
+
+.mockRows {
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.mockRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.mockRow:first-child {
+  border-top: 0;
+}
+
+.mockRow strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.ghost {
+  position: absolute;
+  right: 34px;
+  bottom: 20px;
+  width: 82px;
+  height: 74px;
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.35));
+  animation: bob 5s ease-in-out infinite;
+}
+
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 1180px) {
+  .page {
+    grid-template-columns: 1fr;
+  }
+
+  .preview {
+    display: none;
+  }
+
+  .left {
+    min-height: 100vh;
+  }
+}
+
+@media (max-width: 640px) {
+  .left {
+    padding: 20px 22px 26px;
+  }
+
+  .formWrap {
+    padding: 36px 0;
+  }
+
+  .title {
+    margin: 24px 0 22px;
+    font-size: 27px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ghost {
+    animation: none;
+  }
+
+  .githubButton {
+    transition: none;
+  }
+}
