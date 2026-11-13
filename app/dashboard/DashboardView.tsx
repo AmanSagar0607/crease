@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
+import ThemeToggle from '../theme-toggle';
 import s from './dashboard.module.css';
 
 type User = { id: string; login: string };
@@ -579,6 +580,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
             )}
           </nav>
           <div className={s.account}>
+            <ThemeToggle />
             {user && (
               <span className={s.userChip}>
                 <span className={s.avatar} aria-hidden="true">

@@ -78,3 +78,29 @@
 @media (max-width: 480px) { .vercel-settings-heading { flex-direction: column; } .vercel-settings-heading, .vercel-settings-connection, .vercel-settings-select, .vercel-settings-state, .vercel-settings-pending { padding: 20px; } .vercel-settings-select-controls { flex-direction: column; } .vercel-settings-connection { flex-wrap: wrap; } .vercel-settings-secondary { width: 100%; } .vercel-settings-row { margin: 0 20px; flex-wrap: wrap; } .vercel-settings-overrides { width: 100%; } }
 @media (max-width: 640px) { .vercel-hooks-form { grid-template-columns: 1fr; } .vercel-hooks-list li { align-items: flex-start; flex-direction: column; } .vercel-hook-created > div { flex-direction: column; } }
 @media (prefers-reduced-motion: reduce) { .vercel-settings-switch span, .vercel-settings-switch span::after { transition: none; } }
+
+[data-theme='dark'] .vercel-settings-status.is-connected {
+  border-color: #1f4631;
+  background: #10251a;
+  color: #8fd8ae;
+}
+
+[data-theme='dark'] .vercel-settings-switch span {
+  background: #5b5f66;
+}
+
+[data-theme='dark'] .vercel-settings-error,
+[data-theme='dark'] .vercel-hooks-error {
+  color: #f0a8a2;
+}
+
+[data-theme='dark'] .vercel-settings-notice,
+[data-theme='dark'] .vercel-hooks-notice {
+  color: #8fd8ae;
+}
+
+[data-theme='dark'] .vercel-hooks-warning {
+  border-color: #4a3a1c;
+  background: #241d0f;
+  color: #e5c98c;
+}

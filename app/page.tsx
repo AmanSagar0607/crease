@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import ThemeToggle from './theme-toggle';
 import s from './landing.module.css';
 
 const repo = 'https://github.com/AmanSagar0607/crease';
@@ -131,9 +132,12 @@ export default function Home() {
             <a href="#pricing">Pricing</a>
             <Link href="/docs">Docs</Link>
           </div>
-          <Link className={s.navAction} href="/dashboard">
-            Open dashboard
-          </Link>
+          <div className={s.navEnd}>
+            <ThemeToggle />
+            <Link className={s.navAction} href="/dashboard">
+              Open dashboard
+            </Link>
+          </div>
         </nav>
       </div>
 

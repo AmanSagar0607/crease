@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import ThemeToggle from '../theme-toggle';
 import s from './login.module.css';
 
 function GitHubMark() {
@@ -65,6 +66,7 @@ export default function LoginView() {
 
       <div className={s.left}>
         <div className={s.topbar}>
+          <ThemeToggle />
           <Link className={s.plans} href="/#pricing">
             See plans
           </Link>
