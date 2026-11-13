@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 import './git-settings.css';
 
 type Repository = { full_name: string; installation_id: number };
 type Status = { configured: boolean; install_url: string | null; public_origin_configured: boolean };
+type InstallStatus = { state: 'installed' | 'not_installed' | 'different_project'; path: string; branch: string };
 
 export default function GitHubInstall({ projectId }: { projectId: string }) {
   const [status, setStatus] = useState<Status | null>(null);
@@ -25,9 +26,33 @@ export default function GitHubInstall({ projectId }: { projectId: string }) {
   const [savedError, setSavedError] = useState('');
   const [savingRepo, setSavingRepo] = useState(false);
   const [repoNotice, setRepoNotice] = useState('');
+  const [installStatus, setInstallStatus] = useState<InstallStatus | null>(null);
+  const [installError, setInstallError] = useState('');
+  const [checkingInstall, setCheckingInstall] = useState(false);
   const searchId = useId();
   const filtered = useMemo(() => repos.filter(repo => repo.full_name.toLowerCase().includes(search.trim().toLowerCase())), [repos, search]);
   const selectedRepo = savedRepo || repos.find(repo => `${repo.installation_id}:${repo.full_name}` === selected);
+
+  const checkInstallation = useCallback(async () => {
+    if (!savedRepo || !connected) return;
+    setCheckingInstall(true);
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/github-install/status`, { cache: 'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not check installation.');
+      setInstallStatus(data); setInstallError('');
+    } catch (error) { setInstallStatus(null); setInstallError(error instanceof Error ? error.message : 'Could not check installation.'); }
+    finally { setCheckingInstall(false); }
+  }, [connected, projectId, savedRepo]);
+
+  useEffect(() => {
+    if (!savedRepo || !connected) { setInstallStatus(null); setInstallError(''); return; }
+    void checkInstallation();
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void checkInstallation(); }, 30000);
+    const onFocus = () => { void checkInstallation(); };
+    window.addEventListener('focus', onFocus);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus); };
+  }, [checkInstallation, connected, savedRepo]);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,7 +122,7 @@ export default function GitHubInstall({ projectId }: { projectId: string }) {
       const body = await response.json();
       if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Could not create pull request.');
       setPr(body.url);
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not create pull request.'); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not create pull request.'); void checkInstallation(); }
     finally { setBusy(false); }
   }
 
@@ -125,8 +150,9 @@ export default function GitHubInstall({ projectId }: { projectId: string }) {
           <fieldset className="repo-list"><legend className="repo-visually-hidden">Select a repository</legend>{filtered.length ? filtered.map(repo => { const value = `${repo.installation_id}:${repo.full_name}`; const [owner, ...name] = repo.full_name.split('/'); return <label className={`repo-item ${selected === value ? 'is-selected' : ''}`} key={value}><span className="repo-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 3.5h12a2 2 0 0 1 2 2V20H7a2 2 0 0 1-2-2V3.5Z"/><path d="M8 3.5v13.5M7 17h12M11 8h5"/></svg></span><span className="repo-item-name"><strong>{name.join('/')}</strong><small>{owner}</small></span><input type="radio" name={`repo-${projectId}`} value={value} checked={selected === value} onChange={() => { setSelected(value); setReviewing(false); }} /><span className="repo-choice" aria-hidden="true" /></label>; }) : <div className="repo-no-results"><strong>No repositories found</strong><p>Try a different search or check which repositories the app can access.</p></div>}</fieldset>
           <div className="git-connect-action"><span>Connect the selected repository to this project.</span><button className="repo-action" type="button" onClick={() => void updateConnection()} disabled={!selectedRepo || savingRepo}>{savingRepo ? 'Connecting…' : 'Connect repository'} <span aria-hidden="true">↗</span></button></div>
           </>}
-          {savedRepo && reviewing && selectedRepo && <div className="repo-note" role="status"><strong>Review installation for {selectedRepo.full_name}</strong><p>Crease will propose a change to a supported static HTML or Next.js App Router entry file on a new branch. You can review it on GitHub before merging. Tracking starts only after your site signals consent.</p>{!status.public_origin_configured && <p>Next, deploy Crease over HTTPS and set CREASE_PUBLIC_ORIGIN on the server. This step cannot create a working installation while Crease is only on localhost.</p>}<button type="button" className="repo-action" onClick={() => setReviewing(false)}>Back</button></div>}
-          {savedRepo && <div className="repo-form-footer"><div><strong>{selectedRepo ? selectedRepo.full_name : 'Select a repository to continue'}</strong><p>{reviewing ? 'A GitHub pull request will be created for your review.' : 'Review the installation before creating any changes.'}</p></div><button className="button primary repo-submit" disabled={busy || !selectedRepo || (reviewing && !status.public_origin_configured)} type="submit">{busy ? 'Preparing installation…' : reviewing ? 'Prepare installation' : 'Continue'} <span aria-hidden="true">↗</span></button></div>}
+          {savedRepo && <div className="repo-note" role="status"><strong>{installError ? 'Installation status unavailable' : !installStatus ? 'Checking installation…' : installStatus.state === 'installed' ? 'Installation found in repository' : installStatus.state === 'different_project' ? 'Installation belongs to another project' : 'Installation not found'}</strong><p>{installError || (installStatus ? `${installStatus.path} on ${installStatus.branch}. ${installStatus.state === 'installed' ? 'Verify your site has deployed and signals consent before expecting events.' : installStatus.state === 'different_project' ? 'Review the existing installation before making changes.' : 'Prepare an installation for review on GitHub.'}` : 'Checking the default branch on GitHub.')}</p><button type="button" className="repo-action" onClick={() => void checkInstallation()} disabled={checkingInstall}>{checkingInstall ? 'Checking…' : 'Check again'}</button></div>}
+          {savedRepo && installStatus?.state === 'not_installed' && reviewing && selectedRepo && <div className="repo-note" role="status"><strong>Review installation for {selectedRepo.full_name}</strong><p>Crease will propose a change to a supported static HTML or Next.js App Router entry file on a new branch. You can review it on GitHub before merging. Tracking starts only after your site signals consent.</p>{!status.public_origin_configured && <p>Next, deploy Crease over HTTPS and set CREASE_PUBLIC_ORIGIN on the server. This step cannot create a working installation while Crease is only on localhost.</p>}<button type="button" className="repo-action" onClick={() => setReviewing(false)}>Back</button></div>}
+          {savedRepo && installStatus?.state === 'not_installed' && <div className="repo-form-footer"><div><strong>{selectedRepo?.full_name}</strong><p>{reviewing ? 'A GitHub pull request will be created for your review.' : 'Review the installation before creating any changes.'}</p></div><button className="button primary repo-submit" disabled={busy || !selectedRepo || (reviewing && !status.public_origin_configured)} type="submit">{busy ? 'Preparing installation…' : reviewing ? 'Prepare installation' : 'Continue'} <span aria-hidden="true">↗</span></button></div>}
         </form>}
         {connected && !savedRepo && repos.length === 0 && <div className="repo-note" role="status"><strong>No repositories available</strong><p>{installations === 0 ? 'GitHub did not return an installation of the configured app for this account.' : 'The app is installed, but GitHub returned no repositories for it.'} {appSlugs.length > 0 && installations === 0 ? `Available app installations: ${appSlugs.join(', ')}. ` : ''}Check the app’s repository access in GitHub settings, then reconnect.</p></div>}
         {!connected && <div className="repo-note"><strong>Connect your GitHub account</strong><p>Authorize Crease and choose which repositories it can access. You can change access later on GitHub.</p></div>}

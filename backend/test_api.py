@@ -112,6 +112,21 @@ class ApiTest(unittest.TestCase):
         self.assertIn('crease:consent', updated)
         self.assertLess(updated.index('data-crease-install'), updated.index('</body>'))
 
+    def test_installation_status_identifies_project_on_default_branch(self):
+        source = '<script data-crease-install>project-123</script>'
+        def handler(request):
+            if request.url.path == '/repos/owner/site': return httpx.Response(200, json={'default_branch':'main'})
+            if request.url.path.endswith('/contents/index.html'):
+                return httpx.Response(200, json={'encoding':'base64','size':len(source),'content':base64.b64encode(source.encode()).decode()})
+            return httpx.Response(404, json={})
+        real_client = httpx.AsyncClient
+        with patch.object(github_install.httpx, 'AsyncClient', side_effect=lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw)):
+            found = asyncio.run(github_install.installation_status('token','owner/site','project-123'))
+            other = asyncio.run(github_install.installation_status('token','owner/site','project-456'))
+        self.assertEqual(found['state'], 'installed')
+        self.assertEqual(found['branch'], 'main')
+        self.assertEqual(other['state'], 'different_project')
+
     def test_project_git_connection_is_owner_scoped(self):
         headers = {'origin':main.FRONTEND_URL}
         self.client.cookies.set('crease_session','u1')

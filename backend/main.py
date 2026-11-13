@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import IntegrityError
-from github_install import create_install_pr
+from github_install import create_install_pr, installation_status
 from cryptography.fernet import Fernet, InvalidToken
 
 load_dotenv(Path(__file__).with_name('.env'))
@@ -228,6 +228,21 @@ async def github_app_repositories(crease_app_token: str | None = Cookie(default=
         truncated = truncated or repo_truncated
         repos.extend({'full_name':r['full_name'],'installation_id':installation['id']} for r in result)
     return {'repositories': repos, 'installation_count': sum(1 for item in installations if item.get('app_slug', '').lower() == GITHUB_APP_SLUG.lower()), 'available_app_slugs': [item.get('app_slug') for item in installations if item.get('app_slug')], 'truncated': truncated}
+
+@app.get('/api/projects/{project_id}/github-install/status')
+async def github_install_status(project_id: str, response: Response, crease_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
+    response.headers['Cache-Control'] = 'no-store'
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        repo = db.execute(text('SELECT full_name, installation_id FROM project_repositories WHERE project_id=:id'), {'id':project_id}).mappings().first()
+    if not repo: raise HTTPException(404, 'Connect a repository first')
+    token = app_user_token(crease_app_token, user)
+    installations, _ = await github_app_pages(token, '/user/installations', 'installations')
+    if not any(int(i['id']) == repo['installation_id'] and i.get('app_slug', '').lower() == GITHUB_APP_SLUG.lower() for i in installations):
+        raise HTTPException(403, 'The GitHub App no longer has access to this repository. Check the installation.')
+    repositories, _ = await github_app_pages(token, f"/user/installations/{repo['installation_id']}/repositories", 'repositories')
+    if not any(r['full_name'].lower() == repo['full_name'].lower() for r in repositories): raise HTTPException(403, 'The GitHub App no longer has access to this repository.')
+    return await installation_status(token, repo['full_name'], project_id)
 
 @app.post('/api/projects/{project_id}/github-install')
 async def github_install(project_id: str, data: GitHubInstallInput, crease_app_token: str | None = Cookie(default=None), user=Depends(session_user)):

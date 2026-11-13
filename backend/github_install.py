@@ -10,6 +10,29 @@ from fastapi import HTTPException
 
 REPO = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
 
+async def installation_status(token: str, repository: str, project_id: str):
+    """Inspect the default branch; this does not establish deployment or consent."""
+    if not REPO.fullmatch(repository) or '..' in repository:
+        raise HTTPException(422, 'Invalid repository name')
+    headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'}
+    try:
+        async with httpx.AsyncClient(base_url='https://api.github.com', headers=headers, timeout=15) as client:
+            repo = await client.get(f'/repos/{repository}')
+            if repo.status_code != 200: raise HTTPException(403, 'Cannot inspect this repository. Check GitHub App access.')
+            branch = repo.json()['default_branch']
+            for path in ('index.html', 'src/app/layout.tsx', 'src/app/layout.jsx', 'app/layout.tsx', 'app/layout.jsx'):
+                response = await client.get(f'/repos/{repository}/contents/{path}', params={'ref':branch})
+                if response.status_code == 404: continue
+                if response.status_code != 200: raise HTTPException(403, 'Cannot read repository contents. Check GitHub App permissions.')
+                content = response.json()
+                if content.get('encoding') != 'base64' or content.get('size', 0) > 500_000: raise HTTPException(422, 'The entry file cannot be inspected.')
+                try: source = base64.b64decode(content['content'], validate=False).decode('utf-8')
+                except (ValueError, UnicodeError, KeyError): raise HTTPException(422, 'The entry file cannot be inspected.')
+                state = 'not_installed' if 'data-crease-install' not in source else ('installed' if project_id in source else 'different_project')
+                return {'state':state, 'path':path, 'branch':branch}
+    except httpx.RequestError as exc: raise HTTPException(503, 'Could not connect to GitHub') from exc
+    raise HTTPException(422, 'No supported entry file found, or GitHub App Contents access is missing.')
+
 async def create_install_pr(token: str, repository: str, path: str, project_id: str, public_url: str):
     if not REPO.fullmatch(repository) or '..' in repository:
         raise HTTPException(422, 'Enter a GitHub repository as owner/name')
