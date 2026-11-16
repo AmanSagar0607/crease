@@ -271,3 +271,5 @@ Added owner-scoped GET /api/projects/{id}/overview with UTC date windows, previo
 Shared overview dates now also filter legacy summary, events and funnel through optional inclusive UTC start/end parameters; legacy callers without dates remain supported. Page analytics is reachable for empty results. Property filters still apply only to detailed analytics. No deployment or migration.
 
 Overview supports an explicitly selected temporary conversion event; counts are distinct visitors and rates use visitor denominators. Acquisition/campaign counts use selected visitor-level touchpoints, which may follow conversion; landing counts require conversion in the same session. See docs/REVENUE_OVERVIEW.md. No saved goals, payment work, deployment, or production migration.
+
+Overview acquisition source search and CSV export operate on the API's first 50 source groups, clearly disclose that cap, and escape spreadsheet formula inputs. CSV unit tests use node --experimental-strip-types --test app/dashboard/csv.test.mjs. No deployment or migration.
