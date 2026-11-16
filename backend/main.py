@@ -138,6 +138,7 @@ def property_filter(property_key, value):
 RATE_WINDOW_SECONDS = 60
 RATE_LIMIT_IP_PER_MINUTE = int(os.getenv('RATE_LIMIT_IP_PER_MINUTE', '120'))
 RATE_LIMIT_PROJECT_PER_MINUTE = int(os.getenv('RATE_LIMIT_PROJECT_PER_MINUTE', '600'))
+VERIFY_LIMIT_PER_MINUTE = int(os.getenv('VERIFY_LIMIT_PER_MINUTE', '5'))
 SESSION_IDLE_MINUTES = int(os.getenv('SESSION_IDLE_MINUTES', '30'))
 SESSION_IDLE_SECONDS = SESSION_IDLE_MINUTES * 60
 
@@ -420,64 +421,40 @@ async def rotate_write_key(project_id: str, user=Depends(session_user)):
 
 def verification_record(token): return 'crease-site-verification=' + token
 
-def public_host(domain):
-    try:
-        addresses = socket.getaddrinfo(domain, None)
-    except OSError:
-        return False
-    if not addresses:
-        return False
-    for address in addresses:
-        try:
-            ip = ipaddress.ip_address(address[4][0])
-        except ValueError:
-            return False
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
-            return False
-    return True
-
 async def dns_has_token(domain, token):
+    # Only the exact challenge counts; user-controlled web pages are never fetched.
+    expected = verification_record(token)
     try:
         async with httpx.AsyncClient(timeout=6) as client:
-            response = await client.get('https://cloudflare-dns.com/dns-query', params={'name':domain,'type':'TXT'}, headers={'Accept':'application/dns-json'})
-        if response.status_code != 200: return False
-        answers = response.json().get('Answer', [])
-    except (httpx.RequestError, ValueError, AttributeError):
+            for name in (f'_crease-verification.{domain}', domain):
+                response = await client.get('https://cloudflare-dns.com/dns-query', params={'name':name,'type':'TXT'}, headers={'Accept':'application/dns-json'})
+                if response.status_code != 200:
+                    continue
+                for answer in response.json().get('Answer', []):
+                    if answer.get('type') != 16:
+                        continue
+                    # DNS JSON represents each TXT segment as a quoted string.
+                    segments = re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', str(answer.get('data', '')))
+                    if segments and ''.join(segments) == expected:
+                        return True
+    except (httpx.RequestError, ValueError, AttributeError, TypeError):
         return False
-    expected = verification_record(token)
-    for answer in answers:
-        data = str(answer.get('data', '')).replace('"', '').strip()
-        if data == expected or token in data: return True
-    return False
-
-async def meta_has_token(domain, token):
-    if not await asyncio.to_thread(public_host, domain): return False
-    for scheme in ('https', 'http'):
-        try:
-            async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
-                response = await client.get(f'{scheme}://{domain}/')
-            if response.status_code != 200: continue
-            text = response.text[:300_000]
-        except (httpx.RequestError, ValueError):
-            continue
-        for tag in re.findall(r'<meta\b[^>]*>', text, re.I):
-            if not re.search(r'name\s*=\s*["\']crease-site-verification["\']', tag, re.I): continue
-            if token in tag: return True
     return False
 
 @app.get('/api/projects/{project_id}/verification')
 async def get_verification(project_id: str, user=Depends(session_user)):
     with engine.connect() as db:
         row = owned(db, project_id, user['id'])
-    return {'token':row['verification_token'],'verified':bool(row['verified_at']),'verified_at':row['verified_at'],'record':verification_record(row['verification_token']),'meta':f'<meta name="crease-site-verification" content="{row["verification_token"]}" />'}
+    return {'token':row['verification_token'],'verified':bool(row['verified_at']),'verified_at':row['verified_at'],'record':verification_record(row['verification_token']),'dns_name':f'_crease-verification.{row["domain"]}'}
 
 @app.post('/api/projects/{project_id}/verification/check')
 async def check_verification(project_id: str, user=Depends(session_user)):
     with engine.connect() as db:
         row = owned(db, project_id, user['id'])
+    if not limiter.consume('verify-user:' + digest(user['id']), VERIFY_LIMIT_PER_MINUTE) or not limiter.consume('verify-project:' + digest(project_id), VERIFY_LIMIT_PER_MINUTE):
+        raise HTTPException(429, 'Too many verification checks', headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
     token, domain = row['verification_token'], row['domain']
     method = 'dns' if await dns_has_token(domain, token) else None
-    if not method and await meta_has_token(domain, token): method = 'meta'
     checked_at = stamp(now())
     if method:
         with engine.begin() as db:

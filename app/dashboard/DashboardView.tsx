@@ -790,8 +790,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       );
       setVerificationNotice(
         result.verified
-          ? `Domain verified via ${result.method === 'meta' ? 'the root meta tag' : 'the DNS TXT record'}.`
-          : 'No matching DNS TXT record or meta tag found yet. DNS changes can take a few minutes to propagate.',
+          ? 'Domain verified via the DNS TXT record.'
+          : 'No matching DNS TXT record found yet. DNS changes can take a few minutes to propagate.',
       );
       if (result.verified) await loadVerification();
     } catch (e) {
@@ -1535,7 +1535,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         <div className={s.setupCheck} data-ready={project.last_event_at ? 'true' : 'false'} role="status" aria-live="polite">
                           <span className={s.setupDot} aria-hidden="true" />
                           <div className={s.setupCheckBody}>
-                            <strong>{project.last_event_at ? 'Setup verified' : 'Waiting for the first event'}</strong>
+                            <strong>{project.last_event_at ? 'Events received' : 'Waiting for the first event'}</strong>
                             <p>
                               {project.last_event_at
                                 ? `Events are arriving. Last event ${relativeWhen(project.last_event_at)}.`
@@ -1586,18 +1586,14 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           </div>
                           <p className={s.verifyCopy}>
                             {verification?.verified
-                              ? 'Crease accepts events for this domain. Re-check if you move the site to a new host.'
-                              : 'Crease rejects events until the domain proves ownership. Add one of the records below, then check again.'}
+                              ? 'Crease accepts events for this domain. Keep your verification record in place.'
+                              : 'Crease rejects events until the domain proves ownership. Add the TXT record at your DNS provider, then check again.'}
                           </p>
                           {!verification?.verified && verification && (
                             <div className={s.verifyRows}>
                               <div className={s.verifyRow}>
-                                <span>DNS TXT record</span>
+                                <span>TXT name: _crease-verification.{project.domain}</span>
                                 <code>{verification.record}</code>
-                              </div>
-                              <div className={s.verifyRow}>
-                                <span>Root meta tag</span>
-                                <code>{verification.meta}</code>
                               </div>
                             </div>
                           )}
