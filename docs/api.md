@@ -16,13 +16,17 @@ Country is stored as unknown unless `TRUST_VERCEL_GEO=true`. Only enable it when
 
 ## Project APIs
 
-Authenticated project routes require the Crease session cookie and check project ownership server-side. The current routes include project CRUD, `/api/projects/{id}/summary?days=7|30|90`, `/api/projects/{id}/properties`, `/api/projects/{id}/events`, write-key rotation, retention configuration, domain verification, GitHub repository installation, and Vercel integration settings. See the OpenAPI schema for request and response details from the running version.
+Authenticated project routes require the Crease session cookie and check project ownership server-side. The current routes include project CRUD, `/api/projects/{id}/summary?days=7|30|90`, `/api/projects/{id}/properties`, `/api/projects/{id}/events`, `/api/projects/{id}/funnel?first=&second=&days=7|30|90`, write-key rotation, retention configuration, domain verification, GitHub repository installation, and Vercel integration settings. See the OpenAPI schema for request and response details from the running version.
 
 ## Property filters
 
 Ingested numeric and boolean properties are indexed in `event_properties` and each project keeps a declared-key registry in `project_property_keys`. `GET /api/projects/{id}/properties` returns each key with its type (`number`, `boolean`, or `mixed`), first/last seen timestamps, event count, distinct value count, and up to 20 top values.
 
 `GET /api/projects/{id}/events` returns recent events newest-first and accepts `days=7|30|90`, `event`, `path`, `property`, `value`, and `limit` (1-200). `GET /api/projects/{id}/summary` accepts the same `property` and `value` filters and applies them to metrics, series, breakdowns, and average session duration. `property` and `value` must be supplied together, and the key must exist in the project's registry or the API returns 422. Numeric filters match equivalent numeric values (`3` matches `3.0`). Property filters never span projects.
+
+## Funnels
+
+`GET /api/projects/{id}/funnel?first=<event>&second=<event>&days=7|30|90` counts sessions that contain the first event and then the second event at the same or a later timestamp within the range. Both event names are required. The response includes `first_count`, `second_count`, `conversion` (second divided by first, rounded to four decimals), and the selected names and range. A session that performs the second event before the first does not count toward the second step. Summary responses also include `event_names`, a bounded list of event names and counts used to populate the dashboard funnel selectors.
 
 ## Session interpretation
 
