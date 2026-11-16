@@ -263,3 +263,13 @@ Acquisition reporting: project-owner GET /api/projects/{id}/acquisition supports
 ## Revenue-first overview milestone
 
 Dashboard displays project-scoped acquisition sources using the existing acquisition endpoint, attribution model selector, date filter, loading/error/retry states, and a disclosure that property filters do not apply. Revenue reporting is marked unavailable. See docs/REVENUE_OVERVIEW.md. No migration or deployment. Full Phase 1 overview metrics and remaining phases are incomplete. Skip all Stripe and payment-provider work per latest user instruction.
+
+## Overview v1 work (local only)
+
+Added owner-scoped GET /api/projects/{id}/overview with UTC date windows, previous-period visitor/session/pageview/new/returning counts, daily series, selected acquisition/campaign attribution, landing sessions and recent event names/paths. See docs/REVENUE_OVERVIEW.md for definitions and limitations. Conversion goals, conversion rates, revenue, campaign-detail navigation, shared filtering of legacy sections and browser visual verification remain incomplete. No migration or deployment; skip payment-provider work.
+
+Shared overview dates now also filter legacy summary, events and funnel through optional inclusive UTC start/end parameters; legacy callers without dates remain supported. Page analytics is reachable for empty results. Property filters still apply only to detailed analytics. No deployment or migration.
+
+Overview supports an explicitly selected temporary conversion event; counts are distinct visitors and rates use visitor denominators. Acquisition/campaign counts use selected visitor-level touchpoints, which may follow conversion; landing counts require conversion in the same session. See docs/REVENUE_OVERVIEW.md. No saved goals, payment work, deployment, or production migration.
+
+Overview acquisition source search and CSV export operate on the API's first 50 source groups, clearly disclose that cap, and escape spreadsheet formula inputs. CSV unit tests use node --experimental-strip-types --test app/dashboard/csv.test.mjs. No deployment or migration.

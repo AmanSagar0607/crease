@@ -12,7 +12,7 @@ import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from '@/componen
 import { TooltipProvider } from '@/components/ui/tooltip';
 import LivingCat from '../mascot/living-cat';
 import AnalyticsCharts from './AnalyticsCharts';
-import AcquisitionOverview from './AcquisitionOverview';
+import OverviewV1 from './OverviewV1';
 import { dispatchMascotEvent } from '../mascot/mascot-events';
 import s from './dashboard.module.css';
 
@@ -501,7 +501,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [domain, setDomain] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [days, setDays] = useState(30);
+  const [reportRange, setReportRange] = useState<{ start: string; end: string } | null>(null);
+  const days = reportRange ? Math.round((Date.parse(reportRange.end) - Date.parse(reportRange.start)) / 86400000) + 1 : 30;
+  const rangeQuery = reportRange ? `&start=${reportRange.start}&end=${reportRange.end}` : '';
   const [retention, setRetention] = useState(30);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState('');
@@ -581,7 +583,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setSummaryBusy(true);
     setSummaryError('');
     try {
-      const result = await api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=${days}${filterQuery}`);
+      const result = await api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=30${rangeQuery}${filterQuery}`);
       setSummary(result);
       celebrateFirstPageview(selected, result, projectRef.current);
     } catch (e) {
@@ -593,7 +595,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     } finally {
       setSummaryBusy(false);
     }
-  }, [selected, days, filterQuery, router]);
+  }, [selected, rangeQuery, filterQuery, router]);
 
   useEffect(() => {
     void loadSummary();
@@ -660,7 +662,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     }
     setEventsBusy(true);
     try {
-      const params = new URLSearchParams({ days: String(days), limit: '25' });
+      const params = new URLSearchParams({ days: '30', limit: '25', ...(reportRange || {}) });
       if (filterProperty && filterValue) {
         params.set('property', filterProperty);
         params.set('value', filterValue);
@@ -675,7 +677,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     } finally {
       setEventsBusy(false);
     }
-  }, [selected, days, filterProperty, filterValue, router]);
+  }, [selected, reportRange, filterProperty, filterValue, router]);
 
   useEffect(() => {
     void loadEvents();
@@ -699,7 +701,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     }
     setFunnelBusy(true);
     try {
-      const params = new URLSearchParams({ first: funnelFirst, second: funnelSecond, days: String(days) });
+      const params = new URLSearchParams({ first: funnelFirst, second: funnelSecond, days: '30', ...(reportRange || {}) });
       setFunnel(await api<Funnel>(`/api/projects/${encodeURIComponent(selected)}/funnel?${params.toString()}`));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -710,7 +712,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     } finally {
       setFunnelBusy(false);
     }
-  }, [selected, days, funnelFirst, funnelSecond, router]);
+  }, [selected, reportRange, funnelFirst, funnelSecond, router]);
 
   useEffect(() => {
     void loadFunnel();
@@ -967,7 +969,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const totalEvents = summary?.metrics.events ?? 0;
   const hasEvents = totalEvents > 0;
   const showCharts = !summary || hasEvents;
-  const rangeLabel = days === 7 ? 'Last 7 days' : days === 90 ? 'Last 90 days' : 'Last 30 days';
+  const rangeLabel = reportRange ? `${reportRange.start} ? ${reportRange.end} UTC` : 'Last 30 days';
   const isLive = Boolean(project?.last_event_at) && Date.now() - new Date(project?.last_event_at ?? 0).getTime() < 7 * 864e5;
 
   if (onboarding && project) {
@@ -1199,30 +1201,16 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                 <div className={s.tabPanel} key={tab}>
                   {tab === 'analytics' && (
                     <>
-                      <div className={s.analyticsBar} id="overview" tabIndex={-1}>
+                      <OverviewV1 key={selected} projectId={selected} refresh={acquisitionRefresh} filtered={Boolean(activeFilter)} onRangeChange={setReportRange} />
+                      <div className={s.analyticsBar} tabIndex={-1}>
                         <div>
-                          <h2>Overview</h2>
+                          <h2>Detailed analytics</h2>
                           <p>
                             {rangeLabel} · {project.domain} · {SESSION_DEFINITION}
                             {activeFilter ? ` · ${activeFilter.property} = ${activeFilter.value}` : ''}
                           </p>
                         </div>
                         <div className={s.controls}>
-                          <div className={s.range} role="group" aria-label="Reporting period">
-                            {[7, 30, 90].map((option) => (
-                              <button
-                                key={option}
-                                type="button"
-                                aria-pressed={days === option}
-                                onClick={() => {
-                                  setError('');
-                                  setDays(option);
-                                }}
-                              >
-                                {option}d
-                              </button>
-                            ))}
-                          </div>
                           <button
                             className={s.refresh}
                             type="button"
@@ -1373,7 +1361,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           series={series.map((point) => point.events)}
                         />
                       </div>
-                      <AcquisitionOverview projectId={selected} days={days} filtered={Boolean(activeFilter)} refresh={acquisitionRefresh} />
 
                       {showCharts && (
                         <AnalyticsCharts
@@ -1382,7 +1369,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         />
                       )}
 
-                      {showCharts && (
                       <div className={s.breakdownGrid}>
                         <BreakdownCard
                           id="pages"
@@ -1416,13 +1402,12 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           empty="No country data yet."
                         />
                       </div>
-                      )}
 
                       <section className={s.funnelSection} id="funnel">
                         <div className={s.sectionHead}>
                           <div>
                             <h2>Funnel</h2>
-                            <p>Ordered sessions in the last {days} days.</p>
+                            <p>Ordered sessions ? {rangeLabel}.</p>
                           </div>
                           <span className={s.updated}>
                             {funnel ? `${Math.round(funnel.conversion * 100)}% conversion` : 'Two steps'}
