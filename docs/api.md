@@ -12,6 +12,8 @@ The collector responds with `{ "accepted": n }`, where `n` is the number of newl
 
 For cross-origin browser requests, the preflight allows `Content-Type` and `X-Crease-Key`. Origin checks reduce accidental cross-site use but do not authenticate a visitor and do not make public browser events unforgeable.
 
+Country is stored as unknown unless `TRUST_VERCEL_GEO=true`. Only enable it when every request reaches the API through a trusted Vercel deployment that overwrites `X-Vercel-IP-Country`; otherwise a caller can spoof the header. The value must be a two-letter country code.
+
 ## Project APIs
 
 Authenticated project routes require the Crease session cookie and check project ownership server-side. The current routes include project CRUD, `/api/projects/{id}/summary?days=7|30|90`, write-key rotation, retention configuration, domain verification, GitHub repository installation, and Vercel integration settings. See the OpenAPI schema for request and response details from the running version.
