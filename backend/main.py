@@ -1,11 +1,13 @@
 """Crease API. Configure GitHub OAuth and a PostgreSQL URL before deployment."""
+import asyncio
 import hashlib
+import ipaddress
 import json
 import os
 import re
 import secrets
+import socket
 import time
-from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
@@ -13,7 +15,7 @@ from uuid import uuid4
 import httpx
 from dotenv import load_dotenv
 from pathlib import Path
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
@@ -23,9 +25,11 @@ from github_install import create_install_pr, enable_tracking_pr, installation_s
 from cryptography.fernet import Fernet, InvalidToken
 
 load_dotenv(Path(__file__).with_name('.env'))
-DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./crease.db')
-if os.getenv('VERCEL') and DATABASE_URL.startswith('sqlite:'):
-    raise RuntimeError('DATABASE_URL must be set to a persistent PostgreSQL database on Vercel')
+DATABASE_URL = os.getenv('DATABASE_URL', '')
+if not DATABASE_URL:
+    raise RuntimeError('DATABASE_URL must be set to the existing PostgreSQL database')
+if DATABASE_URL.startswith('sqlite:'):
+    raise RuntimeError('SQLite is disabled; configure DATABASE_URL with the existing PostgreSQL database')
 if DATABASE_URL.startswith('postgresql://'):
     DATABASE_URL = 'postgresql+psycopg://' + DATABASE_URL[len('postgresql://'):]
 if os.getenv('CREASE_WORKER'):
@@ -37,8 +41,10 @@ PUBLIC_API_URL = os.getenv('PUBLIC_API_URL', 'http://localhost:3000').rstrip('/'
 CLIENT_ID = os.getenv('GITHUB_CLIENT_ID', '')
 CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET', '')
 SECURE = os.getenv('COOKIE_SECURE', 'false').lower() == 'true'
-# Enable only behind infrastructure that overwrites this header and prevents direct access.
+# Country data is accepted only on the authenticated internal ingestion route.
 TRUST_VERCEL_GEO = os.getenv('TRUST_VERCEL_GEO', 'false').lower() == 'true'
+GEO_FORWARD_SECRET = os.getenv('GEO_FORWARD_SECRET', '')
+ISO_COUNTRIES = frozenset('AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW'.split())
 GITHUB_APP_SLUG = os.getenv('GITHUB_APP_SLUG', '')
 GITHUB_APP_CLIENT_ID = os.getenv('GITHUB_APP_CLIENT_ID', '')
 GITHUB_APP_CLIENT_SECRET = os.getenv('GITHUB_APP_CLIENT_SECRET', '')
@@ -50,25 +56,110 @@ VERCEL_INTEGRATION_CLIENT_SECRET = os.getenv('VERCEL_INTEGRATION_CLIENT_SECRET',
 VERCEL_TOKEN_KEY = os.getenv('VERCEL_TOKEN_KEY', '')
 app = FastAPI(title='Crease API')
 
-def setup():
-    with engine.begin() as db:
-        for sql in [
-            'CREATE TABLE IF NOT EXISTS users (id VARCHAR(64) PRIMARY KEY, github_id VARCHAR(64) UNIQUE NOT NULL, login VARCHAR(255) NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS sessions (token_hash VARCHAR(64) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, expires_at VARCHAR(32) NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS oauth_states (state_hash VARCHAR(64) PRIMARY KEY, expires_at VARCHAR(32) NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS projects (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, name VARCHAR(100) NOT NULL, domain VARCHAR(253) NOT NULL, retention_days INTEGER NOT NULL DEFAULT 90)',
-            'CREATE TABLE IF NOT EXISTS project_repositories (project_id VARCHAR(36) PRIMARY KEY, full_name VARCHAR(200) NOT NULL, installation_id BIGINT NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS github_connections (user_id VARCHAR(64) PRIMARY KEY, encrypted_token TEXT NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS vercel_connections (user_id VARCHAR(64) PRIMARY KEY, encrypted_token TEXT NOT NULL, team_id VARCHAR(128))',
-            'CREATE TABLE IF NOT EXISTS project_vercel (project_id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, vercel_project_id VARCHAR(128) NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS events (project_id VARCHAR(36) NOT NULL, id VARCHAR(64) NOT NULL, name VARCHAR(64) NOT NULL, occurred_at VARCHAR(40) NOT NULL, path VARCHAR(512) NOT NULL, visitor_id VARCHAR(64), session_id VARCHAR(64), country VARCHAR(2), device VARCHAR(16), referrer VARCHAR(253), properties TEXT NOT NULL, PRIMARY KEY(project_id,id))',
-            'CREATE INDEX IF NOT EXISTS events_project_time ON events(project_id, occurred_at)',
-        ]: db.execute(text(sql))
+@app.get('/health')
+async def health():
+    """Confirm the API can reach its configured database without exposing credentials."""
+    try:
+        with engine.connect() as db:
+            db.execute(text('SELECT 1'))
+    except Exception as exc:
+        raise HTTPException(503, 'Database connection is unavailable') from exc
+    return {'status': 'ok', 'database': 'connected'}
 
-setup()
 def now(): return datetime.now(timezone.utc)
 def digest(value): return hashlib.sha256(value.encode()).hexdigest()
+def new_write_key(): return 'crease_' + secrets.token_urlsafe(24)
+def new_verification_token(): return secrets.token_urlsafe(24)
 def stamp(value): return value.isoformat()
+
+def parse_stamp(value):
+    parsed = datetime.fromisoformat(value)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+def resolve_session(db, project_id, visitor_id, event_id, event_time):
+    """Return an existing session id or create one after 30 minutes idle or a new UTC day."""
+    if not visitor_id:
+        return None
+    params = {'project': project_id, 'visitor': visitor_id, 'id': event_id, 'ts': stamp(event_time)}
+    neighbours = [
+        db.execute(text('SELECT occurred_at, session_id FROM events WHERE project_id=:project AND visitor_id=:visitor AND id<>:id AND occurred_at<=:ts ORDER BY occurred_at DESC LIMIT 1'), params).mappings().first(),
+        db.execute(text('SELECT occurred_at, session_id FROM events WHERE project_id=:project AND visitor_id=:visitor AND id<>:id AND occurred_at>=:ts ORDER BY occurred_at ASC LIMIT 1'), params).mappings().first(),
+    ]
+    for row in neighbours:
+        if not row or not row['session_id']:
+            continue
+        try:
+            last = parse_stamp(row['occurred_at'])
+        except ValueError:
+            continue
+        gap = abs((event_time - last).total_seconds())
+        if gap <= SESSION_IDLE_SECONDS and last.astimezone(timezone.utc).date() == event_time.astimezone(timezone.utc).date():
+            return row['session_id']
+    return str(uuid4())
+
+def typed_property(value):
+    """Return canonical storage columns and a type name for a property value."""
+    if isinstance(value, bool):
+        return ('true' if value else 'false'), None, value, 'boolean'
+    return str(value), float(value), None, 'number'
+
+def store_event_properties(db, project_id, event_id, properties, at):
+    """Index each property and update the project's declared-key registry."""
+    for name, value in properties.items():
+        value_text, value_number, value_boolean, value_type = typed_property(value)
+        db.execute(text('''
+            INSERT INTO event_properties (project_id,event_id,name,value_text,value_number,value_boolean)
+            VALUES (:project,:event,:name,:text,:number,:boolean)
+            ON CONFLICT (project_id,event_id,name) DO NOTHING
+        '''), {'project':project_id,'event':event_id,'name':name,'text':value_text,'number':value_number,'boolean':value_boolean})
+        db.execute(text('''
+            INSERT INTO project_property_keys (project_id,name,value_type,first_seen_at,last_seen_at)
+            VALUES (:project,:name,:type,:at,:at)
+            ON CONFLICT (project_id,name) DO UPDATE SET
+              value_type=CASE WHEN project_property_keys.value_type=excluded.value_type THEN project_property_keys.value_type ELSE 'mixed' END,
+              first_seen_at=LEAST(project_property_keys.first_seen_at,excluded.first_seen_at),
+              last_seen_at=GREATEST(project_property_keys.last_seen_at,excluded.last_seen_at)
+        '''), {'project':project_id,'name':name,'type':value_type,'at':at})
+
+def property_filter(property_key, value):
+    """Return a SQL fragment and params matching an indexed property, or empty when unfiltered."""
+    if not property_key:
+        return '', {}
+    params = {'prop_name': property_key, 'prop_text': value}
+    match = 'ep.value_text = :prop_text'
+    try:
+        params['prop_number'] = float(value)
+    except (TypeError, ValueError):
+        pass
+    else:
+        match = '(ep.value_text = :prop_text OR ep.value_number = :prop_number)'
+    return f'ep.name = :prop_name AND {match}', params
+
+RATE_WINDOW_SECONDS = 60
+RATE_LIMIT_IP_PER_MINUTE = int(os.getenv('RATE_LIMIT_IP_PER_MINUTE', '120'))
+RATE_LIMIT_PROJECT_PER_MINUTE = int(os.getenv('RATE_LIMIT_PROJECT_PER_MINUTE', '600'))
+SESSION_IDLE_MINUTES = int(os.getenv('SESSION_IDLE_MINUTES', '30'))
+SESSION_IDLE_SECONDS = SESSION_IDLE_MINUTES * 60
+
+class RateLimiter:
+    """Durable fixed-window counter shared by every process using the same database."""
+    def __init__(self, db_engine, clock=time.time):
+        self.engine = db_engine
+        self.clock = clock
+
+    def consume(self, bucket, limit, window_seconds=RATE_WINDOW_SECONDS):
+        window = int(self.clock()) // window_seconds * window_seconds
+        with self.engine.begin() as db:
+            hits = db.execute(text('''
+                INSERT INTO rate_limits (bucket, window_start, hits) VALUES (:bucket, :window, 1)
+                ON CONFLICT (bucket) DO UPDATE SET
+                    hits = CASE WHEN rate_limits.window_start = :window THEN rate_limits.hits + 1 ELSE 1 END,
+                    window_start = :window
+                RETURNING hits
+            '''), {'bucket': bucket, 'window': window}).scalar_one()
+        return hits <= limit
+
+limiter = RateLimiter(engine)
 async def session_user(crease_session: str | None = Cookie(default=None)):
     if not crease_session: raise HTTPException(401, 'Sign in required')
     with engine.connect() as db:
@@ -136,6 +227,7 @@ class GitHubInstallInput(BaseModel):
     repository: str = Field(min_length=3, max_length=200)
     path: str = Field(min_length=1, max_length=250)
     installation_id: int = Field(gt=0)
+    write_key: str = Field(min_length=1, max_length=200)
 
 class GitRepositoryInput(BaseModel):
     repository: str = Field(min_length=3, max_length=200, pattern=r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
@@ -254,7 +346,7 @@ async def github_install(project_id: str, data: GitHubInstallInput, crease_app_t
     token = app_user_token(crease_app_token, user)
     result, _ = await github_app_pages(token, f'/user/installations/{data.installation_id}/repositories', 'repositories')
     if not any(repo['full_name'].lower() == data.repository.lower() for repo in result): raise HTTPException(403, 'Repository is not accessible to this account')
-    return await create_install_pr(token, data.repository, data.path, project_id, CREASE_PUBLIC_ORIGIN)
+    return await create_install_pr(token, data.repository, data.path, project_id, CREASE_PUBLIC_ORIGIN, data.write_key)
 
 @app.post('/api/projects/{project_id}/github-install/enable-tracking')
 async def enable_github_tracking(project_id: str, crease_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
@@ -299,6 +391,8 @@ async def projects(user=Depends(session_user)):
     since = stamp(now() - timedelta(days=7))
     with engine.connect() as db:
         rows = db.execute(text('''SELECT p.id, p.name, p.domain, p.retention_days,
+            (p.write_key_hash IS NOT NULL) AS has_write_key,
+            (p.verified_at IS NOT NULL) AS verified,
             (SELECT COUNT(DISTINCT e.visitor_id) FROM events e WHERE e.project_id=p.id AND e.occurred_at>=:since) AS visitors_7d,
             (SELECT COUNT(*) FROM events e WHERE e.project_id=p.id AND e.occurred_at>=:since) AS events_7d,
             (SELECT MAX(e.occurred_at) FROM events e WHERE e.project_id=p.id) AS last_event_at
@@ -311,8 +405,85 @@ async def create_project(data: ProjectInput, user=Depends(session_user)):
     if not re.fullmatch(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', domain): raise HTTPException(422, 'Enter a hostname without a scheme or path')
     if not data.name.strip(): raise HTTPException(422, 'Project name is required')
     result = {'id':str(uuid4()),'name':data.name.strip(),'domain':domain,'retention_days':90}
-    with engine.begin() as db: db.execute(text('INSERT INTO projects (id,user_id,name,domain,retention_days) VALUES (:id,:user,:name,:domain,90)'), {**result,'user':user['id']})
-    return result
+    write_key = new_write_key()
+    verification_token = new_verification_token()
+    with engine.begin() as db: db.execute(text('INSERT INTO projects (id,user_id,name,domain,retention_days,write_key_hash,verification_token) VALUES (:id,:user,:name,:domain,90,:key_hash,:verification_token)'), {**result,'user':user['id'],'key_hash':digest(write_key),'verification_token':verification_token})
+    return {**result, 'write_key': write_key, 'verification_token': verification_token, 'verified': False}
+
+@app.post('/api/projects/{project_id}/write-key', status_code=201)
+async def rotate_write_key(project_id: str, user=Depends(session_user)):
+    write_key = new_write_key()
+    with engine.begin() as db:
+        owned(db, project_id, user['id'])
+        db.execute(text('UPDATE projects SET write_key_hash=:key_hash WHERE id=:id'), {'key_hash':digest(write_key),'id':project_id})
+    return {'write_key': write_key}
+
+def verification_record(token): return 'crease-site-verification=' + token
+
+def public_host(domain):
+    try:
+        addresses = socket.getaddrinfo(domain, None)
+    except OSError:
+        return False
+    if not addresses:
+        return False
+    for address in addresses:
+        try:
+            ip = ipaddress.ip_address(address[4][0])
+        except ValueError:
+            return False
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+            return False
+    return True
+
+async def dns_has_token(domain, token):
+    try:
+        async with httpx.AsyncClient(timeout=6) as client:
+            response = await client.get('https://cloudflare-dns.com/dns-query', params={'name':domain,'type':'TXT'}, headers={'Accept':'application/dns-json'})
+        if response.status_code != 200: return False
+        answers = response.json().get('Answer', [])
+    except (httpx.RequestError, ValueError, AttributeError):
+        return False
+    expected = verification_record(token)
+    for answer in answers:
+        data = str(answer.get('data', '')).replace('"', '').strip()
+        if data == expected or token in data: return True
+    return False
+
+async def meta_has_token(domain, token):
+    if not await asyncio.to_thread(public_host, domain): return False
+    for scheme in ('https', 'http'):
+        try:
+            async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+                response = await client.get(f'{scheme}://{domain}/')
+            if response.status_code != 200: continue
+            text = response.text[:300_000]
+        except (httpx.RequestError, ValueError):
+            continue
+        for tag in re.findall(r'<meta\b[^>]*>', text, re.I):
+            if not re.search(r'name\s*=\s*["\']crease-site-verification["\']', tag, re.I): continue
+            if token in tag: return True
+    return False
+
+@app.get('/api/projects/{project_id}/verification')
+async def get_verification(project_id: str, user=Depends(session_user)):
+    with engine.connect() as db:
+        row = owned(db, project_id, user['id'])
+    return {'token':row['verification_token'],'verified':bool(row['verified_at']),'verified_at':row['verified_at'],'record':verification_record(row['verification_token']),'meta':f'<meta name="crease-site-verification" content="{row["verification_token"]}" />'}
+
+@app.post('/api/projects/{project_id}/verification/check')
+async def check_verification(project_id: str, user=Depends(session_user)):
+    with engine.connect() as db:
+        row = owned(db, project_id, user['id'])
+    token, domain = row['verification_token'], row['domain']
+    method = 'dns' if await dns_has_token(domain, token) else None
+    if not method and await meta_has_token(domain, token): method = 'meta'
+    checked_at = stamp(now())
+    if method:
+        with engine.begin() as db:
+            owned(db, project_id, user['id'])
+            db.execute(text('UPDATE projects SET verified_at=COALESCE(verified_at,:checked_at) WHERE id=:id'), {'checked_at':checked_at,'id':project_id})
+    return {'verified':bool(row['verified_at'] or method),'method':method,'checked_at':checked_at}
 
 @app.delete('/api/projects/{project_id}')
 async def delete_project(project_id: str, user=Depends(session_user)):
@@ -320,7 +491,10 @@ async def delete_project(project_id: str, user=Depends(session_user)):
         owned(db, project_id, user['id'])
         db.execute(text('DELETE FROM project_repositories WHERE project_id=:id'), {'id':project_id})
         db.execute(text('DELETE FROM project_vercel WHERE project_id=:id'), {'id':project_id})
+        db.execute(text('DELETE FROM event_properties WHERE project_id=:id'), {'id':project_id})
+        db.execute(text('DELETE FROM project_property_keys WHERE project_id=:id'), {'id':project_id})
         db.execute(text('DELETE FROM events WHERE project_id=:id'), {'id':project_id})
+        db.execute(text('DELETE FROM analytics_sessions WHERE project_id=:id'), {'id':project_id})
         db.execute(text('DELETE FROM projects WHERE id=:id'), {'id':project_id})
     return {'ok':True}
 
@@ -329,7 +503,6 @@ async def retention(project_id: str, data: RetentionInput, user=Depends(session_
     with engine.begin() as db:
         owned(db, project_id, user['id'])
         db.execute(text('UPDATE projects SET retention_days=:days WHERE id=:id'), {'days':data.retention_days,'id':project_id})
-        db.execute(text('DELETE FROM events WHERE project_id=:id AND occurred_at<:cutoff'), {'id':project_id,'cutoff':stamp(now()-timedelta(days=data.retention_days))})
     return {'retention_days':data.retention_days}
 
 class Event(BaseModel):
@@ -346,23 +519,41 @@ class Batch(BaseModel):
     projectId: str = Field(max_length=36)
     events: list[Event] = Field(min_length=1,max_length=20)
 
-hits = defaultdict(deque)
 @app.middleware('http')
 async def limits(request: Request, call_next):
     origin = request.headers.get('origin')
     if request.url.path == '/api/events' and request.method == 'OPTIONS':
-        return Response(status_code=204, headers={'Access-Control-Allow-Origin': origin or 'null', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Vary': 'Origin'})
-    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path != '/api/events' and origin != FRONTEND_URL:
+        return Response(status_code=204, headers={'Access-Control-Allow-Origin': origin or 'null', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Crease-Key', 'Vary': 'Origin'})
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events') and origin != FRONTEND_URL:
         return Response(status_code=403)
-    if request.url.path == '/api/events':
+    if request.url.path in ('/api/events', '/internal/events'):
+        if request.url.path == '/internal/events':
+            peer = request.client.host if request.client else 'unknown'
+            if not limiter.consume('forward-peer:' + peer, RATE_LIMIT_PROJECT_PER_MINUTE):
+                return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
+            supplied_secret = request.headers.get('x-crease-forward-secret', '')
+            if not GEO_FORWARD_SECRET or not secrets.compare_digest(digest(supplied_secret), digest(GEO_FORWARD_SECRET)):
+                return Response(status_code=401)
         length = request.headers.get('content-length')
         if length and (not length.isdigit() or int(length)>32768): return Response(status_code=413)
         body = await request.body()
         if len(body)>32768: return Response(status_code=413)
-        key = request.client.host if request.client else 'unknown'; current = time.monotonic(); q = hits[key]
-        while q and q[0] < current-60: q.popleft()
-        if len(q)>=120: return Response(status_code=429)
-        q.append(current)
+        try:
+            parsed = json.loads(body)
+            project_id = parsed.get('projectId') if isinstance(parsed, dict) else None
+        except (ValueError, UnicodeDecodeError):
+            project_id = None
+        client_key = request.client.host if request.client else 'unknown'
+        if request.url.path == '/internal/events':
+            forwarded_ip = request.headers.get('x-crease-client-ip', '')
+            try:
+                client_key = str(ipaddress.ip_address(forwarded_ip))
+            except ValueError:
+                client_key = 'proxy-unknown'
+        if not limiter.consume('ip:' + client_key, RATE_LIMIT_IP_PER_MINUTE):
+            return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
+        if isinstance(project_id, str) and project_id and not limiter.consume('project:' + project_id, RATE_LIMIT_PROJECT_PER_MINUTE):
+            return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
     response = await call_next(request)
     if request.url.path == '/api/events' and origin:
         response.headers['Access-Control-Allow-Origin'] = origin
@@ -370,11 +561,27 @@ async def limits(request: Request, call_next):
     return response
 
 @app.post('/api/events')
+@app.post('/internal/events')
 async def ingest(data: Batch, request: Request):
+    country = None
+    if request.url.path == '/internal/events':
+        forwarded_country = request.headers.get('x-crease-country')
+        if forwarded_country is not None:
+            if forwarded_country not in ISO_COUNTRIES:
+                raise HTTPException(422, 'Invalid country code')
+            if TRUST_VERCEL_GEO:
+                country = forwarded_country
     origin = request.headers.get('origin', '')
     with engine.begin() as db:
-        project = db.execute(text('SELECT domain FROM projects WHERE id=:id'), {'id':data.projectId}).mappings().first()
+        project = db.execute(text('SELECT domain, write_key_hash, verified_at FROM projects WHERE id=:id'), {'id':data.projectId}).mappings().first()
         if not project: raise HTTPException(404, 'Project not found')
+        supplied = request.headers.get('x-crease-key', '')
+        if not supplied and request.headers.get('authorization', '').lower().startswith('bearer '):
+            supplied = request.headers['authorization'][7:].strip()
+        if not project['write_key_hash'] or not supplied or not secrets.compare_digest(digest(supplied), project['write_key_hash']):
+            raise HTTPException(401, 'Invalid project write key')
+        if not project['verified_at']:
+            raise HTTPException(403, 'Project domain is not verified')
         host = urlsplit(origin).hostname if origin else None
         domain = project['domain']
         alternate = domain[4:] if domain.startswith('www.') else 'www.' + domain
@@ -384,18 +591,33 @@ async def ingest(data: Batch, request: Request):
             if not e.path.startswith('/') or '?' in e.path or '#' in e.path: raise HTTPException(422, 'Invalid path')
             if len(e.properties)>20 or any(not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_.-]{0,63}', k) or re.search(r'password|token|secret|email', k, re.I) or not isinstance(v, (int, float, bool)) for k,v in e.properties.items()): raise HTTPException(422, 'Invalid event properties')
             t = e.timestamp if e.timestamp.tzinfo else e.timestamp.replace(tzinfo=timezone.utc)
-            if abs((now()-t.astimezone(timezone.utc)).total_seconds()) > 86400 * 7: raise HTTPException(422, 'Event timestamp out of range')
+            event_time = t.astimezone(timezone.utc)
+            if abs((now()-event_time).total_seconds()) > 86400 * 7: raise HTTPException(422, 'Event timestamp out of range')
             ua = request.headers.get('user-agent','').lower(); device = 'mobile' if 'mobile' in ua else 'desktop' if ua else 'unknown'
-            country = request.headers.get('x-vercel-ip-country', '').upper() if TRUST_VERCEL_GEO else ''
-            if not re.fullmatch(r'[A-Z]{2}', country): country = None
             referrer = e.referrer.lower() if e.referrer and re.fullmatch(r'[a-zA-Z0-9.-]+', e.referrer) else None
-            result=db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,country,device,referrer,properties) VALUES (:project,:id,:name,:ts,:path,:visitor,:session,:country,:device,:referrer,:properties) ON CONFLICT (project_id,id) DO NOTHING'), {'project':data.projectId,'id':e.id,'name':e.name,'ts':stamp(t.astimezone(timezone.utc)),'path':e.path,'visitor':e.visitorId,'session':e.sessionId,'country':country,'device':device,'referrer':referrer,'properties':json.dumps(e.properties)})
+            session_id = resolve_session(db, data.projectId, e.visitorId, e.id, event_time)
+            result=db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,country,device,referrer,properties) VALUES (:project,:id,:name,:ts,:path,:visitor,:session,:country,:device,:referrer,:properties) ON CONFLICT (project_id,id) DO NOTHING'), {'project':data.projectId,'id':e.id,'name':e.name,'ts':stamp(event_time),'path':e.path,'visitor':e.visitorId,'session':session_id,'country':country,'device':device,'referrer':referrer,'properties':json.dumps(e.properties)})
             inserted += result.rowcount
+            if result.rowcount and e.properties:
+                store_event_properties(db, data.projectId, e.id, e.properties, stamp(event_time))
+            if result.rowcount and session_id:
+                db.execute(text('''
+                    INSERT INTO analytics_sessions (project_id,session_id,visitor_id,started_at,last_activity_at,entry_page,exit_page,pageview_count)
+                    VALUES (:project,:session,:visitor,:at,:at,:path,:path,:pageview)
+                    ON CONFLICT (project_id,session_id) DO UPDATE SET
+                      visitor_id=COALESCE(analytics_sessions.visitor_id,excluded.visitor_id),
+                      entry_page=CASE WHEN excluded.started_at < analytics_sessions.started_at THEN excluded.entry_page ELSE analytics_sessions.entry_page END,
+                      started_at=CASE WHEN excluded.started_at < analytics_sessions.started_at THEN excluded.started_at ELSE analytics_sessions.started_at END,
+                      exit_page=CASE WHEN excluded.last_activity_at >= analytics_sessions.last_activity_at THEN excluded.exit_page ELSE analytics_sessions.exit_page END,
+                      last_activity_at=CASE WHEN excluded.last_activity_at > analytics_sessions.last_activity_at THEN excluded.last_activity_at ELSE analytics_sessions.last_activity_at END,
+                      pageview_count=analytics_sessions.pageview_count+excluded.pageview_count
+                '''), {'project':data.projectId,'session':session_id,'visitor':e.visitorId,'at':stamp(event_time),'path':e.path,'pageview':1 if e.name == 'pageview' else 0})
     return {'accepted': inserted}
 
 @app.get('/api/projects/{project_id}/summary')
-async def summary(project_id: str, days: int = 30, user=Depends(session_user)):
+async def summary(project_id: str, days: int = 30, property: str | None = Query(default=None, max_length=64), value: str | None = Query(default=None, max_length=256), user=Depends(session_user)):
     if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
+    if (property is None) != (value is None): raise HTTPException(422, 'property and value must be provided together')
     end = now()
     start = end - timedelta(days=days-1)
     previous_start = start - timedelta(days=days)
@@ -403,14 +625,39 @@ async def summary(project_id: str, days: int = 30, user=Depends(session_user)):
     previous_params={'id':project_id,'since':stamp(previous_start),'until':stamp(start)}
     with engine.connect() as db:
         owned(db, project_id, user['id'])
+        source = 'events'
+        if property is not None:
+            known = db.execute(text('SELECT 1 FROM project_property_keys WHERE project_id=:id AND name=:name'), {'id':project_id,'name':property}).first()
+            if not known: raise HTTPException(422, 'Unknown property key')
+            clause, extra = property_filter(property, value)
+            params.update(extra)
+            previous_params.update(extra)
+            source = f'(SELECT e.* FROM events e JOIN event_properties ep ON ep.project_id=e.project_id AND ep.event_id=e.id WHERE {clause}) AS events'
         def metric_window(query_params, until=False):
             clause = ' AND occurred_at<:until' if until else ''
-            row = db.execute(text(f"SELECT COUNT(*) AS events, SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews, COUNT(DISTINCT visitor_id) AS visitors, COUNT(DISTINCT session_id) AS sessions FROM events WHERE project_id=:id AND occurred_at>=:since{clause}"), query_params).mappings().one()
+            row = db.execute(text(f"SELECT COUNT(*) AS events, SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews, COUNT(DISTINCT visitor_id) AS visitors FROM {source} WHERE project_id=:id AND occurred_at>=:since{clause}"), query_params).mappings().one()
+            row = dict(row)
+            if property is not None:
+                row['sessions'] = db.execute(text(f'SELECT COUNT(DISTINCT session_id) FROM {source} WHERE project_id=:id AND occurred_at>=:since{clause}'), query_params).scalar_one()
+            else:
+                session_clause = ' AND started_at<:until' if until else ''
+                row['sessions'] = db.execute(text(f'SELECT COUNT(*) FROM analytics_sessions WHERE project_id=:id AND started_at>=:since{session_clause}'), query_params).scalar_one()
             return {k:(v or 0) for k,v in row.items()}
         metrics=metric_window(params)
         previous=metric_window(previous_params, until=True)
+        if property is not None:
+            session_rows=db.execute(text(f'SELECT MIN(occurred_at) AS started_at, MAX(occurred_at) AS last_activity_at FROM {source} WHERE project_id=:id AND occurred_at>=:since AND session_id IS NOT NULL GROUP BY session_id'), params).mappings().all()
+        else:
+            session_rows=db.execute(text('SELECT started_at,last_activity_at FROM analytics_sessions WHERE project_id=:id AND started_at>=:since'), params).mappings().all()
+        durations=[]
+        for row in session_rows:
+            try:
+                elapsed=(datetime.fromisoformat(row['last_activity_at'])-datetime.fromisoformat(row['started_at'])).total_seconds()
+                if elapsed >= 0: durations.append(elapsed)
+            except (TypeError, ValueError):
+                continue
         last_event_at=db.execute(text('SELECT MAX(occurred_at) FROM events WHERE project_id=:id'), {'id':project_id}).scalar()
-        daily=db.execute(text("SELECT substr(occurred_at,1,10) AS day, COUNT(*) AS events, SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews, COUNT(DISTINCT visitor_id) AS visitors, COUNT(DISTINCT session_id) AS sessions FROM events WHERE project_id=:id AND occurred_at>=:since GROUP BY substr(occurred_at,1,10) ORDER BY day"), params).mappings()
+        daily=db.execute(text(f"SELECT substr(occurred_at,1,10) AS day, COUNT(*) AS events, SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews, COUNT(DISTINCT visitor_id) AS visitors, COUNT(DISTINCT session_id) AS sessions FROM {source} WHERE project_id=:id AND occurred_at>=:since GROUP BY substr(occurred_at,1,10) ORDER BY day"), params).mappings()
         daily_rows={row['day']:row for row in daily}
         series=[]
         day=start.date()
@@ -419,8 +666,82 @@ async def summary(project_id: str, days: int = 30, user=Depends(session_user)):
             series.append({'date':day.isoformat(),'events':int((row or {}).get('events') or 0),'pageviews':int((row or {}).get('pageviews') or 0),'visitors':int((row or {}).get('visitors') or 0),'sessions':int((row or {}).get('sessions') or 0)})
             day += timedelta(days=1)
         def breakdown(column):
-            return [dict(r) for r in db.execute(text(f'SELECT COALESCE({column}, :unknown) AS label, COUNT(*) AS count FROM events WHERE project_id=:id AND occurred_at>=:since AND name=:name GROUP BY {column} ORDER BY count DESC LIMIT 10'), {**params,'unknown':'Unknown','name':'pageview'}).mappings()]
-        return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'referrers':breakdown('referrer'),'days':days}
+            return [dict(r) for r in db.execute(text(f'SELECT COALESCE({column}, :unknown) AS label, COUNT(*) AS count FROM {source} WHERE project_id=:id AND occurred_at>=:since AND name=:name GROUP BY {column} ORDER BY count DESC LIMIT 10'), {**params,'unknown':'Unknown','name':'pageview'}).mappings()]
+        event_names=[dict(r) for r in db.execute(text('SELECT name AS label, COUNT(*) AS count FROM events WHERE project_id=:id AND occurred_at>=:since GROUP BY name ORDER BY count DESC LIMIT 20'), params).mappings()]
+        return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'referrers':breakdown('referrer'),'event_names':event_names,'days':days,'filter':{'property':property,'value':value},'average_session_duration_seconds':round(sum(durations)/len(durations)) if durations else 0}
+
+@app.get('/api/projects/{project_id}/properties')
+async def properties(project_id: str, user=Depends(session_user)):
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        rows = db.execute(text('''
+            SELECT k.name, k.value_type, k.first_seen_at, k.last_seen_at,
+                   COUNT(ep.event_id) AS event_count,
+                   COUNT(DISTINCT ep.value_text) AS distinct_values
+            FROM project_property_keys k
+            LEFT JOIN event_properties ep ON ep.project_id=k.project_id AND ep.name=k.name
+            WHERE k.project_id=:id
+            GROUP BY k.name, k.value_type, k.first_seen_at, k.last_seen_at
+            ORDER BY k.name
+        '''), {'id':project_id}).mappings().all()
+        value_rows = db.execute(text('''
+            SELECT name, value_text, COUNT(*) AS count
+            FROM event_properties WHERE project_id=:id
+            GROUP BY name, value_text ORDER BY name, count DESC
+        '''), {'id':project_id}).mappings().all()
+    values = {}
+    for row in value_rows:
+        values.setdefault(row['name'], []).append({'value':row['value_text'],'count':int(row['count'])})
+    return [{**dict(row), 'event_count':int(row['event_count']), 'distinct_values':int(row['distinct_values']), 'values':values.get(row['name'], [])[:20]} for row in rows]
+
+@app.get('/api/projects/{project_id}/events')
+async def project_events(project_id: str, days: int = 30, event: str | None = Query(default=None, max_length=64), path: str | None = Query(default=None, max_length=512), property: str | None = Query(default=None, max_length=64), value: str | None = Query(default=None, max_length=256), limit: int = 100, user=Depends(session_user)):
+    if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
+    if not 1 <= limit <= 200: raise HTTPException(422, 'Limit must be between 1 and 200')
+    if (property is None) != (value is None): raise HTTPException(422, 'property and value must be provided together')
+    params = {'id':project_id, 'since':stamp(now()-timedelta(days=days-1)), 'limit':limit}
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        source = 'events e'
+        where = ['e.project_id=:id', 'e.occurred_at>=:since']
+        if property is not None:
+            known = db.execute(text('SELECT 1 FROM project_property_keys WHERE project_id=:id AND name=:name'), {'id':project_id,'name':property}).first()
+            if not known: raise HTTPException(422, 'Unknown property key')
+            clause, extra = property_filter(property, value)
+            params.update(extra)
+            source = 'events e JOIN event_properties ep ON ep.project_id=e.project_id AND ep.event_id=e.id'
+            where.append(clause)
+        if event is not None:
+            where.append('e.name=:event'); params['event'] = event
+        if path is not None:
+            where.append('e.path=:path'); params['path'] = path
+        rows = db.execute(text(f"SELECT e.id, e.name, e.occurred_at, e.path, e.visitor_id, e.session_id, e.country, e.device, e.referrer, e.properties FROM {source} WHERE " + ' AND '.join(where) + ' ORDER BY e.occurred_at DESC LIMIT :limit'), params).mappings().all()
+    return [{'id':row['id'],'name':row['name'],'occurred_at':row['occurred_at'],'path':row['path'],'visitor_id':row['visitor_id'],'session_id':row['session_id'],'country':row['country'],'device':row['device'],'referrer':row['referrer'],'properties':json.loads(row['properties'])} for row in rows]
+
+@app.get('/api/projects/{project_id}/funnel')
+async def funnel(project_id: str, first: str = Query(min_length=1, max_length=64), second: str = Query(min_length=1, max_length=64), days: int = 30, user=Depends(session_user)):
+    if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
+    params = {'id':project_id, 'since':stamp(now()-timedelta(days=days-1)), 'first':first, 'second':second}
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        row = db.execute(text('''
+            WITH first_step AS (
+                SELECT session_id, MIN(occurred_at) AS at
+                FROM events
+                WHERE project_id=:id AND name=:first AND occurred_at>=:since AND session_id IS NOT NULL
+                GROUP BY session_id
+            ), second_step AS (
+                SELECT DISTINCT f.session_id
+                FROM first_step f
+                JOIN events e ON e.project_id=:id AND e.session_id=f.session_id
+                    AND e.name=:second AND e.occurred_at>=f.at AND e.occurred_at>=:since
+            )
+            SELECT (SELECT COUNT(*) FROM first_step) AS first_count,
+                   (SELECT COUNT(*) FROM second_step) AS second_count
+        '''), params).mappings().one()
+    first_count = int(row['first_count'] or 0)
+    second_count = int(row['second_count'] or 0)
+    return {'first':first,'second':second,'first_count':first_count,'second_count':second_count,'conversion':round(second_count/first_count, 4) if first_count else 0,'days':days}
 
 # Vercel access is per Crease account, encrypted at rest, and never sent to the browser.
 def vercel_cipher():

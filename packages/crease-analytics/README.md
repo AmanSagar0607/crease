@@ -12,7 +12,7 @@ npm i @crease/analytics
 import { Analytics } from '@crease/analytics/next';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html><body>{children}<Analytics projectId="YOUR_PROJECT_ID" /></body></html>;
+  return <html><body>{children}<Analytics projectId="YOUR_PROJECT_ID" writeKey="crease_YOUR_PROJECT_WRITE_KEY" /></body></html>;
 }
 ```
 
@@ -20,8 +20,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 ```js
 import { init } from '@crease/analytics';
-const analytics = init({ projectId: 'YOUR_PROJECT_ID' });
+const analytics = init({ projectId: 'YOUR_PROJECT_ID', writeKey: 'crease_YOUR_PROJECT_WRITE_KEY' });
 analytics.track('signup_completed', { plan: 'free' });
 ```
 
-Only initialize analytics when your consent policy permits it. Pass `enabled={false}` to the Next.js component until consent is granted, then render it with `enabled` set to `true`.
+Only initialize analytics when your consent policy permits it. Pass `enabled={false}` to the Next.js component until consent is granted, then render it with `enabled` set to `true`. `init` fails closed without a valid write key. The package tracks initial navigation, History API push/replace, query-only changes and browser back/forward, suppressing duplicate pageviews. It shares a persistent first-party visitor and session hint across tabs; the collector assigns the authoritative session after 30 minutes of inactivity or at a UTC day boundary. Use `analytics.reset()` to start a fresh anonymous identity and `analytics.optOut()` to stop collection and clear identifiers. Events are sent in batches of up to 20 and retried on transient network failures.

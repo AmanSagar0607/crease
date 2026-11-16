@@ -7,6 +7,7 @@ import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
 import ThemeToggle from '../theme-toggle';
 import LivingCat from '../mascot/living-cat';
+import AnalyticsCharts from './AnalyticsCharts';
 import { dispatchMascotEvent } from '../mascot/mascot-events';
 import s from './dashboard.module.css';
 
@@ -19,10 +20,42 @@ type Project = {
   visitors_7d?: number;
   events_7d?: number;
   last_event_at?: string | null;
+  has_write_key?: boolean;
+  write_key?: string;
+  verified?: boolean;
+};
+type Verification = {
+  token: string;
+  verified: boolean;
+  verified_at: string | null;
+  record: string;
+  meta: string;
 };
 type Breakdown = { label: string; count: number };
 type SeriesPoint = { date: string; events: number; pageviews: number; visitors: number; sessions: number };
 type Metrics = { events: number; pageviews: number; visitors: number; sessions: number };
+type PropertyValue = { value: string; count: number };
+type PropertyKey = {
+  name: string;
+  value_type: 'number' | 'boolean' | 'mixed';
+  event_count: number;
+  distinct_values: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  values: PropertyValue[];
+};
+type EventRow = {
+  id: string;
+  name: string;
+  occurred_at: string;
+  path: string;
+  visitor_id: string | null;
+  session_id: string | null;
+  country: string | null;
+  device: string | null;
+  referrer: string | null;
+  properties: Record<string, number | boolean>;
+};
 type Summary = {
   metrics: Metrics;
   previous: Metrics;
@@ -32,11 +65,42 @@ type Summary = {
   devices: Breakdown[];
   countries: Breakdown[];
   referrers: Breakdown[];
+  event_names: Breakdown[];
+  days: number;
+  filter?: { property: string | null; value: string | null };
+};
+type Funnel = {
+  first: string;
+  second: string;
+  first_count: number;
+  second_count: number;
+  conversion: number;
   days: number;
 };
 type Delta = { label: string; dir: 'up' | 'down' | 'flat' };
 
 const firstPageviewSeen = new Set<string>();
+
+function writeKeyStorage(projectId: string) {
+  return `crease-write-key:${projectId}`;
+}
+
+function readWriteKey(projectId: string) {
+  try {
+    return window.localStorage.getItem(writeKeyStorage(projectId)) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function saveWriteKey(projectId: string, key: string) {
+  try {
+    if (key) window.localStorage.setItem(writeKeyStorage(projectId), key);
+    else window.localStorage.removeItem(writeKeyStorage(projectId));
+  } catch {
+    // Storage can be unavailable; the key stays in component state for this session.
+  }
+}
 
 function celebrateFirstPageview(projectId: string, summary: Summary, project?: Project) {
   if (!project || summary.metrics.pageviews <= 0 || !project.last_event_at) return;
@@ -57,8 +121,12 @@ function celebrateFirstPageview(projectId: string, summary: Summary, project?: P
   dispatchMascotEvent({ kind: 'first-pageview', projectName: project.name });
 }
 
+const SESSION_DEFINITION = 'Sessions end after 30 min idle or at UTC midnight';
+const NO_BREAKDOWNS: Breakdown[] = [];
 const TABS = ['analytics', 'installation', 'integrations', 'settings'] as const;
 type Tab = (typeof TABS)[number];
+const ANALYTICS_SECTIONS = ['overview', 'visitors', 'pages', 'referrers', 'countries', 'funnel', 'events'] as const;
+type AnalyticsSection = (typeof ANALYTICS_SECTIONS)[number];
 
 class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -218,6 +286,13 @@ const ChevronIcon = ({ className }: { className?: string }) => (
   </Svg>
 );
 
+const ArrowLeftIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="M19 12H5" />
+    <path d="m12 19-7-7 7-7" />
+  </Svg>
+);
+
 /* ---------- Formatting helpers ---------- */
 
 function compact(value: number) {
@@ -290,12 +365,14 @@ function Sparkline({ values }: { values: number[] }) {
 /* ---------- Small building blocks ---------- */
 
 function BreakdownCard({
+  id,
   title,
   icon,
   rows,
   total,
   empty,
 }: {
+  id?: string;
   title: string;
   icon: ReactNode;
   rows: Breakdown[];
@@ -307,7 +384,7 @@ function BreakdownCard({
   const max = rows[0]?.count || 1;
 
   return (
-    <section className={s.breakdownCard}>
+    <section className={s.breakdownCard} id={id}>
       <div className={s.cardTop}>
         <h3>
           {icon}
@@ -352,6 +429,7 @@ function BreakdownCard({
 }
 
 function Kpi({
+  id,
   label,
   icon,
   value,
@@ -359,6 +437,7 @@ function Kpi({
   hint,
   series,
 }: {
+  id?: string;
   label: string;
   icon: ReactNode;
   value?: number;
@@ -367,7 +446,7 @@ function Kpi({
   series: number[];
 }) {
   return (
-    <article className={s.kpi}>
+    <article className={s.kpi} id={id}>
       <div className={s.kpiTop}>
         <span className={s.kpiIcon}>{icon}</span>
         <span>{label}</span>
@@ -387,9 +466,11 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [user, setUser] = useState<User | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState('');
+  const [showProjects, setShowProjects] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [busy, setBusy] = useState(true);
   const [summaryBusy, setSummaryBusy] = useState(false);
+  const [summaryError, setSummaryError] = useState('');
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
@@ -399,11 +480,37 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [retention, setRetention] = useState(30);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState('');
+  const [keyNotice, setKeyNotice] = useState('');
+  const [writeKey, setWriteKey] = useState('');
+  const [verification, setVerification] = useState<Verification | null>(null);
+  const [verificationBusy, setVerificationBusy] = useState(false);
+  const [verificationNotice, setVerificationNotice] = useState('');
+  const [setupChecking, setSetupChecking] = useState(false);
+  const [setupCheckAt, setSetupCheckAt] = useState<string | null>(null);
+  const [setupNotice, setSetupNotice] = useState('');
+  const [properties, setProperties] = useState<PropertyKey[]>([]);
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [eventsBusy, setEventsBusy] = useState(false);
+  const [propertyKey, setPropertyKey] = useState('');
+  const [propertyValue, setPropertyValue] = useState('');
+  const [funnelFirst, setFunnelFirst] = useState('');
+  const [funnelSecond, setFunnelSecond] = useState('');
+  const [funnel, setFunnel] = useState<Funnel | null>(null);
+  const [funnelBusy, setFunnelBusy] = useState(false);
   const [origin, setOrigin] = useState('');
   const [tab, setTab] = useState<Tab>('analytics');
-  const project = projects.find((item) => item.id === selected);
+  const [activeSection, setActiveSection] = useState<AnalyticsSection>('overview');
+  const project = showProjects ? undefined : projects.find((item) => item.id === selected);
   const projectRef = useRef<Project | undefined>(undefined);
   projectRef.current = project;
+  const activeProperty = properties.find((item) => item.name === propertyKey);
+  const activeFilter = propertyKey && propertyValue ? { property: propertyKey, value: propertyValue } : null;
+  const filterProperty = activeFilter?.property ?? '';
+  const filterValue = activeFilter?.value ?? '';
+  const filterQuery = activeFilter
+    ? `&property=${encodeURIComponent(activeFilter.property)}&value=${encodeURIComponent(activeFilter.value)}`
+    : '';
+  const eventNames = summary?.event_names ?? NO_BREAKDOWNS;
 
   const load = useCallback(async () => {
     try {
@@ -411,7 +518,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setUser(current);
       const list = await api<Project[]>('/api/projects');
       setProjects(list);
-      setSelected(projectId && list.some((project) => project.id === projectId) ? projectId : '');
+      const viewingProjects = !projectId && new URLSearchParams(window.location.search).get('view') === 'projects';
+      setShowProjects(viewingProjects);
+      setSelected(projectId ? (list.some((project) => project.id === projectId) ? projectId : '') : !viewingProjects && list.length === 1 ? list[0].id : '');
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         router.replace('/login');
@@ -427,14 +536,27 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const syncWorkspaceView = () => {
+      if (projectId) return;
+      const viewingProjects = new URLSearchParams(window.location.search).get('view') === 'projects';
+      setShowProjects(viewingProjects);
+      if (viewingProjects) setSelected('');
+      else if (projects.length === 1) setSelected(projects[0].id);
+    };
+    window.addEventListener('popstate', syncWorkspaceView);
+    return () => window.removeEventListener('popstate', syncWorkspaceView);
+  }, [projectId, projects]);
+
   const loadSummary = useCallback(async () => {
     if (!selected) {
       setSummary(null);
       return;
     }
     setSummaryBusy(true);
+    setSummaryError('');
     try {
-      const result = await api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=${days}`);
+      const result = await api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=${days}${filterQuery}`);
       setSummary(result);
       celebrateFirstPageview(selected, result, projectRef.current);
     } catch (e) {
@@ -442,21 +564,164 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         router.replace('/login');
         return;
       }
-      setError(e instanceof Error ? e.message : 'Could not load analytics.');
+      setSummaryError(e instanceof Error ? e.message : 'Could not load analytics.');
     } finally {
       setSummaryBusy(false);
     }
-  }, [selected, days, router]);
+  }, [selected, days, filterQuery, router]);
 
   useEffect(() => {
     void loadSummary();
   }, [loadSummary]);
 
+  const pollSetup = useCallback(async () => {
+    if (!selected) return;
+    setSetupChecking(true);
+    try {
+      const list = await api<Project[]>('/api/projects');
+      setProjects(list);
+      setSetupCheckAt(new Date().toISOString());
+      const current = list.find((item) => item.id === selected);
+      if (current?.last_event_at) {
+        setSetupNotice('Setup verified — the first events have arrived.');
+        await loadSummary();
+      } else {
+        setSetupNotice('');
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setSetupNotice(e instanceof Error ? e.message : 'Could not check for events.');
+    } finally {
+      setSetupChecking(false);
+    }
+  }, [selected, loadSummary, router]);
+
+  useEffect(() => {
+    if (tab !== 'installation' || !project || project.last_event_at) return;
+    void pollSetup();
+    const timer = window.setInterval(() => {
+      void pollSetup();
+    }, 10000);
+    return () => window.clearInterval(timer);
+  }, [tab, project?.id, project?.last_event_at, pollSetup]);
+
+  const loadProperties = useCallback(async () => {
+    if (!selected) {
+      setProperties([]);
+      return;
+    }
+    try {
+      setProperties(await api<PropertyKey[]>(`/api/projects/${encodeURIComponent(selected)}/properties`));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setError(e instanceof Error ? e.message : 'Could not load custom properties.');
+    }
+  }, [selected, router]);
+
+  useEffect(() => {
+    void loadProperties();
+  }, [loadProperties]);
+
+  const loadEvents = useCallback(async () => {
+    if (!selected) {
+      setEvents([]);
+      return;
+    }
+    setEventsBusy(true);
+    try {
+      const params = new URLSearchParams({ days: String(days), limit: '25' });
+      if (filterProperty && filterValue) {
+        params.set('property', filterProperty);
+        params.set('value', filterValue);
+      }
+      setEvents(await api<EventRow[]>(`/api/projects/${encodeURIComponent(selected)}/events?${params.toString()}`));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setError(e instanceof Error ? e.message : 'Could not load events.');
+    } finally {
+      setEventsBusy(false);
+    }
+  }, [selected, days, filterProperty, filterValue, router]);
+
+  useEffect(() => {
+    void loadEvents();
+  }, [loadEvents]);
+
+  useEffect(() => {
+    const names = eventNames.map((item) => item.label);
+    if (!names.length) {
+      setFunnelFirst('');
+      setFunnelSecond('');
+      return;
+    }
+    setFunnelFirst((current) => (names.includes(current) ? current : names[0]));
+    setFunnelSecond((current) => (names.includes(current) ? current : names[1] ?? names[0]));
+  }, [eventNames]);
+
+  const loadFunnel = useCallback(async () => {
+    if (!selected || !funnelFirst || !funnelSecond) {
+      setFunnel(null);
+      return;
+    }
+    setFunnelBusy(true);
+    try {
+      const params = new URLSearchParams({ first: funnelFirst, second: funnelSecond, days: String(days) });
+      setFunnel(await api<Funnel>(`/api/projects/${encodeURIComponent(selected)}/funnel?${params.toString()}`));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setError(e instanceof Error ? e.message : 'Could not load the funnel.');
+    } finally {
+      setFunnelBusy(false);
+    }
+  }, [selected, days, funnelFirst, funnelSecond, router]);
+
+  useEffect(() => {
+    void loadFunnel();
+  }, [loadFunnel]);
+
+  function chooseProperty(name: string) {
+    setPropertyKey(name);
+    setPropertyValue(properties.find((item) => item.name === name)?.values[0]?.value ?? '');
+  }
+
+  function clearPropertyFilter() {
+    setPropertyKey('');
+    setPropertyValue('');
+  }
+
+  function refreshAnalytics() {
+    setError('');
+    void loadSummary();
+    void loadProperties();
+    void loadEvents();
+    void loadFunnel();
+  }
+
   useEffect(() => {
     setOrigin(window.location.origin);
     const read = () => {
-      const candidate = window.location.hash.slice(1) as Tab;
-      setTab(TABS.includes(candidate) ? candidate : 'analytics');
+      const candidate = window.location.hash.slice(1);
+      if (ANALYTICS_SECTIONS.includes(candidate as AnalyticsSection)) {
+        setTab('analytics');
+        setActiveSection(candidate as AnalyticsSection);
+      } else if (TABS.includes(candidate as Tab)) {
+        setTab(candidate as Tab);
+      } else {
+        setTab('analytics');
+        setActiveSection('overview');
+      }
     };
     read();
     window.addEventListener('hashchange', read);
@@ -469,7 +734,92 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   useEffect(() => {
     setSettingsMessage('');
+    setKeyNotice('');
+    setWriteKey(selected ? readWriteKey(selected) : '');
+    setVerification(null);
+    setVerificationNotice('');
+    setSetupChecking(false);
+    setSetupCheckAt(null);
+    setSetupNotice('');
+    setProperties([]);
+    setEvents([]);
+    setPropertyKey('');
+    setPropertyValue('');
+    setFunnelFirst('');
+    setFunnelSecond('');
+    setFunnel(null);
+    setSummaryError('');
   }, [selected]);
+
+  const loadVerification = useCallback(async () => {
+    if (!selected) {
+      setVerification(null);
+      return;
+    }
+    try {
+      const result = await api<Verification>(`/api/projects/${encodeURIComponent(selected)}/verification`);
+      setVerification(result);
+      setProjects((list) =>
+        list.map((item) => (item.id === selected ? { ...item, verified: result.verified } : item)),
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setError(e instanceof Error ? e.message : 'Could not load domain verification status.');
+    }
+  }, [selected, router]);
+
+  useEffect(() => {
+    void loadVerification();
+  }, [loadVerification]);
+
+  async function checkVerification() {
+    if (!project) return;
+    setError('');
+    setVerificationNotice('');
+    setVerificationBusy(true);
+    try {
+      const result = await api<{ verified: boolean; method: string | null; checked_at: string }>(
+        `/api/projects/${encodeURIComponent(project.id)}/verification/check`,
+        { method: 'POST' },
+      );
+      setProjects((list) =>
+        list.map((item) => (item.id === project.id ? { ...item, verified: item.verified || result.verified } : item)),
+      );
+      setVerificationNotice(
+        result.verified
+          ? `Domain verified via ${result.method === 'meta' ? 'the root meta tag' : 'the DNS TXT record'}.`
+          : 'No matching DNS TXT record or meta tag found yet. DNS changes can take a few minutes to propagate.',
+      );
+      if (result.verified) await loadVerification();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not check domain verification.');
+    } finally {
+      setVerificationBusy(false);
+    }
+  }
+
+  async function generateWriteKey() {
+    if (!project) return;
+    setError('');
+    setKeyNotice('');
+    try {
+      const result = await api<{ write_key: string }>(
+        `/api/projects/${encodeURIComponent(project.id)}/write-key`,
+        { method: 'POST' },
+      );
+      saveWriteKey(project.id, result.write_key);
+      setWriteKey(result.write_key);
+      setProjects((list) =>
+        list.map((item) => (item.id === project.id ? { ...item, has_write_key: true } : item)),
+      );
+      setKeyNotice('New write key generated. Update every deployed copy of the snippet; the old key no longer works.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not generate a write key.');
+    }
+  }
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -480,10 +830,17 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         method: 'POST',
         body: JSON.stringify({ name, domain }),
       });
+      const isFirstProject = projects.length === 0;
       setProjects((list) => [...list, created]);
       setSelected(created.id);
       setName('');
       setDomain('');
+      saveWriteKey(created.id, created.write_key ?? '');
+      setWriteKey(created.write_key ?? '');
+      setKeyNotice(created.write_key ? 'Write key created. Copy the installation code now; it is also stored in this browser.' : '');
+      if (isFirstProject) {
+        dispatchMascotEvent({ kind: 'project-created', projectName: created.name });
+      }
       router.push(`/dashboard/projects/${encodeURIComponent(created.id)}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create the project.');
@@ -544,11 +901,15 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const snippet = `<script src="${origin}/crease.js" defer></script>
 <script>
   window.addEventListener('load', function () {
-    crease.init({ projectId: '${project?.id || ''}', endpoint: '${collector}' });
+    crease.init({ projectId: '${project?.id || ''}', writeKey: '${writeKey}', endpoint: '${collector}' });
   });
 </script>`;
 
   async function copySnippet() {
+    if (!writeKey) {
+      setError('Generate a write key before copying the installation code.');
+      return;
+    }
     try {
       await navigator.clipboard.writeText(snippet);
       setCopied(true);
@@ -560,36 +921,73 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   function selectTab(next: Tab) {
     setTab(next);
+    if (next === 'analytics') setActiveSection('overview');
     window.history.replaceState(null, '', `#${next}`);
+  }
+
+  function selectAnalyticsSection(section: AnalyticsSection) {
+    setTab('analytics');
+    setActiveSection(section);
+    window.history.replaceState(null, '', `#${section}`);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+      document.getElementById(section)?.scrollIntoView({ behavior, block: 'start' });
+    }));
   }
 
   const series = summary?.series ?? [];
   const totalEvents = summary?.metrics.events ?? 0;
-  const chartPoints = pointsFor(
-    series.map((point) => point.visitors),
-    720,
-    240,
-    14,
-    22,
-  );
-  const pageviewPoints = pointsFor(
-    series.map((point) => point.pageviews),
-    720,
-    240,
-    14,
-    22,
-  );
-  const lastPoint = chartPoints[chartPoints.length - 1];
+  const hasEvents = totalEvents > 0;
+  const showCharts = !summary || hasEvents;
   const rangeLabel = days === 7 ? 'Last 7 days' : days === 90 ? 'Last 90 days' : 'Last 30 days';
   const isLive = Boolean(project?.last_event_at) && Date.now() - new Date(project?.last_event_at ?? 0).getTime() < 7 * 864e5;
 
   return (
-    <div className={s.dashboard}>
+    <div className={`${s.dashboard} ${project ? s.analyticsDashboard : ''}`}>
       <a className={s.skip} href="#main">
         Skip to content
       </a>
 
-      <header className={s.header}>
+      {project && (
+        <aside className={s.projectSidebar} aria-label="Project navigation">
+          <Link className={s.sidebarBrand} href="/">
+            <span aria-hidden="true">✳</span> crease.
+          </Link>
+          <div className={s.sidebarProject}>
+            <span className={s.sidebarProjectMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
+            <span className={s.sidebarProjectText}><strong>{project.domain}</strong><small>personal workspace</small></span>
+          </div>
+          <label className={s.sidebarSwitcher}>
+            <span className={s.srOnly}>Switch project</span>
+            <select value={selected} onChange={(event) => router.push(`/dashboard/projects/${encodeURIComponent(event.target.value)}`)}>
+              {projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}
+            </select>
+            <ChevronIcon />
+          </label>
+          <Link className={s.sidebarAllProjects} href="/dashboard?view=projects" onClick={() => { setShowProjects(true); setSelected(''); }}><ArrowLeftIcon className={s.iconSm} /> All projects</Link>
+          <nav className={s.sidebarNav} aria-label="Analytics sections">
+            {ANALYTICS_SECTIONS.map((section) => (
+              <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-current={tab === 'analytics' && activeSection === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectAnalyticsSection(section); }}>
+                {section[0].toUpperCase() + section.slice(1)}
+              </a>
+            ))}
+          </nav>
+          <span className={s.sidebarCaption}>PROJECT</span>
+          <nav className={s.sidebarNav} aria-label="Project settings">
+            {(['installation', 'integrations', 'settings'] as const).map((section) => (
+              <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-current={tab === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectTab(section); }}>
+                {section[0].toUpperCase() + section.slice(1)}
+              </a>
+            ))}
+          </nav>
+          <div className={s.sidebarAccount}>
+            {user && <span className={s.sidebarUser}><span className={s.avatar} aria-hidden="true">{user.login.slice(0, 1).toUpperCase()}</span><span>{user.login}</span></span>}
+            <button className={s.signOut} type="button" onClick={logout}>Sign out</button>
+          </div>
+        </aside>
+      )}
+
+      <header className={`${s.header} ${project ? s.analyticsHeader : ''}`}>
         <div className={s.headerInner}>
           <Link className={s.brand} href="/">
             <span className={s.brandMark}>✳</span>
@@ -598,7 +996,15 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           <span className={s.headerDivider} aria-hidden="true" />
           <span className={s.workspaceLabel}>WORKSPACE</span>
           <nav className={s.breadcrumb} aria-label="Breadcrumb">
-            <Link href="/dashboard">Projects</Link>
+            <Link
+              href="/dashboard?view=projects"
+              onClick={() => {
+                setShowProjects(true);
+                setSelected('');
+              }}
+            >
+              Projects
+            </Link>
             {project && (
               <>
                 <span aria-hidden="true">/</span>
@@ -666,7 +1072,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
               </div>
             )}
 
-            {projectId && project ? (
+            {project ? (
               <>
                 <section className={s.projectHero} aria-labelledby="project-title">
                   <span className={s.projectMark} aria-hidden="true">
@@ -683,6 +1089,10 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                       <span className={`${s.metaChip} ${isLive ? s.isLive : ''}`}>
                         <span className={s.statusDot} aria-hidden="true" />
                         {isLive ? 'Receiving events' : 'Waiting for events'}
+                      </span>
+                      <span className={s.metaChip} data-tone={project.verified ? 'ok' : 'warn'}>
+                        <span className={s.statusDot} aria-hidden="true" />
+                        {project.verified ? 'Domain verified' : 'Domain unverified'}
                       </span>
                       <span className={s.metaChip}>
                         <span className={s.statusDot} aria-hidden="true" />
@@ -736,11 +1146,12 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                 <div className={s.tabPanel} key={tab}>
                   {tab === 'analytics' && (
                     <>
-                      <div className={s.analyticsBar}>
+                      <div className={s.analyticsBar} id="overview" tabIndex={-1}>
                         <div>
-                          <h2>Analytics</h2>
+                          <h2>Overview</h2>
                           <p>
-                            {rangeLabel} · {project.domain}
+                            {rangeLabel} · {project.domain} · {SESSION_DEFINITION}
+                            {activeFilter ? ` · ${activeFilter.property} = ${activeFilter.value}` : ''}
                           </p>
                         </div>
                         <div className={s.controls}>
@@ -762,7 +1173,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           <button
                             className={s.refresh}
                             type="button"
-                            onClick={() => void loadSummary()}
+                            onClick={refreshAnalytics}
                             disabled={summaryBusy}
                             aria-label="Refresh analytics"
                           >
@@ -772,8 +1183,111 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         </div>
                       </div>
 
-                      <div className={s.kpiGrid}>
+                      {project.verified === false && (
+                        <div className={s.statePanel} data-tone="warn" role="status">
+                          <AlertIcon className={s.icon} />
+                          <div className={s.statePanelBody}>
+                            <strong>Domain not verified</strong>
+                            <p>
+                              Crease rejects events until {project.domain} proves ownership. Finish verification to
+                              start collecting.
+                            </p>
+                          </div>
+                          <button
+                            className={`${s.btn} ${s.btnSecondary}`}
+                            type="button"
+                            onClick={() => selectTab('installation')}
+                          >
+                            Finish setup
+                          </button>
+                        </div>
+                      )}
+
+                      {summaryError && (
+                        <div className={s.statePanel} data-tone="error" role="alert">
+                          <AlertIcon className={s.icon} />
+                          <div className={s.statePanelBody}>
+                            <strong>Analytics could not load</strong>
+                            <p>{summaryError}</p>
+                          </div>
+                          <button
+                            className={`${s.btn} ${s.btnSecondary}`}
+                            type="button"
+                            onClick={() => void loadSummary()}
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      )}
+
+                      {!summaryError && !summaryBusy && summary && !hasEvents && (
+                        <div className={s.statePanel} data-tone="empty" role="status">
+                          <ZapIcon className={s.icon} />
+                          <div className={s.statePanelBody}>
+                            <strong>{activeFilter ? 'No events match this filter' : 'No events yet'}</strong>
+                            <p>
+                              {activeFilter
+                                ? 'Clear the property filter or choose another value.'
+                                : 'Install the tracker, verify your domain, and open your site to send the first event.'}
+                            </p>
+                          </div>
+                          <button
+                            className={`${s.btn} ${s.btnSecondary}`}
+                            type="button"
+                            onClick={() => (activeFilter ? clearPropertyFilter() : selectTab('installation'))}
+                          >
+                            {activeFilter ? 'Clear filter' : 'Open installation'}
+                          </button>
+                        </div>
+                      )}
+
+                      <div className={s.filterBar} role="group" aria-label="Custom property filter">
+                        <span className={s.filterLabel}>Filter events</span>
+                        <label className={s.filterField}>
+                          <span className={s.srOnly}>Property key</span>
+                          <select value={propertyKey} onChange={(event) => chooseProperty(event.target.value)}>
+                            <option value="">Any property</option>
+                            {properties.map((item) => (
+                              <option key={item.name} value={item.name}>
+                                {item.name} · {item.value_type}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronIcon />
+                        </label>
+                        <label className={s.filterField}>
+                          <span className={s.srOnly}>Property value</span>
+                          <select
+                            value={propertyValue}
+                            onChange={(event) => setPropertyValue(event.target.value)}
+                            disabled={!propertyKey}
+                          >
+                            {!propertyKey && <option value="">Choose a property first</option>}
+                            {activeProperty?.values.map((item) => (
+                              <option key={item.value} value={item.value}>
+                                {item.value} ({item.count})
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronIcon />
+                        </label>
+                        {activeFilter && (
+                          <button className={s.filterClear} type="button" onClick={clearPropertyFilter}>
+                            Clear filter
+                          </button>
+                        )}
+                        <span className={s.filterHint}>
+                          {properties.length
+                            ? activeFilter
+                              ? `Showing ${activeFilter.property} = ${activeFilter.value}`
+                              : 'Filter metrics and events by an observed property.'
+                            : 'Property filters appear after events with properties arrive.'}
+                        </span>
+                      </div>
+
+                      <div className={s.kpiGrid} id="visitors">
                         <Kpi
+                          id="visitor-metric"
                           label="Visitors"
                           icon={<UsersIcon />}
                           value={summary?.metrics.visitors}
@@ -794,7 +1308,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           icon={<ActivityIcon />}
                           value={summary?.metrics.sessions}
                           delta={getDelta(summary?.metrics.sessions, summary?.previous?.sessions)}
-                          hint={`Distinct sessions · vs previous ${days} days`}
+                          hint={`Server-assigned · 30 min idle or UTC day · vs previous ${days} days`}
                           series={series.map((point) => point.sessions)}
                         />
                         <Kpi
@@ -807,51 +1321,17 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         />
                       </div>
 
-                      <section className={s.chartCard} aria-label="Traffic over time">
-                        <div className={s.cardTop}>
-                          <div>
-                            <h3>Traffic over time</h3>
-                            <p>{rangeLabel}, daily totals</p>
-                          </div>
-                          <div className={s.legend}>
-                            <span>
-                              <i aria-hidden="true" /> Visitors
-                            </span>
-                            <span>
-                              <i className={s.legendPageviews} aria-hidden="true" /> Page views
-                            </span>
-                          </div>
-                        </div>
-                        <div className={s.chartWrap}>
-                          <svg viewBox="0 0 720 240" preserveAspectRatio="none" role="img" aria-label="Daily visitors and page views">
-                            {[10, 65, 120, 175, 230].map((y) => (
-                              <line key={y} className={s.chartGrid} x1="0" y1={y} x2="720" y2={y} />
-                            ))}
-                            {series.length > 0 && (
-                              <>
-                                <path className={s.chartArea} d={areaPath(chartPoints, 240)} />
-                                <path className={s.chartPageviews} d={linePath(pageviewPoints)} />
-                                <path className={s.chartVisitors} d={linePath(chartPoints)} />
-                                {lastPoint && <circle className={s.chartPoint} cx={lastPoint[0]} cy={lastPoint[1]} r="3.5" />}
-                              </>
-                            )}
-                          </svg>
-                          {totalEvents === 0 && !summaryBusy && (
-                            <div className={s.chartEmpty}>
-                              <strong>No events in this range</strong>
-                              <span>Install the tracker to start collecting data.</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className={s.chartLabels}>
-                          <span>{series[0] ? shortDate(series[0].date) : '—'}</span>
-                          <span>{series[Math.floor(series.length / 2)] ? shortDate(series[Math.floor(series.length / 2)].date) : '—'}</span>
-                          <span>{series[series.length - 1] ? shortDate(series[series.length - 1].date) : '—'}</span>
-                        </div>
-                      </section>
+                      {showCharts && (
+                        <AnalyticsCharts
+                          series={series}
+                          metrics={summary?.metrics ?? { events: 0, pageviews: 0, visitors: 0, sessions: 0 }}
+                        />
+                      )}
 
+                      {showCharts && (
                       <div className={s.breakdownGrid}>
                         <BreakdownCard
+                          id="pages"
                           title="Top pages"
                           icon={<FileIcon />}
                           rows={summary?.pages ?? []}
@@ -859,6 +1339,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           empty="Pages will appear once events arrive."
                         />
                         <BreakdownCard
+                          id="referrers"
                           title="Referrers"
                           icon={<LinkIcon />}
                           rows={summary?.referrers ?? []}
@@ -873,6 +1354,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           empty="No device data yet."
                         />
                         <BreakdownCard
+                          id="countries"
                           title="Countries"
                           icon={<GlobeIcon />}
                           rows={summary?.countries ?? []}
@@ -880,6 +1362,140 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           empty="No country data yet."
                         />
                       </div>
+                      )}
+
+                      <section className={s.funnelSection} id="funnel">
+                        <div className={s.sectionHead}>
+                          <div>
+                            <h2>Funnel</h2>
+                            <p>Ordered sessions in the last {days} days.</p>
+                          </div>
+                          <span className={s.updated}>
+                            {funnel ? `${Math.round(funnel.conversion * 100)}% conversion` : 'Two steps'}
+                          </span>
+                        </div>
+                        <div className={s.funnelControls}>
+                          <label className={s.filterField}>
+                            <span className={s.srOnly}>First step</span>
+                            <select value={funnelFirst} onChange={(event) => setFunnelFirst(event.target.value)}>
+                              {eventNames.length ? (
+                                eventNames.map((item) => (
+                                  <option key={item.label} value={item.label}>
+                                    {item.label}
+                                  </option>
+                                ))
+                              ) : (
+                                <option value="">No events yet</option>
+                              )}
+                            </select>
+                            <ChevronIcon />
+                          </label>
+                          <span className={s.funnelArrow} aria-hidden="true">
+                            →
+                          </span>
+                          <label className={s.filterField}>
+                            <span className={s.srOnly}>Second step</span>
+                            <select value={funnelSecond} onChange={(event) => setFunnelSecond(event.target.value)}>
+                              {eventNames.length ? (
+                                eventNames.map((item) => (
+                                  <option key={item.label} value={item.label}>
+                                    {item.label}
+                                  </option>
+                                ))
+                              ) : (
+                                <option value="">No events yet</option>
+                              )}
+                            </select>
+                            <ChevronIcon />
+                          </label>
+                        </div>
+                        {funnelBusy ? (
+                          <div className={s.funnelSteps} aria-busy="true">
+                            <span className={s.skeleton} style={{ height: 52 }} />
+                          </div>
+                        ) : funnel && funnel.first_count > 0 ? (
+                          <div className={s.funnelSteps}>
+                            <div className={s.funnelStep}>
+                              <span className={s.funnelStepLabel}>Step 1 · {funnel.first}</span>
+                              <strong>{compact(funnel.first_count)}</strong>
+                              <span className={s.funnelBar}>
+                                <i style={{ width: '100%' }} />
+                              </span>
+                            </div>
+                            <div className={s.funnelStep}>
+                              <span className={s.funnelStepLabel}>Step 2 · {funnel.second}</span>
+                              <strong>{compact(funnel.second_count)}</strong>
+                              <span className={s.funnelBar}>
+                                <i
+                                  style={{
+                                    width: `${Math.round((funnel.second_count / funnel.first_count) * 100)}%`,
+                                  }}
+                                />
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className={s.emptyBlock}>
+                            <strong>{eventNames.length ? 'No sessions completed step 1' : 'No events to build a funnel'}</strong>
+                            <span>
+                              {eventNames.length
+                                ? 'Try another pair of events or a longer range.'
+                                : 'Install the tracker and send named events first.'}
+                            </span>
+                          </div>
+                        )}
+                      </section>
+
+                      <section className={s.eventsSection} id="events">
+                        <div className={s.sectionHead}>
+                          <div>
+                            <h2>Recent events</h2>
+                            <p>
+                              {activeFilter
+                                ? `Filtered by ${activeFilter.property} = ${activeFilter.value}`
+                                : `Newest first · last ${days} days`}
+                            </p>
+                          </div>
+                          <span className={s.updated}>{events.length} shown</span>
+                        </div>
+                        {eventsBusy ? (
+                          <div className={s.eventList} aria-busy="true">
+                            {[0, 1, 2].map((item) => (
+                              <span className={s.skeletonRow} key={item}>
+                                <span className={s.skeleton} />
+                                <span className={s.skeleton} />
+                              </span>
+                            ))}
+                          </div>
+                        ) : events.length ? (
+                          <ul className={s.eventList}>
+                            {events.map((event) => (
+                              <li className={s.eventRow} key={event.id}>
+                                <span className={s.eventName}>{event.name}</span>
+                                <span className={s.eventPath}>{event.path}</span>
+                                <span className={s.eventProps}>
+                                  {Object.entries(event.properties).map(([key, value]) => (
+                                    <span className={s.eventProp} key={key}>
+                                      {key}={String(value)}
+                                    </span>
+                                  ))}
+                                </span>
+                                <span className={s.eventWhen}>{relativeWhen(event.occurred_at)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className={s.emptyBlock}>
+                            <ZapIcon className={s.icon} />
+                            <strong>{activeFilter ? 'No events match this filter' : 'No events yet'}</strong>
+                            <span>
+                              {activeFilter
+                                ? 'Try another property value or clear the filter.'
+                                : 'Install the tracker to see the newest events here.'}
+                            </span>
+                          </div>
+                        )}
+                      </section>
                     </>
                   )}
 
@@ -892,11 +1508,51 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           Add this snippet to your site after obtaining any required visitor consent. The collector URL
                           must be publicly reachable by your visitors.
                         </p>
+                        {!writeKey ? (
+                          <div className={s.keyNotice} role="status">
+                            <strong>Generate a write key</strong>
+                            <p>
+                              Crease rejects events without a valid per-project write key. Generate one before copying
+                              the installation code.
+                            </p>
+                            <button className={`${s.btn} ${s.btnSecondary}`} type="button" onClick={generateWriteKey}>
+                              Generate write key
+                            </button>
+                          </div>
+                        ) : (
+                          <p className={s.keyStatus}>
+                            Write key ready. It is stored in this browser and embedded in the snippet.{' '}
+                            <button className={s.keyRotate} type="button" onClick={generateWriteKey}>
+                              Rotate key
+                            </button>
+                          </p>
+                        )}
+                        {keyNotice && (
+                          <p className={s.keyStatus} role="status">
+                            {keyNotice}
+                          </p>
+                        )}
+                        <div className={s.setupCheck} data-ready={project.last_event_at ? 'true' : 'false'} role="status" aria-live="polite">
+                          <span className={s.setupDot} aria-hidden="true" />
+                          <div className={s.setupCheckBody}>
+                            <strong>{project.last_event_at ? 'Setup verified' : 'Waiting for the first event'}</strong>
+                            <p>
+                              {project.last_event_at
+                                ? `Events are arriving. Last event ${relativeWhen(project.last_event_at)}.`
+                                : 'Keep this tab open. Crease checks for events every 10 seconds.'}
+                            </p>
+                            {setupCheckAt && <small>Last checked {relativeWhen(setupCheckAt)}</small>}
+                            {!project.last_event_at && setupNotice && <small>{setupNotice}</small>}
+                          </div>
+                          <button className={`${s.btn} ${s.btnQuiet}`} type="button" onClick={() => void pollSetup()} disabled={setupChecking}>
+                            {setupChecking ? 'Checking…' : 'Check now'}
+                          </button>
+                        </div>
                         <div className={s.stepList}>
                           {[
                             ['Paste the snippet', 'Place it in your document head so every page loads the tracker.'],
                             ['Set your endpoint', 'Point the tracker at your own collector or the hosted endpoint.'],
-                            ['Watch data arrive', 'Open the analytics tab — events appear within seconds.'],
+                            ['Watch data arrive', project.last_event_at ? 'Events are arriving for this project.' : 'Open the analytics tab — events appear within seconds.'],
                           ].map(([title, copy], index) => (
                             <div className={s.stepItem} key={title}>
                               <span className={s.stepNum} aria-hidden="true">
@@ -910,7 +1566,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           ))}
                         </div>
                         <div className={s.installFooter}>
-                          <button className={`${s.btn} ${s.btnSecondary}`} type="button" onClick={copySnippet}>
+                          <button className={`${s.btn} ${s.btnSecondary}`} type="button" onClick={copySnippet} disabled={!writeKey}>
                             {copied ? <CheckIcon className={s.iconSm} /> : <CopyIcon className={s.iconSm} />}
                             {copied ? 'Copied' : 'Copy installation code'}
                           </button>
@@ -921,10 +1577,48 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                       </section>
 
                       <div>
+                        <div className={s.verifyCard}>
+                          <div className={s.verifyHead}>
+                            <span className={s.verifyBadge} data-verified={verification?.verified ? 'true' : 'false'}>
+                              {verification?.verified ? 'Domain verified' : 'Verification required'}
+                            </span>
+                            <span className={s.verifyDomain}>{project.domain}</span>
+                          </div>
+                          <p className={s.verifyCopy}>
+                            {verification?.verified
+                              ? 'Crease accepts events for this domain. Re-check if you move the site to a new host.'
+                              : 'Crease rejects events until the domain proves ownership. Add one of the records below, then check again.'}
+                          </p>
+                          {!verification?.verified && verification && (
+                            <div className={s.verifyRows}>
+                              <div className={s.verifyRow}>
+                                <span>DNS TXT record</span>
+                                <code>{verification.record}</code>
+                              </div>
+                              <div className={s.verifyRow}>
+                                <span>Root meta tag</span>
+                                <code>{verification.meta}</code>
+                              </div>
+                            </div>
+                          )}
+                          <button
+                            className={`${s.btn} ${s.btnSecondary}`}
+                            type="button"
+                            onClick={checkVerification}
+                            disabled={verificationBusy || verification?.verified}
+                          >
+                            {verificationBusy ? 'Checking…' : verification?.verified ? 'Verified' : 'Check verification'}
+                          </button>
+                          {verificationNotice && (
+                            <p className={s.verifyNotice} role="status">
+                              {verificationNotice}
+                            </p>
+                          )}
+                        </div>
                         <div className={s.codeCard}>
                           <div className={s.codeTop}>
                             <span>INSTALLATION CODE</span>
-                            <button className={s.copyButton} type="button" onClick={copySnippet}>
+                            <button className={s.copyButton} type="button" onClick={copySnippet} disabled={!writeKey}>
                               {copied ? <CheckIcon /> : <CopyIcon />}
                               {copied ? 'Copied' : 'Copy'}
                             </button>
@@ -947,7 +1641,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
                   {tab === 'integrations' && (
                     <div className={s.integrations}>
-                      <GitHubInstall key={project.id} projectId={project.id} />
+                      <GitHubInstall key={project.id} projectId={project.id} writeKey={writeKey} />
                       <VercelGitSettings key={`vercel-${project.id}`} projectId={project.id} />
                     </div>
                   )}
@@ -998,6 +1692,10 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           <div className={s.detailRow}>
                             <dt>Retention</dt>
                             <dd>{project.retention_days} days</dd>
+                          </div>
+                          <div className={s.detailRow}>
+                            <dt>Session definition</dt>
+                            <dd>30 min inactivity or UTC day boundary</dd>
                           </div>
                         </dl>
                       </section>
@@ -1077,9 +1775,12 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             </span>
                           </span>
                           <span className={s.projectFoot}>
-                            <span className={`${s.statusLine} ${live ? s.isLive : ''}`}>
+                            <span
+                              className={`${s.statusLine} ${live ? s.isLive : ''}`}
+                              data-warn={item.verified === false ? 'true' : undefined}
+                            >
                               <i aria-hidden="true" />
-                              {live ? 'Receiving events' : 'No recent events'}
+                              {item.verified === false ? 'Verification required' : live ? 'Receiving events' : 'No recent events'}
                             </span>
                             <span>{item.retention_days}d retention</span>
                           </span>

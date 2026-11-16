@@ -63,9 +63,11 @@ async def enable_tracking_pr(token: str, repository: str, project_id: str):
             return {'url':pull.json()['html_url']}
     except httpx.RequestError as exc: raise HTTPException(503, 'Could not connect to GitHub') from exc
 
-async def create_install_pr(token: str, repository: str, path: str, project_id: str, public_url: str):
+async def create_install_pr(token: str, repository: str, path: str, project_id: str, public_url: str, write_key: str):
     if not REPO.fullmatch(repository) or '..' in repository:
         raise HTTPException(422, 'Enter a GitHub repository as owner/name')
+    if not re.fullmatch(r'crease_[A-Za-z0-9_-]{16,}', write_key):
+        raise HTTPException(422, 'Generate a valid project write key before creating an installation pull request')
     if not re.fullmatch(r'[A-Za-z0-9_./-]+\.html?', path) or '..' in path or path.startswith('/'):
         raise HTTPException(422, 'Enter a relative HTML file path, such as index.html')
     parsed = urlsplit(public_url)
@@ -101,9 +103,9 @@ async def create_install_pr(token: str, repository: str, path: str, project_id: 
         closing = r'</head\s*>' if kind == 'html' else r'</body\s*>'
         if len(re.findall(closing, source, re.I)) != 1:
             raise HTTPException(422, 'The entry file must contain exactly one closing head tag (HTML) or body tag (Next.js layout).')
-        snippet = f'''\n<!-- Crease: dispatch crease:consent after visitor consent is granted. -->\n<script src="{origin}/crease.js" data-crease-install defer></script>\n<script>\n  window.addEventListener('crease:consent', function () {{\n    if (window.crease) window.crease.init({{ projectId: '{project_id}', endpoint: '{origin}/api/events' }});\n  }});\n</script>\n'''
+        snippet = f'''\n<!-- Crease: dispatch crease:consent after visitor consent is granted. -->\n<script src="{origin}/crease.js" data-crease-install defer></script>\n<script>\n  window.addEventListener('crease:consent', function () {{\n    if (window.crease) window.crease.init({{ projectId: {json.dumps(project_id)}, endpoint: {json.dumps(origin+'/api/events')}, writeKey: {json.dumps(write_key)} }});\n  }});\n</script>\n'''
         if kind == 'next':
-            script = "window.addEventListener('crease:consent', function () { var s = document.createElement('script'); s.src = " + json.dumps(origin+'/crease.js') + "; s.onload = function () { if (window.crease) window.crease.init({ projectId: " + json.dumps(project_id) + ", endpoint: " + json.dumps(origin+'/api/events') + " }); }; document.head.appendChild(s); }, { once: true });"
+            script = "window.addEventListener('crease:consent', function () { var s = document.createElement('script'); s.src = " + json.dumps(origin+'/crease.js') + "; s.onload = function () { if (window.crease) window.crease.init({ projectId: " + json.dumps(project_id) + ", endpoint: " + json.dumps(origin+'/api/events') + ", writeKey: " + json.dumps(write_key) + " }); }; document.head.appendChild(s); }, { once: true });"
             snippet = '\n<script data-crease-install dangerouslySetInnerHTML={{ __html: '+json.dumps(script)+' }} />\n'
         updated = re.sub(closing, lambda match: snippet + match.group(), source, count=1, flags=re.I)
         branch_info = await call('GET', f'/repos/{repository}/branches/{base}')

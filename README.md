@@ -4,7 +4,7 @@ An early multi-project analytics MVP with a Next.js frontend, a Python/FastAPI b
 
 ## Local setup
 
-Requirements: Node.js 20.9+, Python 3.10+, and a GitHub OAuth app. In [GitHub Developer Settings](https://github.com/settings/developers), register a new OAuth app with homepage `http://localhost:3000` and authorization callback `http://localhost:3000/api/auth/callback`. Generate a client secret. Copy `backend/.env.example` to `backend/.env` and fill in the client ID and secret locally; never commit or share the secret. Restart the Python server after editing `.env`.
+Requirements: Node.js 20.9+, Python 3.10+, PostgreSQL 14+, and a GitHub OAuth app. In [GitHub Developer Settings](https://github.com/settings/developers), register a new OAuth app with homepage `http://localhost:3000` and authorization callback `http://localhost:3000/api/auth/callback`. Generate a client secret. Copy `backend/.env.example` to `backend/.env` and fill in the client ID, secret, and a PostgreSQL `DATABASE_URL` locally; never commit or share the secret. Restart the Python server after editing `.env`.
 
 In one terminal, from `backend`:
 
@@ -12,6 +12,8 @@ In one terminal, from `backend`:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements-local.txt
+$env:DATABASE_URL='postgresql+psycopg://user:password@localhost:5432/crease'
+alembic upgrade head
 uvicorn main:app --reload --port 8000
 ```
 
@@ -22,11 +24,11 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000/api/auth/github` to sign in. SQLite is used locally by default. Set `DATABASE_URL` to a SQLAlchemy PostgreSQL URL such as `postgresql+psycopg://user:password@host:5432/crease` to use PostgreSQL. Tables are created on API startup; a migration system is still needed before upgrading a deployed database. `BACKEND_URL` controls the frontend's API proxy; `FRONTEND_URL` and `PUBLIC_API_URL` configure the backend's redirect and origin settings. In a real HTTPS environment, set `COOKIE_SECURE=true`; route OAuth and API requests through the same public host and register that callback URL.
+Open `http://localhost:3000/api/auth/github` to sign in. PostgreSQL is required; SQLite is rejected. Set `DATABASE_URL` to a SQLAlchemy PostgreSQL URL such as `postgresql+psycopg://user:password@host:5432/crease`, then run `alembic upgrade head` from `backend` before starting the API. The API no longer creates or alters tables on startup. `BACKEND_URL` controls the frontend's API proxy; `FRONTEND_URL` and `PUBLIC_API_URL` configure the backend's redirect and origin settings. In a real HTTPS environment, set `COOKIE_SECURE=true`; route OAuth and API requests through the same public host and register that callback URL.
 
 ## Tracking
 
-Copy or serve `sdk/crease.js` from your site, then initialize it only after any required visitor consent. Configure the project's exact hostname and use the collector URL shown in the dashboard. See [SDK usage and limitations](sdk/README.md). A hostname and public project ID do not authenticate events; collector data is untrusted.
+Copy or serve `sdk/crease.js` from your site, then initialize it only after any required visitor consent. Configure the project's exact hostname, the write key shown in the dashboard, and the collector URL shown in the dashboard. Before a project accepts events, it must prove domain ownership with a DNS TXT record (`crease-site-verification=<token>`) or a root `<meta name="crease-site-verification" content="<token>">` tag; the dashboard shows the token and a check button. See [SDK usage and limitations](sdk/README.md). The write key authenticates writes for one project, but it is embedded in client code; treat collector data as untrusted and rotate the key if it leaks.
 
 The dashboard can also create a GitHub pull request for a static HTML file, regardless of hosting provider. This requires a **separate GitHub App**, in addition to the sign-in OAuth app. Register it in GitHub Developer Settings with callback `http://localhost:3000/api/github-app/callback`, repository permissions Contents: read/write and Pull requests: read/write, and metadata read. Disable webhooks if unused. Set the GitHub App slug, client ID, client secret, and a generated Fernet key in `backend/.env` (see `.env.example`); restart the API. Install the app on selected repositories, then authorize it from the dashboard using the same GitHub account used to sign in. The app user token is encrypted in an HTTP-only browser cookie for one hour; configure HTTPS and `COOKIE_SECURE=true` outside local development. Repository enumeration is limited to 1,000 installations and 1,000 repositories per installation.
 
@@ -55,10 +57,10 @@ After publishing, Next.js applications can install it with `npm i @crease/analyt
 ```tsx
 import { Analytics } from '@crease/analytics/next';
 
-<Analytics projectId="YOUR_CREASE_PROJECT_ID" />
+<Analytics projectId="YOUR_CREASE_PROJECT_ID" writeKey="crease_YOUR_PROJECT_WRITE_KEY" />
 ```
 
-For a JavaScript site, import `init` from `@crease/analytics`, pass the project ID, and call `track()` for custom events. Only initialize analytics when the site's consent policy permits it.
+For a JavaScript site, import `init` from `@crease/analytics`, pass the project ID and write key, and call `track()` for custom events. Only initialize analytics when the site's consent policy permits it.
 
 ### Vercel Git settings (experimental)
 
@@ -69,9 +71,21 @@ Register a separate connectable-account integration in Vercel with Project read/
 ```powershell
 node --test sdk/crease.test.cjs
 cd backend
+$env:TEST_DATABASE_URL='postgresql://user:password@localhost:5432/crease_test'
 python -m unittest test_api -v
 ```
 
+The backend suite creates an isolated PostgreSQL schema per run and drops it afterward. It refuses to run against the production `DATABASE_URL` or SQLite.
+
 ## Current limitations
 
-Country displays unknown by default. Set `TRUST_VERCEL_GEO=true` only when requests reach the API exclusively through a trusted Vercel deployment that overwrites geolocation headers; otherwise callers can spoof locations. Sessions currently follow tab storage rather than an inactivity window. Retention runs when the setting changes and can be enforced regularly with `python backend/expire.py`; production requires scheduling it. The in-memory rate limiter is per-process and is not sufficient for distributed deployment. Durable migrations, shared abuse protection, security review, Vercel integration, and full OAuth/production deployment verification remain outstanding. Custom event properties are stored but not yet available for filtering. Backups need a deletion and retention policy. Public analytics collection can be forged. Project creation is restricted to authenticated users, but domains are not ownership-verified.
+See [collector API behavior](docs/api.md), [migration status and rollout steps](docs/migrations.md), and the [production deployment checklist](docs/production-checklist.md) before changing the live service.
+
+Country displays unknown by default. Public ingestion ignores country headers; authenticated Vercel forwarding is described below. Sessions are computed server-side: a new session starts after 30 minutes without an event from the same visitor (`SESSION_IDLE_MINUTES`, default `30`) or at a UTC day boundary. A client-supplied session ID is ignored for that decision. The API records session start/last activity, entry/exit path, and pageview count. Session duration remains approximate. Changing retention only updates the setting; the runnable `python backend/expire.py` job deletes expired events and session summaries and logs counts per project. Production still requires scheduling it. Event ingestion uses durable fixed-window counters in the shared database: `RATE_LIMIT_IP_PER_MINUTE` defaults to `120` and `RATE_LIMIT_PROJECT_PER_MINUTE` defaults to `600`. Alembic baseline migrations are present; run `alembic upgrade head` before starting the API. Security review, Vercel integration, and full OAuth/production deployment verification remain outstanding. Custom event properties are indexed per event and filterable by key/value through `/api/projects/{id}/events` and `/api/projects/{id}/summary`; `/api/projects/{id}/properties` lists observed keys, types, and top values. A basic two-step, ordered-session funnel is available through `/api/projects/{id}/funnel` and the dashboard Funnel section. Backups need a deletion and retention policy. Public analytics collection requires a per-project write key, but the key ships in client code, so it cannot prevent a determined caller from forging events for that project. Project creation is restricted to authenticated users. Domains must pass DNS TXT or root meta-tag ownership verification before their events are accepted; once verified, a project stays verified until it is deleted.
+
+
+### Country geolocation deployment
+
+The Next.js `/api/events` route forwards SDK batches to Render. Set `BACKEND_URL` on Vercel to the HTTPS Render origin, and set the same high-entropy `GEO_FORWARD_SECRET` as a server-only environment variable on Vercel and Render (generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`). Never use a `NEXT_PUBLIC_` name. Other `/api/*` paths continue to use the Next.js rewrite. The Render `/internal/events` endpoint requires the secret and applies the same project, origin, write-key, payload, and rate-limit checks as public ingestion. Direct `/api/events` requests always store Unknown. Missing country also stores Unknown; invalid country is rejected.
+
+Keep `TRUST_VERCEL_GEO=false` on Render initially. Before enabling it, verify on the actual Vercel deployment that requests reach the route through Vercel's edge and that client-supplied `X-Vercel-IP-Country` and `X-Vercel-Forwarded-For` are overwritten, including when location is unavailable and when any upstream proxy is present. The secret authenticates the forwarding function, not the original header. Verify route precedence, CORS, rate limiting, and a spoofed-header request end to end. Only after those checks pass set `TRUST_VERCEL_GEO=true` on Render and redeploy. Rotate the shared secret on both services if exposed. Do not forward it to browsers or logs. Local development without the secret uses public ingestion and stores Unknown.
