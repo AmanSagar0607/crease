@@ -70,9 +70,36 @@ def new_write_key(): return 'crease_' + secrets.token_urlsafe(24)
 def new_verification_token(): return secrets.token_urlsafe(24)
 def stamp(value): return value.isoformat()
 
+def parse_stamp(value):
+    parsed = datetime.fromisoformat(value)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+def resolve_session(db, project_id, visitor_id, event_id, event_time):
+    """Return an existing session id or create one after 30 minutes idle or a new UTC day."""
+    if not visitor_id:
+        return None
+    params = {'project': project_id, 'visitor': visitor_id, 'id': event_id, 'ts': stamp(event_time)}
+    neighbours = [
+        db.execute(text('SELECT occurred_at, session_id FROM events WHERE project_id=:project AND visitor_id=:visitor AND id<>:id AND occurred_at<=:ts ORDER BY occurred_at DESC LIMIT 1'), params).mappings().first(),
+        db.execute(text('SELECT occurred_at, session_id FROM events WHERE project_id=:project AND visitor_id=:visitor AND id<>:id AND occurred_at>=:ts ORDER BY occurred_at ASC LIMIT 1'), params).mappings().first(),
+    ]
+    for row in neighbours:
+        if not row or not row['session_id']:
+            continue
+        try:
+            last = parse_stamp(row['occurred_at'])
+        except ValueError:
+            continue
+        gap = abs((event_time - last).total_seconds())
+        if gap <= SESSION_IDLE_SECONDS and last.astimezone(timezone.utc).date() == event_time.astimezone(timezone.utc).date():
+            return row['session_id']
+    return str(uuid4())
+
 RATE_WINDOW_SECONDS = 60
 RATE_LIMIT_IP_PER_MINUTE = int(os.getenv('RATE_LIMIT_IP_PER_MINUTE', '120'))
 RATE_LIMIT_PROJECT_PER_MINUTE = int(os.getenv('RATE_LIMIT_PROJECT_PER_MINUTE', '600'))
+SESSION_IDLE_MINUTES = int(os.getenv('SESSION_IDLE_MINUTES', '30'))
+SESSION_IDLE_SECONDS = SESSION_IDLE_MINUTES * 60
 
 class RateLimiter:
     """Durable fixed-window counter shared by every process using the same database."""
@@ -500,15 +527,16 @@ async def ingest(data: Batch, request: Request):
             if not e.path.startswith('/') or '?' in e.path or '#' in e.path: raise HTTPException(422, 'Invalid path')
             if len(e.properties)>20 or any(not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_.-]{0,63}', k) or re.search(r'password|token|secret|email', k, re.I) or not isinstance(v, (int, float, bool)) for k,v in e.properties.items()): raise HTTPException(422, 'Invalid event properties')
             t = e.timestamp if e.timestamp.tzinfo else e.timestamp.replace(tzinfo=timezone.utc)
-            if abs((now()-t.astimezone(timezone.utc)).total_seconds()) > 86400 * 7: raise HTTPException(422, 'Event timestamp out of range')
+            event_time = t.astimezone(timezone.utc)
+            if abs((now()-event_time).total_seconds()) > 86400 * 7: raise HTTPException(422, 'Event timestamp out of range')
             ua = request.headers.get('user-agent','').lower(); device = 'mobile' if 'mobile' in ua else 'desktop' if ua else 'unknown'
             country = request.headers.get('x-vercel-ip-country', '').upper() if TRUST_VERCEL_GEO else ''
             if not re.fullmatch(r'[A-Z]{2}', country): country = None
             referrer = e.referrer.lower() if e.referrer and re.fullmatch(r'[a-zA-Z0-9.-]+', e.referrer) else None
-            result=db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,country,device,referrer,properties) VALUES (:project,:id,:name,:ts,:path,:visitor,:session,:country,:device,:referrer,:properties) ON CONFLICT (project_id,id) DO NOTHING'), {'project':data.projectId,'id':e.id,'name':e.name,'ts':stamp(t.astimezone(timezone.utc)),'path':e.path,'visitor':e.visitorId,'session':e.sessionId,'country':country,'device':device,'referrer':referrer,'properties':json.dumps(e.properties)})
+            session_id = resolve_session(db, data.projectId, e.visitorId, e.id, event_time)
+            result=db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,country,device,referrer,properties) VALUES (:project,:id,:name,:ts,:path,:visitor,:session,:country,:device,:referrer,:properties) ON CONFLICT (project_id,id) DO NOTHING'), {'project':data.projectId,'id':e.id,'name':e.name,'ts':stamp(event_time),'path':e.path,'visitor':e.visitorId,'session':session_id,'country':country,'device':device,'referrer':referrer,'properties':json.dumps(e.properties)})
             inserted += result.rowcount
-            if result.rowcount and e.sessionId:
-                event_time = stamp(t.astimezone(timezone.utc))
+            if result.rowcount and session_id:
                 db.execute(text('''
                     INSERT INTO analytics_sessions (project_id,session_id,visitor_id,started_at,last_activity_at,entry_page,exit_page,pageview_count)
                     VALUES (:project,:session,:visitor,:at,:at,:path,:path,:pageview)
@@ -519,7 +547,7 @@ async def ingest(data: Batch, request: Request):
                       exit_page=CASE WHEN excluded.last_activity_at >= analytics_sessions.last_activity_at THEN excluded.exit_page ELSE analytics_sessions.exit_page END,
                       last_activity_at=CASE WHEN excluded.last_activity_at > analytics_sessions.last_activity_at THEN excluded.last_activity_at ELSE analytics_sessions.last_activity_at END,
                       pageview_count=analytics_sessions.pageview_count+excluded.pageview_count
-                '''), {'project':data.projectId,'session':e.sessionId,'visitor':e.visitorId,'at':event_time,'path':e.path,'pageview':1 if e.name == 'pageview' else 0})
+                '''), {'project':data.projectId,'session':session_id,'visitor':e.visitorId,'at':stamp(event_time),'path':e.path,'pageview':1 if e.name == 'pageview' else 0})
     return {'accepted': inserted}
 
 @app.get('/api/projects/{project_id}/summary')

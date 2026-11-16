@@ -8,7 +8,7 @@ import base64
 import httpx
 from cryptography.fernet import Fernet
 from urllib.parse import parse_qs, urlsplit
-from datetime import timedelta
+from datetime import datetime, time, timedelta, timezone
 from sqlalchemy.engine import make_url
 from sqlalchemy import create_engine, text
 from alembic import command
@@ -151,6 +151,33 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.patch('/api/projects/'+p['id']+'/retention', json={'retention_days':1}, headers={'origin':main.FRONTEND_URL}).status_code,200)
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM analytics_sessions WHERE project_id=:id'), {'id':p['id']}).scalar_one(),1)
+
+    def test_sessions_use_server_side_inactivity_window(self):
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        p = self.client.post('/api/projects', json={'name':'Sessions','domain':'example.com'}, headers=headers).json()
+        self.verify_project(p['id'])
+        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        base = main.now().replace(microsecond=0) - timedelta(hours=3)
+        def send(event_id, visitor, at):
+            event = {'id':event_id,'name':'pageview','timestamp':main.stamp(at),'path':'/','visitorId':visitor,'sessionId':'client-supplied'}
+            self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[event]}, headers=event_headers).status_code, 200)
+        send('a1', 'v29', base)
+        send('a2', 'v29', base + timedelta(minutes=29))
+        send('b1', 'v31', base)
+        send('b2', 'v31', base + timedelta(minutes=31))
+        day = (main.now() - timedelta(days=1)).date()
+        day_one = datetime.combine(day, time(23, 50), tzinfo=timezone.utc)
+        send('c1', 'vday', day_one)
+        send('c2', 'vday', day_one + timedelta(minutes=15))
+        with main.engine.connect() as db:
+            rows = db.execute(text('SELECT id, session_id FROM events WHERE project_id=:id'), {'id':p['id']}).mappings().all()
+            sessions = db.execute(text('SELECT visitor_id, COUNT(*) FROM analytics_sessions WHERE project_id=:id GROUP BY visitor_id'), {'id':p['id']}).all()
+        by_id = {row['id']: row['session_id'] for row in rows}
+        self.assertEqual(by_id['a1'], by_id['a2'])
+        self.assertNotEqual(by_id['b1'], by_id['b2'])
+        self.assertNotEqual(by_id['c1'], by_id['c2'])
+        self.assertNotEqual(by_id['a1'], 'client-supplied')
+        self.assertEqual({row[0]: row[1] for row in sessions}, {'v29':1, 'v31':2, 'vday':2})
 
     def test_retention_job_deletes_old_events_and_keeps_recent(self):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
