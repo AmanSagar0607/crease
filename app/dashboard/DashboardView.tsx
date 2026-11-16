@@ -65,8 +65,17 @@ type Summary = {
   devices: Breakdown[];
   countries: Breakdown[];
   referrers: Breakdown[];
+  event_names: Breakdown[];
   days: number;
   filter?: { property: string | null; value: string | null };
+};
+type Funnel = {
+  first: string;
+  second: string;
+  first_count: number;
+  second_count: number;
+  conversion: number;
+  days: number;
 };
 type Delta = { label: string; dir: 'up' | 'down' | 'flat' };
 
@@ -113,9 +122,10 @@ function celebrateFirstPageview(projectId: string, summary: Summary, project?: P
 }
 
 const SESSION_DEFINITION = 'Sessions end after 30 min idle or at UTC midnight';
+const NO_BREAKDOWNS: Breakdown[] = [];
 const TABS = ['analytics', 'installation', 'integrations', 'settings'] as const;
 type Tab = (typeof TABS)[number];
-const ANALYTICS_SECTIONS = ['overview', 'visitors', 'pages', 'referrers', 'countries', 'events'] as const;
+const ANALYTICS_SECTIONS = ['overview', 'visitors', 'pages', 'referrers', 'countries', 'funnel', 'events'] as const;
 type AnalyticsSection = (typeof ANALYTICS_SECTIONS)[number];
 
 class ApiError extends Error {
@@ -482,6 +492,10 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [eventsBusy, setEventsBusy] = useState(false);
   const [propertyKey, setPropertyKey] = useState('');
   const [propertyValue, setPropertyValue] = useState('');
+  const [funnelFirst, setFunnelFirst] = useState('');
+  const [funnelSecond, setFunnelSecond] = useState('');
+  const [funnel, setFunnel] = useState<Funnel | null>(null);
+  const [funnelBusy, setFunnelBusy] = useState(false);
   const [origin, setOrigin] = useState('');
   const [tab, setTab] = useState<Tab>('analytics');
   const [activeSection, setActiveSection] = useState<AnalyticsSection>('overview');
@@ -495,6 +509,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const filterQuery = activeFilter
     ? `&property=${encodeURIComponent(activeFilter.property)}&value=${encodeURIComponent(activeFilter.value)}`
     : '';
+  const eventNames = summary?.event_names ?? NO_BREAKDOWNS;
 
   const load = useCallback(async () => {
     try {
@@ -639,6 +654,41 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     void loadEvents();
   }, [loadEvents]);
 
+  useEffect(() => {
+    const names = eventNames.map((item) => item.label);
+    if (!names.length) {
+      setFunnelFirst('');
+      setFunnelSecond('');
+      return;
+    }
+    setFunnelFirst((current) => (names.includes(current) ? current : names[0]));
+    setFunnelSecond((current) => (names.includes(current) ? current : names[1] ?? names[0]));
+  }, [eventNames]);
+
+  const loadFunnel = useCallback(async () => {
+    if (!selected || !funnelFirst || !funnelSecond) {
+      setFunnel(null);
+      return;
+    }
+    setFunnelBusy(true);
+    try {
+      const params = new URLSearchParams({ first: funnelFirst, second: funnelSecond, days: String(days) });
+      setFunnel(await api<Funnel>(`/api/projects/${encodeURIComponent(selected)}/funnel?${params.toString()}`));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setError(e instanceof Error ? e.message : 'Could not load the funnel.');
+    } finally {
+      setFunnelBusy(false);
+    }
+  }, [selected, days, funnelFirst, funnelSecond, router]);
+
+  useEffect(() => {
+    void loadFunnel();
+  }, [loadFunnel]);
+
   function chooseProperty(name: string) {
     setPropertyKey(name);
     setPropertyValue(properties.find((item) => item.name === name)?.values[0]?.value ?? '');
@@ -654,6 +704,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     void loadSummary();
     void loadProperties();
     void loadEvents();
+    void loadFunnel();
   }
 
   useEffect(() => {
@@ -692,6 +743,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setEvents([]);
     setPropertyKey('');
     setPropertyValue('');
+    setFunnelFirst('');
+    setFunnelSecond('');
+    setFunnel(null);
   }, [selected]);
 
   const loadVerification = useCallback(async () => {
@@ -1235,6 +1289,88 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           empty="No country data yet."
                         />
                       </div>
+
+                      <section className={s.funnelSection} id="funnel">
+                        <div className={s.sectionHead}>
+                          <div>
+                            <h2>Funnel</h2>
+                            <p>Ordered sessions in the last {days} days.</p>
+                          </div>
+                          <span className={s.updated}>
+                            {funnel ? `${Math.round(funnel.conversion * 100)}% conversion` : 'Two steps'}
+                          </span>
+                        </div>
+                        <div className={s.funnelControls}>
+                          <label className={s.filterField}>
+                            <span className={s.srOnly}>First step</span>
+                            <select value={funnelFirst} onChange={(event) => setFunnelFirst(event.target.value)}>
+                              {eventNames.length ? (
+                                eventNames.map((item) => (
+                                  <option key={item.label} value={item.label}>
+                                    {item.label}
+                                  </option>
+                                ))
+                              ) : (
+                                <option value="">No events yet</option>
+                              )}
+                            </select>
+                            <ChevronIcon />
+                          </label>
+                          <span className={s.funnelArrow} aria-hidden="true">
+                            →
+                          </span>
+                          <label className={s.filterField}>
+                            <span className={s.srOnly}>Second step</span>
+                            <select value={funnelSecond} onChange={(event) => setFunnelSecond(event.target.value)}>
+                              {eventNames.length ? (
+                                eventNames.map((item) => (
+                                  <option key={item.label} value={item.label}>
+                                    {item.label}
+                                  </option>
+                                ))
+                              ) : (
+                                <option value="">No events yet</option>
+                              )}
+                            </select>
+                            <ChevronIcon />
+                          </label>
+                        </div>
+                        {funnelBusy ? (
+                          <div className={s.funnelSteps} aria-busy="true">
+                            <span className={s.skeleton} style={{ height: 52 }} />
+                          </div>
+                        ) : funnel && funnel.first_count > 0 ? (
+                          <div className={s.funnelSteps}>
+                            <div className={s.funnelStep}>
+                              <span className={s.funnelStepLabel}>Step 1 · {funnel.first}</span>
+                              <strong>{compact(funnel.first_count)}</strong>
+                              <span className={s.funnelBar}>
+                                <i style={{ width: '100%' }} />
+                              </span>
+                            </div>
+                            <div className={s.funnelStep}>
+                              <span className={s.funnelStepLabel}>Step 2 · {funnel.second}</span>
+                              <strong>{compact(funnel.second_count)}</strong>
+                              <span className={s.funnelBar}>
+                                <i
+                                  style={{
+                                    width: `${Math.round((funnel.second_count / funnel.first_count) * 100)}%`,
+                                  }}
+                                />
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className={s.emptyBlock}>
+                            <strong>{eventNames.length ? 'No sessions completed step 1' : 'No events to build a funnel'}</strong>
+                            <span>
+                              {eventNames.length
+                                ? 'Try another pair of events or a longer range.'
+                                : 'Install the tracker and send named events first.'}
+                            </span>
+                          </div>
+                        )}
+                      </section>
 
                       <section className={s.eventsSection} id="events">
                         <div className={s.sectionHead}>

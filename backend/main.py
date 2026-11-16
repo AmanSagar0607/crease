@@ -645,7 +645,8 @@ async def summary(project_id: str, days: int = 30, property: str | None = Query(
             day += timedelta(days=1)
         def breakdown(column):
             return [dict(r) for r in db.execute(text(f'SELECT COALESCE({column}, :unknown) AS label, COUNT(*) AS count FROM {source} WHERE project_id=:id AND occurred_at>=:since AND name=:name GROUP BY {column} ORDER BY count DESC LIMIT 10'), {**params,'unknown':'Unknown','name':'pageview'}).mappings()]
-        return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'referrers':breakdown('referrer'),'days':days,'filter':{'property':property,'value':value},'average_session_duration_seconds':round(sum(durations)/len(durations)) if durations else 0}
+        event_names=[dict(r) for r in db.execute(text('SELECT name AS label, COUNT(*) AS count FROM events WHERE project_id=:id AND occurred_at>=:since GROUP BY name ORDER BY count DESC LIMIT 20'), params).mappings()]
+        return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'referrers':breakdown('referrer'),'event_names':event_names,'days':days,'filter':{'property':property,'value':value},'average_session_duration_seconds':round(sum(durations)/len(durations)) if durations else 0}
 
 @app.get('/api/projects/{project_id}/properties')
 async def properties(project_id: str, user=Depends(session_user)):
@@ -694,6 +695,31 @@ async def project_events(project_id: str, days: int = 30, event: str | None = Qu
             where.append('e.path=:path'); params['path'] = path
         rows = db.execute(text(f"SELECT e.id, e.name, e.occurred_at, e.path, e.visitor_id, e.session_id, e.country, e.device, e.referrer, e.properties FROM {source} WHERE " + ' AND '.join(where) + ' ORDER BY e.occurred_at DESC LIMIT :limit'), params).mappings().all()
     return [{'id':row['id'],'name':row['name'],'occurred_at':row['occurred_at'],'path':row['path'],'visitor_id':row['visitor_id'],'session_id':row['session_id'],'country':row['country'],'device':row['device'],'referrer':row['referrer'],'properties':json.loads(row['properties'])} for row in rows]
+
+@app.get('/api/projects/{project_id}/funnel')
+async def funnel(project_id: str, first: str = Query(min_length=1, max_length=64), second: str = Query(min_length=1, max_length=64), days: int = 30, user=Depends(session_user)):
+    if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
+    params = {'id':project_id, 'since':stamp(now()-timedelta(days=days-1)), 'first':first, 'second':second}
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        row = db.execute(text('''
+            WITH first_step AS (
+                SELECT session_id, MIN(occurred_at) AS at
+                FROM events
+                WHERE project_id=:id AND name=:first AND occurred_at>=:since AND session_id IS NOT NULL
+                GROUP BY session_id
+            ), second_step AS (
+                SELECT DISTINCT f.session_id
+                FROM first_step f
+                JOIN events e ON e.project_id=:id AND e.session_id=f.session_id
+                    AND e.name=:second AND e.occurred_at>=f.at AND e.occurred_at>=:since
+            )
+            SELECT (SELECT COUNT(*) FROM first_step) AS first_count,
+                   (SELECT COUNT(*) FROM second_step) AS second_count
+        '''), params).mappings().one()
+    first_count = int(row['first_count'] or 0)
+    second_count = int(row['second_count'] or 0)
+    return {'first':first,'second':second,'first_count':first_count,'second_count':second_count,'conversion':round(second_count/first_count, 4) if first_count else 0,'days':days}
 
 # Vercel access is per Crease account, encrypted at rest, and never sent to the browser.
 def vercel_cipher():

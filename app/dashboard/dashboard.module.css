@@ -2866,3 +2866,64 @@
     margin-left: 0;
   }
 }
+
+.funnelSection {
+  margin-top: 22px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper);
+}
+
+.funnelControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.funnelArrow {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.funnelSteps {
+  display: grid;
+  gap: 14px;
+}
+
+.funnelStep {
+  display: grid;
+  gap: 6px;
+}
+
+.funnelStepLabel {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.funnelStep strong {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.funnelBar {
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--soft2);
+}
+
+.funnelBar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ink);
+}
+
+.funnelStep:nth-child(2) .funnelBar i {
+  background: var(--chartThird);
+}

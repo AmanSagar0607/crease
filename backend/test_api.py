@@ -254,6 +254,31 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(db.execute(text('SELECT session_id FROM analytics_sessions WHERE project_id=:id'), {'id':p['id']}).scalars().all(), ['recent-session'])
         self.assertTrue(any(p['id'] in line for line in logs.output))
 
+    def test_funnel_counts_ordered_sessions_and_lists_event_names(self):
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        p = self.client.post('/api/projects', json={'name':'Funnel','domain':'example.com'}, headers=headers).json()
+        self.verify_project(p['id'])
+        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        base = main.now() - timedelta(hours=2)
+        events = [
+            {'id':'f1','name':'view_pricing','timestamp':main.stamp(base),'path':'/pricing','visitorId':'v1'},
+            {'id':'f2','name':'signup','timestamp':main.stamp(base+timedelta(minutes=5)),'path':'/signup','visitorId':'v1'},
+            {'id':'f3','name':'signup','timestamp':main.stamp(base),'path':'/signup','visitorId':'v2'},
+            {'id':'f4','name':'view_pricing','timestamp':main.stamp(base+timedelta(minutes=5)),'path':'/pricing','visitorId':'v2'},
+            {'id':'f5','name':'view_pricing','timestamp':main.stamp(base),'path':'/pricing','visitorId':'v3'},
+        ]
+        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':events}, headers=event_headers).json()['accepted'], 5)
+        result = self.client.get('/api/projects/'+p['id']+'/funnel?first=view_pricing&second=signup&days=7').json()
+        self.assertEqual(result['first_count'], 3)
+        self.assertEqual(result['second_count'], 1)
+        self.assertEqual(result['conversion'], 0.3333)
+        names = {item['label']: item['count'] for item in self.client.get('/api/projects/'+p['id']+'/summary?days=7').json()['event_names']}
+        self.assertEqual(names, {'view_pricing':3,'signup':2})
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel?first=missing&second=signup&days=7').json()['first_count'], 0)
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel?first=view_pricing&second=signup&days=1').status_code, 422)
+        self.client.cookies.set('crease_session','u2')
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel?first=view_pricing&second=signup').status_code, 404)
+
     def test_spoofed_country_header_is_ignored_unless_trusted(self):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
         p = self.client.post('/api/projects', json={'name':'Geo','domain':'example.com'}, headers=headers).json()
