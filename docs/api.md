@@ -6,7 +6,7 @@ The FastAPI service exposes its interactive OpenAPI reference at `/docs` and the
 
 `POST /api/events` accepts a JSON batch of up to 20 events. Send `Content-Type: application/json` and `X-Crease-Key: <project write key>`. The collector checks the write key, verified project domain, allowed origin, payload shape, and event timestamp. The project ID is public and is not an authentication credential.
 
-Each event contains `id`, `name`, `timestamp`, `path`, optional `visitorId`, optional `sessionId`, `referrer`, and numeric or boolean `properties`. Reusing an event ID within one project is idempotent. Event paths exclude query strings and fragments. The SDK sends `schemaVersion: 1`; older clients may omit it.
+Each event contains `id`, `name`, `timestamp`, `path`, optional `visitorId`, optional `sessionId`, `referrer`, and numeric or boolean `properties`. Reusing an event ID within one project is idempotent. Event paths exclude query strings and fragments. The SDK sends `schemaVersion: 1`; older clients may omit it. `sessionId` is accepted for compatibility but the collector assigns the authoritative session server-side.
 
 The collector responds with `{ "accepted": n }`, where `n` is the number of newly stored events. It may return 401 for an invalid write key, 403 for an unverified project or rejected origin, 404 for an unknown project, 413 for an oversized request, 422 for an invalid event, or 429 when a configured shared database rate limit is reached. Transient delivery remains best effort; SDKs retry network errors and server/rate-limit responses.
 
@@ -18,4 +18,4 @@ Authenticated project routes require the Crease session cookie and check project
 
 ## Session interpretation
 
-The SDK shares a visitor ID and session ID across tabs. It rotates sessions after 30 minutes of inactivity or 24 hours. The collector creates one `analytics_sessions` record per project/session, with earliest and latest received event timestamps, entry and exit paths, and pageview count. Duration is only an approximation of received event time; it is not a guarantee that every event during a visit was delivered.
+The collector assigns sessions server-side from the visitor ID and event time: a new session starts after 30 minutes without an event from that visitor or when the UTC day changes. A client-supplied `sessionId` is ignored for this decision. The collector creates one `analytics_sessions` record per project/session, with earliest and latest received event timestamps, entry and exit paths, and pageview count. Duration is only an approximation of received event time; it is not a guarantee that every event during a visit was delivered. `SESSION_IDLE_MINUTES` defaults to `30`.
