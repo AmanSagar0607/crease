@@ -32,6 +32,7 @@ command.upgrade(alembic_config, 'head')
 from fastapi.testclient import TestClient
 import main
 import github_install
+import expire
 
 def tearDownModule():
     main.engine.dispose()
@@ -150,6 +151,28 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.patch('/api/projects/'+p['id']+'/retention', json={'retention_days':1}, headers={'origin':main.FRONTEND_URL}).status_code,200)
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM analytics_sessions WHERE project_id=:id'), {'id':p['id']}).scalar_one(),1)
+
+    def test_retention_job_deletes_old_events_and_keeps_recent(self):
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
+        self.verify_project(p['id'])
+        old = main.stamp(main.now() - timedelta(days=10))
+        recent = main.stamp(main.now() - timedelta(days=1))
+        with main.engine.begin() as db:
+            for event_id, at, session_id in (('old-event', old, 'old-session'), ('recent-event', recent, 'recent-session')):
+                db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,properties) VALUES (:project,:id,:name,:at,:path,:visitor,:session,:properties)'), {'project':p['id'],'id':event_id,'name':'pageview','at':at,'path':'/','visitor':'v','session':session_id,'properties':'{}'})
+                db.execute(text('INSERT INTO analytics_sessions (project_id,session_id,visitor_id,started_at,last_activity_at,entry_page,exit_page,pageview_count) VALUES (:project,:session,:visitor,:at,:at,:path,:path,:pageviews)'), {'project':p['id'],'session':session_id,'visitor':'v','at':at,'path':'/','pageviews':1})
+        self.assertEqual(self.client.patch('/api/projects/'+p['id']+'/retention', json={'retention_days':7}, headers=headers).status_code,200)
+        with main.engine.connect() as db:
+            self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 2)
+        with self.assertLogs('crease.retention', level='INFO') as logs:
+            totals = expire.enforce_retention(main.engine)
+        self.assertEqual(totals['events'], 1)
+        self.assertEqual(totals['sessions'], 1)
+        with main.engine.connect() as db:
+            self.assertEqual(db.execute(text('SELECT id FROM events WHERE project_id=:id ORDER BY id'), {'id':p['id']}).scalars().all(), ['recent-event'])
+            self.assertEqual(db.execute(text('SELECT session_id FROM analytics_sessions WHERE project_id=:id'), {'id':p['id']}).scalars().all(), ['recent-session'])
+        self.assertTrue(any(p['id'] in line for line in logs.output))
 
     def test_event_preflight_allows_sdk_write_key_header(self):
         response = self.client.options('/api/events', headers={'origin':'https://example.com','access-control-request-method':'POST','access-control-request-headers':'content-type,x-crease-key'})

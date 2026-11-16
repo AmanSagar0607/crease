@@ -434,8 +434,6 @@ async def retention(project_id: str, data: RetentionInput, user=Depends(session_
     with engine.begin() as db:
         owned(db, project_id, user['id'])
         db.execute(text('UPDATE projects SET retention_days=:days WHERE id=:id'), {'days':data.retention_days,'id':project_id})
-        db.execute(text('DELETE FROM events WHERE project_id=:id AND occurred_at<:cutoff'), {'id':project_id,'cutoff':stamp(now()-timedelta(days=data.retention_days))})
-        db.execute(text('DELETE FROM analytics_sessions WHERE project_id=:id AND last_activity_at<:cutoff'), {'id':project_id,'cutoff':stamp(now()-timedelta(days=data.retention_days))})
     return {'retention_days':data.retention_days}
 
 class Event(BaseModel):
