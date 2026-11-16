@@ -201,6 +201,23 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(db.execute(text('SELECT session_id FROM analytics_sessions WHERE project_id=:id'), {'id':p['id']}).scalars().all(), ['recent-session'])
         self.assertTrue(any(p['id'] in line for line in logs.output))
 
+    def test_spoofed_country_header_is_ignored_unless_trusted(self):
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        p = self.client.post('/api/projects', json={'name':'Geo','domain':'example.com'}, headers=headers).json()
+        self.verify_project(p['id'])
+        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key'],'x-vercel-ip-country':'US'}
+        def send(event_id):
+            event = {'id':event_id,'name':'pageview','timestamp':main.stamp(main.now()),'path':'/','visitorId':'v'}
+            self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[event]}, headers=event_headers).status_code, 200)
+        with patch.object(main, 'TRUST_VERCEL_GEO', False):
+            send('untrusted')
+        with patch.object(main, 'TRUST_VERCEL_GEO', True):
+            send('trusted')
+        with main.engine.connect() as db:
+            rows = dict(db.execute(text('SELECT id, country FROM events WHERE project_id=:id'), {'id':p['id']}).all())
+        self.assertIsNone(rows['untrusted'])
+        self.assertEqual(rows['trusted'], 'US')
+
     def test_event_preflight_allows_sdk_write_key_header(self):
         response = self.client.options('/api/events', headers={'origin':'https://example.com','access-control-request-method':'POST','access-control-request-headers':'content-type,x-crease-key'})
         self.assertEqual(response.status_code,204)
