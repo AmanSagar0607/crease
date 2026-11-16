@@ -34,6 +34,28 @@ type Verification = {
 type Breakdown = { label: string; count: number };
 type SeriesPoint = { date: string; events: number; pageviews: number; visitors: number; sessions: number };
 type Metrics = { events: number; pageviews: number; visitors: number; sessions: number };
+type PropertyValue = { value: string; count: number };
+type PropertyKey = {
+  name: string;
+  value_type: 'number' | 'boolean' | 'mixed';
+  event_count: number;
+  distinct_values: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  values: PropertyValue[];
+};
+type EventRow = {
+  id: string;
+  name: string;
+  occurred_at: string;
+  path: string;
+  visitor_id: string | null;
+  session_id: string | null;
+  country: string | null;
+  device: string | null;
+  referrer: string | null;
+  properties: Record<string, number | boolean>;
+};
 type Summary = {
   metrics: Metrics;
   previous: Metrics;
@@ -44,6 +66,7 @@ type Summary = {
   countries: Breakdown[];
   referrers: Breakdown[];
   days: number;
+  filter?: { property: string | null; value: string | null };
 };
 type Delta = { label: string; dir: 'up' | 'down' | 'flat' };
 
@@ -454,12 +477,24 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [setupChecking, setSetupChecking] = useState(false);
   const [setupCheckAt, setSetupCheckAt] = useState<string | null>(null);
   const [setupNotice, setSetupNotice] = useState('');
+  const [properties, setProperties] = useState<PropertyKey[]>([]);
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [eventsBusy, setEventsBusy] = useState(false);
+  const [propertyKey, setPropertyKey] = useState('');
+  const [propertyValue, setPropertyValue] = useState('');
   const [origin, setOrigin] = useState('');
   const [tab, setTab] = useState<Tab>('analytics');
   const [activeSection, setActiveSection] = useState<AnalyticsSection>('overview');
   const project = showProjects ? undefined : projects.find((item) => item.id === selected);
   const projectRef = useRef<Project | undefined>(undefined);
   projectRef.current = project;
+  const activeProperty = properties.find((item) => item.name === propertyKey);
+  const activeFilter = propertyKey && propertyValue ? { property: propertyKey, value: propertyValue } : null;
+  const filterProperty = activeFilter?.property ?? '';
+  const filterValue = activeFilter?.value ?? '';
+  const filterQuery = activeFilter
+    ? `&property=${encodeURIComponent(activeFilter.property)}&value=${encodeURIComponent(activeFilter.value)}`
+    : '';
 
   const load = useCallback(async () => {
     try {
@@ -504,7 +539,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     }
     setSummaryBusy(true);
     try {
-      const result = await api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=${days}`);
+      const result = await api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=${days}${filterQuery}`);
       setSummary(result);
       celebrateFirstPageview(selected, result, projectRef.current);
     } catch (e) {
@@ -516,7 +551,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     } finally {
       setSummaryBusy(false);
     }
-  }, [selected, days, router]);
+  }, [selected, days, filterQuery, router]);
 
   useEffect(() => {
     void loadSummary();
@@ -556,6 +591,71 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     return () => window.clearInterval(timer);
   }, [tab, project?.id, project?.last_event_at, pollSetup]);
 
+  const loadProperties = useCallback(async () => {
+    if (!selected) {
+      setProperties([]);
+      return;
+    }
+    try {
+      setProperties(await api<PropertyKey[]>(`/api/projects/${encodeURIComponent(selected)}/properties`));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setError(e instanceof Error ? e.message : 'Could not load custom properties.');
+    }
+  }, [selected, router]);
+
+  useEffect(() => {
+    void loadProperties();
+  }, [loadProperties]);
+
+  const loadEvents = useCallback(async () => {
+    if (!selected) {
+      setEvents([]);
+      return;
+    }
+    setEventsBusy(true);
+    try {
+      const params = new URLSearchParams({ days: String(days), limit: '25' });
+      if (filterProperty && filterValue) {
+        params.set('property', filterProperty);
+        params.set('value', filterValue);
+      }
+      setEvents(await api<EventRow[]>(`/api/projects/${encodeURIComponent(selected)}/events?${params.toString()}`));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setError(e instanceof Error ? e.message : 'Could not load events.');
+    } finally {
+      setEventsBusy(false);
+    }
+  }, [selected, days, filterProperty, filterValue, router]);
+
+  useEffect(() => {
+    void loadEvents();
+  }, [loadEvents]);
+
+  function chooseProperty(name: string) {
+    setPropertyKey(name);
+    setPropertyValue(properties.find((item) => item.name === name)?.values[0]?.value ?? '');
+  }
+
+  function clearPropertyFilter() {
+    setPropertyKey('');
+    setPropertyValue('');
+  }
+
+  function refreshAnalytics() {
+    setError('');
+    void loadSummary();
+    void loadProperties();
+    void loadEvents();
+  }
+
   useEffect(() => {
     setOrigin(window.location.origin);
     const read = () => {
@@ -588,6 +688,10 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setSetupChecking(false);
     setSetupCheckAt(null);
     setSetupNotice('');
+    setProperties([]);
+    setEvents([]);
+    setPropertyKey('');
+    setPropertyValue('');
   }, [selected]);
 
   const loadVerification = useCallback(async () => {
@@ -984,6 +1088,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           <h2>Overview</h2>
                           <p>
                             {rangeLabel} · {project.domain} · {SESSION_DEFINITION}
+                            {activeFilter ? ` · ${activeFilter.property} = ${activeFilter.value}` : ''}
                           </p>
                         </div>
                         <div className={s.controls}>
@@ -1005,7 +1110,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           <button
                             className={s.refresh}
                             type="button"
-                            onClick={() => void loadSummary()}
+                            onClick={refreshAnalytics}
                             disabled={summaryBusy}
                             aria-label="Refresh analytics"
                           >
@@ -1013,6 +1118,50 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           </button>
                           <span className={s.updated}>Updated {relativeWhen(project.last_event_at)}</span>
                         </div>
+                      </div>
+
+                      <div className={s.filterBar} role="group" aria-label="Custom property filter">
+                        <span className={s.filterLabel}>Filter events</span>
+                        <label className={s.filterField}>
+                          <span className={s.srOnly}>Property key</span>
+                          <select value={propertyKey} onChange={(event) => chooseProperty(event.target.value)}>
+                            <option value="">Any property</option>
+                            {properties.map((item) => (
+                              <option key={item.name} value={item.name}>
+                                {item.name} · {item.value_type}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronIcon />
+                        </label>
+                        <label className={s.filterField}>
+                          <span className={s.srOnly}>Property value</span>
+                          <select
+                            value={propertyValue}
+                            onChange={(event) => setPropertyValue(event.target.value)}
+                            disabled={!propertyKey}
+                          >
+                            {!propertyKey && <option value="">Choose a property first</option>}
+                            {activeProperty?.values.map((item) => (
+                              <option key={item.value} value={item.value}>
+                                {item.value} ({item.count})
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronIcon />
+                        </label>
+                        {activeFilter && (
+                          <button className={s.filterClear} type="button" onClick={clearPropertyFilter}>
+                            Clear filter
+                          </button>
+                        )}
+                        <span className={s.filterHint}>
+                          {properties.length
+                            ? activeFilter
+                              ? `Showing ${activeFilter.property} = ${activeFilter.value}`
+                              : 'Filter metrics and events by an observed property.'
+                            : 'Property filters appear after events with properties arrive.'}
+                        </span>
                       </div>
 
                       <div className={s.kpiGrid} id="visitors">
@@ -1042,7 +1191,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           series={series.map((point) => point.sessions)}
                         />
                         <Kpi
-                          id="events"
                           label="Events"
                           icon={<ZapIcon />}
                           value={summary?.metrics.events}
@@ -1087,6 +1235,57 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           empty="No country data yet."
                         />
                       </div>
+
+                      <section className={s.eventsSection} id="events">
+                        <div className={s.sectionHead}>
+                          <div>
+                            <h2>Recent events</h2>
+                            <p>
+                              {activeFilter
+                                ? `Filtered by ${activeFilter.property} = ${activeFilter.value}`
+                                : `Newest first · last ${days} days`}
+                            </p>
+                          </div>
+                          <span className={s.updated}>{events.length} shown</span>
+                        </div>
+                        {eventsBusy ? (
+                          <div className={s.eventList} aria-busy="true">
+                            {[0, 1, 2].map((item) => (
+                              <span className={s.skeletonRow} key={item}>
+                                <span className={s.skeleton} />
+                                <span className={s.skeleton} />
+                              </span>
+                            ))}
+                          </div>
+                        ) : events.length ? (
+                          <ul className={s.eventList}>
+                            {events.map((event) => (
+                              <li className={s.eventRow} key={event.id}>
+                                <span className={s.eventName}>{event.name}</span>
+                                <span className={s.eventPath}>{event.path}</span>
+                                <span className={s.eventProps}>
+                                  {Object.entries(event.properties).map(([key, value]) => (
+                                    <span className={s.eventProp} key={key}>
+                                      {key}={String(value)}
+                                    </span>
+                                  ))}
+                                </span>
+                                <span className={s.eventWhen}>{relativeWhen(event.occurred_at)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className={s.emptyBlock}>
+                            <ZapIcon className={s.icon} />
+                            <strong>{activeFilter ? 'No events match this filter' : 'No events yet'}</strong>
+                            <span>
+                              {activeFilter
+                                ? 'Try another property value or clear the filter.'
+                                : 'Install the tracker to see the newest events here.'}
+                            </span>
+                          </div>
+                        )}
+                      </section>
                     </>
                   )}
 
