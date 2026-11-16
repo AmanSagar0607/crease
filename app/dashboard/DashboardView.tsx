@@ -450,6 +450,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [verification, setVerification] = useState<Verification | null>(null);
   const [verificationBusy, setVerificationBusy] = useState(false);
   const [verificationNotice, setVerificationNotice] = useState('');
+  const [setupChecking, setSetupChecking] = useState(false);
+  const [setupCheckAt, setSetupCheckAt] = useState<string | null>(null);
+  const [setupNotice, setSetupNotice] = useState('');
   const [origin, setOrigin] = useState('');
   const [tab, setTab] = useState<Tab>('analytics');
   const [activeSection, setActiveSection] = useState<AnalyticsSection>('overview');
@@ -518,6 +521,40 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     void loadSummary();
   }, [loadSummary]);
 
+  const pollSetup = useCallback(async () => {
+    if (!selected) return;
+    setSetupChecking(true);
+    try {
+      const list = await api<Project[]>('/api/projects');
+      setProjects(list);
+      setSetupCheckAt(new Date().toISOString());
+      const current = list.find((item) => item.id === selected);
+      if (current?.last_event_at) {
+        setSetupNotice('Setup verified — the first events have arrived.');
+        await loadSummary();
+      } else {
+        setSetupNotice('');
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setSetupNotice(e instanceof Error ? e.message : 'Could not check for events.');
+    } finally {
+      setSetupChecking(false);
+    }
+  }, [selected, loadSummary, router]);
+
+  useEffect(() => {
+    if (tab !== 'installation' || !project || project.last_event_at) return;
+    void pollSetup();
+    const timer = window.setInterval(() => {
+      void pollSetup();
+    }, 10000);
+    return () => window.clearInterval(timer);
+  }, [tab, project?.id, project?.last_event_at, pollSetup]);
+
   useEffect(() => {
     setOrigin(window.location.origin);
     const read = () => {
@@ -547,6 +584,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setWriteKey(selected ? readWriteKey(selected) : '');
     setVerification(null);
     setVerificationNotice('');
+    setSetupChecking(false);
+    setSetupCheckAt(null);
+    setSetupNotice('');
   }, [selected]);
 
   const loadVerification = useCallback(async () => {
@@ -1082,11 +1122,27 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             {keyNotice}
                           </p>
                         )}
+                        <div className={s.setupCheck} data-ready={project.last_event_at ? 'true' : 'false'} role="status" aria-live="polite">
+                          <span className={s.setupDot} aria-hidden="true" />
+                          <div className={s.setupCheckBody}>
+                            <strong>{project.last_event_at ? 'Setup verified' : 'Waiting for the first event'}</strong>
+                            <p>
+                              {project.last_event_at
+                                ? `Events are arriving. Last event ${relativeWhen(project.last_event_at)}.`
+                                : 'Keep this tab open. Crease checks for events every 10 seconds.'}
+                            </p>
+                            {setupCheckAt && <small>Last checked {relativeWhen(setupCheckAt)}</small>}
+                            {!project.last_event_at && setupNotice && <small>{setupNotice}</small>}
+                          </div>
+                          <button className={`${s.btn} ${s.btnQuiet}`} type="button" onClick={() => void pollSetup()} disabled={setupChecking}>
+                            {setupChecking ? 'Checking…' : 'Check now'}
+                          </button>
+                        </div>
                         <div className={s.stepList}>
                           {[
                             ['Paste the snippet', 'Place it in your document head so every page loads the tracker.'],
                             ['Set your endpoint', 'Point the tracker at your own collector or the hosted endpoint.'],
-                            ['Watch data arrive', 'Open the analytics tab — events appear within seconds.'],
+                            ['Watch data arrive', project.last_event_at ? 'Events are arriving for this project.' : 'Open the analytics tab — events appear within seconds.'],
                           ].map(([title, copy], index) => (
                             <div className={s.stepItem} key={title}>
                               <span className={s.stepNum} aria-hidden="true">

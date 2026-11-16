@@ -2659,3 +2659,67 @@
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+
+.setupCheck {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--soft);
+}
+
+.setupCheck[data-ready='true'] {
+  border-color: var(--positiveLine);
+  background: var(--positiveBg);
+}
+
+.setupDot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--warning);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.setupCheck[data-ready='true'] .setupDot {
+  background: var(--positiveDot);
+  animation: none;
+}
+
+.setupCheckBody {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+}
+
+.setupCheckBody strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.setupCheckBody p,
+.setupCheckBody small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 640px) {
+  .setupCheck {
+    flex-wrap: wrap;
+  }
+
+  .setupCheck .btn {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setupDot {
+    animation: none;
+  }
+}
