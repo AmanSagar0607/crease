@@ -3103,3 +3103,28 @@
   .analyticsDashboard .main { margin-left: 0; padding: 22px 14px 38px; }
   .analyticsDashboard .footer { margin-left: 0; }
 }
+
+/* Business overview */
+.businessOverview { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, 1fr); gap: 12px; margin: 12px 0; }
+.acquisitionOverview, .revenueOverview { min-width: 0; padding: 22px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; }
+.businessHeading { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.businessEyebrow { display: block; color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+.businessOverview h3 { margin: 7px 0 0; color: var(--ink); font-size: 16px; letter-spacing: -.025em; }
+.modelSelect select { max-width: 150px; padding: 8px 10px; color: var(--ink); background: var(--soft); border: 1px solid var(--lineStrong); border-radius: 7px; font: inherit; font-size: 11px; }
+.businessDescription, .sourceFootnote { margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.acquisitionTotal { display: flex; align-items: baseline; gap: 8px; margin: 23px 0 16px; }
+.acquisitionTotal strong { color: var(--ink); font-size: 27px; font-weight: 600; letter-spacing: -.045em; }
+.acquisitionTotal span { color: var(--muted); font-size: 11px; }
+.sourceList { display: grid; gap: 13px; margin: 0; padding: 0; list-style: none; }
+.sourceList li > div { display: flex; justify-content: space-between; gap: 12px; color: var(--ink2); font-size: 12px; }
+.sourceList li > div span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sourceList li > div strong { color: var(--ink); font-weight: 600; }
+.sourceTrack { display: block; height: 3px; margin-top: 7px; background: var(--soft2); border-radius: 3px; }
+.sourceTrack > span { display: block; height: 100%; background: var(--chartThird); border-radius: inherit; }
+.businessState, .businessLoading { margin: 24px 0 0; color: var(--ink2); font-size: 12px; line-height: 1.6; }
+.businessState button { margin-top: 8px; color: var(--ink); text-decoration: underline; }
+.revenueOverview { display: flex; flex-direction: column; }
+.revenueDivider { height: 1px; margin: 24px 0; background: var(--line); }
+.revenueOverview p { margin: 0; color: var(--ink); font-size: 14px; font-weight: 600; }
+.revenueOverview small { max-width: 290px; margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+@media (max-width: 760px) { .businessOverview { grid-template-columns: 1fr; } .acquisitionOverview, .revenueOverview { padding: 18px; } }

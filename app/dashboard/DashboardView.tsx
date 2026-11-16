@@ -12,6 +12,7 @@ import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from '@/componen
 import { TooltipProvider } from '@/components/ui/tooltip';
 import LivingCat from '../mascot/living-cat';
 import AnalyticsCharts from './AnalyticsCharts';
+import AcquisitionOverview from './AcquisitionOverview';
 import { dispatchMascotEvent } from '../mascot/mascot-events';
 import s from './dashboard.module.css';
 
@@ -493,6 +494,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [busy, setBusy] = useState(true);
   const [summaryBusy, setSummaryBusy] = useState(false);
+  const [acquisitionRefresh, setAcquisitionRefresh] = useState(0);
   const [summaryError, setSummaryError] = useState('');
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
@@ -725,6 +727,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   }
 
   function refreshAnalytics() {
+    setAcquisitionRefresh((value) => value + 1);
     setError('');
     void loadSummary();
     void loadProperties();
@@ -1370,6 +1373,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           series={series.map((point) => point.events)}
                         />
                       </div>
+                      <AcquisitionOverview projectId={selected} days={days} filtered={Boolean(activeFilter)} refresh={acquisitionRefresh} />
 
                       {showCharts && (
                         <AnalyticsCharts
