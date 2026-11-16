@@ -89,6 +89,7 @@ function celebrateFirstPageview(projectId: string, summary: Summary, project?: P
   dispatchMascotEvent({ kind: 'first-pageview', projectName: project.name });
 }
 
+const SESSION_DEFINITION = 'Sessions end after 30 min idle or at UTC midnight';
 const TABS = ['analytics', 'installation', 'integrations', 'settings'] as const;
 type Tab = (typeof TABS)[number];
 const ANALYTICS_SECTIONS = ['overview', 'visitors', 'pages', 'referrers', 'countries', 'events'] as const;
@@ -982,7 +983,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         <div>
                           <h2>Overview</h2>
                           <p>
-                            {rangeLabel} · {project.domain}
+                            {rangeLabel} · {project.domain} · {SESSION_DEFINITION}
                           </p>
                         </div>
                         <div className={s.controls}>
@@ -1037,7 +1038,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           icon={<ActivityIcon />}
                           value={summary?.metrics.sessions}
                           delta={getDelta(summary?.metrics.sessions, summary?.previous?.sessions)}
-                          hint={`Distinct sessions · vs previous ${days} days`}
+                          hint={`Server-assigned · 30 min idle or UTC day · vs previous ${days} days`}
                           series={series.map((point) => point.sessions)}
                         />
                         <Kpi
@@ -1282,6 +1283,10 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           <div className={s.detailRow}>
                             <dt>Retention</dt>
                             <dd>{project.retention_days} days</dd>
+                          </div>
+                          <div className={s.detailRow}>
+                            <dt>Session definition</dt>
+                            <dd>30 min inactivity or UTC day boundary</dd>
                           </div>
                         </dl>
                       </section>
