@@ -125,6 +125,15 @@ class ApiTest(unittest.TestCase):
         non_direct=self.client.get(url+'&model=last_non_direct').json()
         self.assertIn('Direct or unknown',[r['source'] for r in last['acquisition']])
         self.assertIn('social.example',[r['source'] for r in non_direct['acquisition']])
+        signup={'id':'signup','name':'signup','timestamp':main.stamp(at+timedelta(hours=1,minutes=5)),'path':'/signup','visitorId':'v1'}
+        duplicate_visitor={**signup,'id':'signup-again','timestamp':main.stamp(at+timedelta(hours=1,minutes=6))}
+        self.assertEqual(self.client.post('/api/events',json={'projectId':p['id'],'events':[signup,duplicate_visitor]},headers={'origin':'https://example.com','x-crease-key':p['write_key']}).json()['accepted'],2)
+        converted=self.client.get(url+'&conversion_event=signup').json()
+        self.assertEqual((converted['metrics']['conversions'],converted['metrics']['conversion_rate']),(1,0.5))
+        self.assertEqual(sum(row['conversions'] for row in converted['acquisition']),1)
+        self.assertEqual(sum(row['conversions'] for row in converted['campaigns']),1)
+        self.assertEqual(converted['landing_pages'][0]['conversions'],1)
+        self.assertEqual(self.client.get(url+'&conversion_event=missing').json()['metrics']['conversions'],0)
         self.assertEqual(self.client.get(url+'&model=bad').status_code,422)
         self.assertEqual(self.client.get(f'/api/projects/{p["id"]}/overview?start={day}&end={day-timedelta(days=1)}').status_code,422)
         self.assertEqual(self.client.get(f'/api/projects/{p["id"]}/overview?start={day-timedelta(days=90)}&end={day}').status_code,422)
