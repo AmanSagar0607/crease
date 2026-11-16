@@ -9,11 +9,13 @@ function makeId() {
 }
 
 export function init(options = {}) {
-  const noop = { track() {}, page() {}, identify() {}, reset() {}, optOut() {}, destroy() {} };
+  const noop = { track() {}, page() {}, identify() { return null; }, reset() {}, optOut() {}, destroy() {} };
   if (typeof window === 'undefined' || !options.projectId || typeof options.writeKey !== 'string' || !/^crease_[A-Za-z0-9_-]{16,}$/.test(options.writeKey)) return noop;
+  if (options.enabled === false) return noop;
   if (window.__creaseAnalytics) return window.__creaseAnalytics;
 
   const endpoint = options.endpoint || DEFAULT_ENDPOINT;
+  const visitorKey = VISITOR_KEY + ':' + options.projectId, sessionKey = SESSION_KEY + ':' + options.projectId;
   let enabled = options.enabled !== false;
   let queue = [], timer = null, lastUrl = null, lastPath = null;
   let vitals = {}, vitalsSent = false;
@@ -22,14 +24,16 @@ export function init(options = {}) {
   const read = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
   const write = (key, value) => { try { localStorage.setItem(key, value); } catch {} };
   const remove = (key) => { try { localStorage.removeItem(key); } catch {} };
-  const visitor = () => { let value = read(VISITOR_KEY); if (!value) { value = makeId(); if (value) write(VISITOR_KEY, value); } return value; };
+  if (enabled) { if (!read(visitorKey) && read(VISITOR_KEY)) write(visitorKey, read(VISITOR_KEY)); if (!read(sessionKey) && read(SESSION_KEY)) write(sessionKey, read(SESSION_KEY)); }
+  const visitor = () => { if (!enabled) return null; let value = read(visitorKey); if (!value) { value = makeId(); if (value) write(visitorKey, value); } return value; };
+  const campaign = () => { const values = {}; try { const params = new URL(location.href).searchParams; ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(key => { const value = params.get(key); if (value && /^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,127}$/.test(value)) values[key] = value; }); } catch {} return values; };
   const session = () => {
     const now = Date.now(); let state;
-    try { state = JSON.parse(read(SESSION_KEY) || 'null'); } catch { state = null; }
+    try { state = JSON.parse(read(sessionKey) || 'null'); } catch { state = null; }
     if (!state?.id || now - state.lastActivity >= IDLE_MS || now - state.startedAt >= MAX_SESSION_MS) {
       state = { id: makeId(), startedAt: now, lastActivity: now, entryPage: location.pathname, exitPage: location.pathname, pageviews: 0 };
     }
-    state.lastActivity = now; write(SESSION_KEY, JSON.stringify(state)); return state;
+    state.lastActivity = now; write(sessionKey, JSON.stringify(state)); return state;
   };
   const observe = (type, update) => {
     try { const observer = new PerformanceObserver((list) => update(list.getEntries())); observer.observe({ type, buffered: true }); observerList.push(observer); } catch {}
@@ -66,10 +70,12 @@ export function init(options = {}) {
       if (/^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$/.test(key) && !/password|token|secret|email/i.test(key) && (typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value)))) clean[key] = value;
     });
     const active = session();
-    if (name === 'pageview') { active.pageviews += 1; active.exitPage = location.pathname; write(SESSION_KEY, JSON.stringify(active)); }
+    if (name === 'pageview') { active.pageviews += 1; active.exitPage = location.pathname; write(sessionKey, JSON.stringify(active)); }
     let referrer;
     try { referrer = document.referrer ? new URL(document.referrer).hostname : null; } catch { referrer = null; }
-    queue.push({ id: makeId(), name, timestamp: new Date().toISOString(), path: pathOverride || location.pathname, visitorId: visitor(), sessionId: active.id, referrer, properties: clean, schemaVersion: 1 });
+    const event = { id: makeId(), name, timestamp: new Date().toISOString(), path: pathOverride || location.pathname, visitorId: visitor(), sessionId: active.id, referrer, properties: clean, schemaVersion: 1 };
+    if (name === 'pageview') event.attribution = campaign();
+    queue.push(event);
     if (queue.length > 100) queue.shift();
     if (queue.length >= 20) flush(); else timer ??= setTimeout(flush, 2000);
   };
@@ -90,9 +96,10 @@ export function init(options = {}) {
   });
   const api = {
     track, page, flush, identify: visitor,
-    reset() { remove(VISITOR_KEY); remove(SESSION_KEY); resetVitals(); lastUrl = null; lastPath = null; page(); },
-    optOut() { enabled = false; queue = []; lastUrl = null; resetVitals(); observerList.forEach((observer) => { try { observer.disconnect(); } catch {} }); observerList.length = 0; if (timer) clearTimeout(timer); timer = null; remove(VISITOR_KEY); remove(SESSION_KEY); },
+    reset() { remove(visitorKey); remove(sessionKey); remove(VISITOR_KEY); remove(SESSION_KEY); resetVitals(); lastUrl = null; lastPath = null; page(); },
+    optOut() { enabled = false; queue = []; lastUrl = null; resetVitals(); observerList.forEach((observer) => { try { observer.disconnect(); } catch {} }); observerList.length = 0; if (timer) clearTimeout(timer); timer = null; remove(visitorKey); remove(sessionKey); remove(VISITOR_KEY); remove(SESSION_KEY); },
     destroy() {
+      enabled = false; queue = [];
       window.removeEventListener('popstate', page); window.removeEventListener('crease:navigation', page); window.removeEventListener('pagehide', leaving);
       document.removeEventListener('visibilitychange', hidden);
       Object.entries(originals).forEach(([method, original]) => { if (history[method]?.__creasePatched) history[method] = original; });

@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import ipaddress
 import json
+import math
 import os
 import re
 import secrets
@@ -482,6 +483,17 @@ async def retention(project_id: str, data: RetentionInput, user=Depends(session_
         db.execute(text('UPDATE projects SET retention_days=:days WHERE id=:id'), {'days':data.retention_days,'id':project_id})
     return {'retention_days':data.retention_days}
 
+# Campaign values deliberately exclude URL fragments and common personal identifiers.
+class Attribution(BaseModel):
+    utm_source: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,127}$')
+    utm_medium: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,127}$')
+    utm_campaign: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,127}$')
+    utm_content: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,127}$')
+    utm_term: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,127}$')
+
+    class Config:
+        extra = 'forbid'
+
 class Event(BaseModel):
     id: str = Field(min_length=1,max_length=64)
     name: str = Field(pattern=r'^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$')
@@ -491,6 +503,7 @@ class Event(BaseModel):
     sessionId: str | None = Field(default=None,max_length=64)
     properties: dict = Field(default_factory=dict)
     referrer: str | None = Field(default=None,max_length=253)
+    attribution: Attribution | None = None
 
 class Batch(BaseModel):
     projectId: str = Field(max_length=36)
@@ -513,8 +526,14 @@ async def limits(request: Request, call_next):
                 return Response(status_code=401)
         length = request.headers.get('content-length')
         if length and (not length.isdigit() or int(length)>32768): return Response(status_code=413)
-        body = await request.body()
-        if len(body)>32768: return Response(status_code=413)
+        chunks, size = [], 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > 32768: return Response(status_code=413)
+            chunks.append(chunk)
+        body = b''.join(chunks)
+        # Keep the bounded body available to FastAPI's request parser.
+        request._body = body
         try:
             parsed = json.loads(body)
             project_id = parsed.get('projectId') if isinstance(parsed, dict) else None
@@ -529,7 +548,7 @@ async def limits(request: Request, call_next):
                 client_key = 'proxy-unknown'
         if not limiter.consume('ip:' + client_key, RATE_LIMIT_IP_PER_MINUTE):
             return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
-        if isinstance(project_id, str) and project_id and not limiter.consume('project:' + project_id, RATE_LIMIT_PROJECT_PER_MINUTE):
+        if isinstance(project_id, str) and 0 < len(project_id) <= 36 and not limiter.consume('project:' + project_id, RATE_LIMIT_PROJECT_PER_MINUTE):
             return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
     response = await call_next(request)
     if request.url.path == '/api/events' and origin:
@@ -566,7 +585,7 @@ async def ingest(data: Batch, request: Request):
         inserted = 0
         for e in data.events:
             if not e.path.startswith('/') or '?' in e.path or '#' in e.path: raise HTTPException(422, 'Invalid path')
-            if len(e.properties)>20 or any(not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_.-]{0,63}', k) or re.search(r'password|token|secret|email', k, re.I) or not isinstance(v, (int, float, bool)) for k,v in e.properties.items()): raise HTTPException(422, 'Invalid event properties')
+            if len(e.properties)>20 or any(not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_.-]{0,63}', k) or re.search(r'password|token|secret|email', k, re.I) or not isinstance(v, (int, float, bool)) or (isinstance(v, float) and not math.isfinite(v)) for k,v in e.properties.items()): raise HTTPException(422, 'Invalid event properties')
             t = e.timestamp if e.timestamp.tzinfo else e.timestamp.replace(tzinfo=timezone.utc)
             event_time = t.astimezone(timezone.utc)
             if abs((now()-event_time).total_seconds()) > 86400 * 7: raise HTTPException(422, 'Event timestamp out of range')
@@ -575,6 +594,18 @@ async def ingest(data: Batch, request: Request):
             session_id = resolve_session(db, data.projectId, e.visitorId, e.id, event_time)
             result=db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,country,device,referrer,properties) VALUES (:project,:id,:name,:ts,:path,:visitor,:session,:country,:device,:referrer,:properties) ON CONFLICT (project_id,id) DO NOTHING'), {'project':data.projectId,'id':e.id,'name':e.name,'ts':stamp(event_time),'path':e.path,'visitor':e.visitorId,'session':session_id,'country':country,'device':device,'referrer':referrer,'properties':json.dumps(e.properties)})
             inserted += result.rowcount
+            if result.rowcount and e.name == 'pageview' and e.visitorId and session_id:
+                external_referrer = referrer if referrer not in (domain, alternate) else None
+                campaign = e.attribution.model_dump() if e.attribution else {}
+                db.execute(text('''
+                    INSERT INTO attribution_touchpoints
+                      (project_id,event_id,visitor_id,session_id,occurred_at,landing_page,referrer_domain,
+                       utm_source,utm_medium,utm_campaign,utm_content,utm_term)
+                    VALUES (:project,:event,:visitor,:session,:at,:path,:referrer,
+                            :utm_source,:utm_medium,:utm_campaign,:utm_content,:utm_term)
+                '''), {'project':data.projectId,'event':e.id,'visitor':e.visitorId,
+                       'session':session_id,'at':event_time,'path':e.path,'referrer':external_referrer,
+                       **{key:campaign.get(key) for key in ('utm_source','utm_medium','utm_campaign','utm_content','utm_term')}})
             if result.rowcount and e.properties:
                 store_event_properties(db, data.projectId, e.id, e.properties, stamp(event_time))
             if result.rowcount and session_id:
