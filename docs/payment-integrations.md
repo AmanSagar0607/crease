@@ -1,6 +1,6 @@
 ﻿# Stripe payment foundation (sandbox verification pending)
 
-This is an initial server-side adapter, not a production-verified integration. It has synthetic signature and database tests only; test with actual Stripe sandbox events and reconcile before relying on it. No frontend connection flow, payment reporting, customer-to-visitor linkage, provider account validation, or automated reconciliation is implemented. There is no currency conversion and no revenue claim.
+This is an initial server-side adapter, not a production-verified integration. A local test using actual Stripe sandbox webhooks recorded one USD 12.00 payment and a USD 3.00 partial refund correctly. Synthetic signature and database tests also pass. This narrow test does not establish complete provider support or production readiness; run broader sandbox and reconciliation tests before relying on it. No frontend connection flow, payment reporting, customer-to-visitor linkage, provider account validation, or automated reconciliation is implemented. There is no currency conversion and no revenue claim.
 
 ## Configuration
 

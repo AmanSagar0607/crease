@@ -1,6 +1,6 @@
 ﻿# Crease: Stripe integration plan
 
-Status: working plan written from the installed Stripe guidance and the current code. The requested `stripe_implementation_planner` MCP tool was not exposed to this session, so this is not its output. The Stripe CLI is authorized for the `Crease development` sandbox; verify `stripe whoami --format json` reports that sandbox and `mode: test` before every test run. Never use live credentials for test runs.
+Status: working plan written from the installed Stripe guidance and the current code. The requested `stripe_implementation_planner` MCP tool is now available but needs additional business context before it can return a guide; this document is not its output. The Stripe CLI is authorized for the `Crease development` sandbox; verify `stripe whoami --format json` reports that sandbox and `mode: test` before every test run. Never use live credentials for test runs.
 
 ## Business and scope
 
@@ -10,7 +10,7 @@ Crease is a multi-project analytics SaaS that needs to ingest a merchant's verif
 
 - `backend/payment_adapters.py` verifies raw Stripe webhook bytes with the official Python SDK and normalizes selected charge events.
 - `backend/main.py` stores per-project signing secrets using a dedicated Fernet key, requires project ownership for connection management, limits webhook bodies and requests, and isolates test/live payments. Migration `0004_payment_foundation` has not been applied to production.
-- Synthetic tests cover signature rejection, webhook deduplication, refund ordering, conflicting amounts, project isolation, and retention. There has been no real Stripe sandbox webhook test or reconciliation. No browser event proves payment.
+- Synthetic tests cover signature rejection, webhook deduplication, refund ordering, conflicting amounts, project isolation, and retention. One Stripe sandbox payment and partial refund were delivered to the local webhook and recorded correctly; broader sandbox tests and reconciliation remain outstanding. No browser event proves payment.
 - Gaps: no customer-to-visitor association, revenue reporting, checkout, subscription and invoice lifecycle, production Connect onboarding, reconciliation, comprehensive payment states, or credential rotation workflow. The current charge-only event model must not be described as a complete Billing or Invoicing integration. Payments must remain unattributed when no trustworthy association exists.
 
 ## Sequence
@@ -25,7 +25,7 @@ Crease is a multi-project analytics SaaS that needs to ingest a merchant's verif
 ## Open decisions
 
 - Is amansagar.in or Crease itself selling a subscription, one-time products, or both? What are the prices and currencies?
-- Is Connect intended to route money/payouts between parties, or only to let merchants connect existing Stripe accounts for analytics?
+- The user confirmed that merchants connect their existing Stripe accounts for analytics; Crease does not route payments or payouts between businesses.
 - Who is the merchant of record, and which party handles fees and negative balances if funds are routed?
 - Are invoices for Crease customers, merchant customers, or both? Which countries and tax registrations apply?
 - What explicit server-side process will bind an authenticated merchant customer to a consented Crease visitor?
