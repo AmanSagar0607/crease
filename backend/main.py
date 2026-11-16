@@ -9,7 +9,7 @@ import re
 import secrets
 import socket
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
@@ -23,6 +23,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import IntegrityError
 from github_install import create_install_pr, enable_tracking_pr, installation_status
+import overview_reporting
 from cryptography.fernet import Fernet, InvalidToken
 
 load_dotenv(Path(__file__).with_name('.env'))
@@ -677,6 +678,16 @@ async def summary(project_id: str, days: int = 30, property: str | None = Query(
             return [dict(r) for r in db.execute(text(f'SELECT COALESCE({column}, :unknown) AS label, COUNT(*) AS count FROM {source} WHERE project_id=:id AND occurred_at>=:since AND name=:name GROUP BY {column} ORDER BY count DESC LIMIT 10'), {**params,'unknown':'Unknown','name':'pageview'}).mappings()]
         event_names=[dict(r) for r in db.execute(text('SELECT name AS label, COUNT(*) AS count FROM events WHERE project_id=:id AND occurred_at>=:since GROUP BY name ORDER BY count DESC LIMIT 20'), params).mappings()]
         return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'referrers':breakdown('referrer'),'event_names':event_names,'days':days,'filter':{'property':property,'value':value},'average_session_duration_seconds':round(sum(durations)/len(durations)) if durations else 0}
+
+@app.get('/api/projects/{project_id}/overview')
+async def overview(project_id: str, start: date, end: date, model: str = 'first_touch', user=Depends(session_user)):
+    if end < start or (end - start).days >= 90: raise HTTPException(422, 'Date range must cover 1 to 90 days')
+    if end > now().date(): raise HTTPException(422, 'End date cannot be in the future')
+    if model not in overview_reporting.MODELS: raise HTTPException(422, 'Unsupported attribution model')
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        return overview_reporting.report(db, project_id, start, end, model)
+
 
 @app.get('/api/projects/{project_id}/acquisition')
 async def acquisition(project_id: str, days: int = 30, model: str = 'first_touch', user=Depends(session_user)):

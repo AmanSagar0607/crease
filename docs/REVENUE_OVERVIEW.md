@@ -1,0 +1,11 @@
+﻿# Revenue-first dashboard: overview
+
+`GET /api/projects/{project_id}/overview?start=YYYY-MM-DD&end=YYYY-MM-DD&model=first_touch` requires an authenticated project owner. Dates are inclusive UTC calendar days, limited to 90 days; future end dates and invalid models are rejected. The previous period has equal length immediately before the selected period. Supported models are `first_touch`, `last_touch`, and `last_non_direct`. Existing acquisition API remains unchanged.
+
+Visitors are distinct non-null visitor IDs with events in the period. Pageviews count pageview events; sessions count server-assigned sessions starting in the period. New means first observed within retained project event history during the period; returning means observed before it. Retention, consent, and identifier changes limit these figures. Daily series compare equal-offset days from the preceding period.
+
+Acquisition and campaigns assign retained observed touchpoints using the selected model for visitors with a touchpoint during the period. Sources without evidence are Direct or unknown; medium and campaign may be Unknown. Session counts represent sessions started during the period by those visitors and use the selected visitor-level touchpoint, not per-session attribution. Landing pages count session entry paths, sessions, and distinct visitor IDs for sessions started in the period. Recent activity returns event name, path, and timestamp only; no event properties. Refer to ACQUISITION_REPORT.md for attribution limitations.
+
+Conversions and conversion rate are unavailable: conversion goals have not been defined. Revenue is unavailable and no zero amount is inferred. Campaign and landing-page conversion figures consequently show unavailable. Campaign detail navigation is not implemented. The new overview shares its own UTC range and model across its panels; the existing detailed analytics sections continue using separate legacy 7/30/90-day and property filters. These differences are disclosed in the UI. Full shared filtering, project timezones, conversion definitions, conversion-backed reports, and detailed campaign and page navigation remain future work.
+
+No schema migration is introduced. Do not run production migrations or deploy as part of this change.

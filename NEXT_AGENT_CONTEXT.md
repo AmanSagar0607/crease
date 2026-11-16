@@ -259,3 +259,11 @@ The npm account must own the `@crease` scope. If it does not, choose a package n
 - The Stripe MCP implementation planner became available but returned that it needs more business context. Awaiting the user's description of what Crease sells and whether payments are subscriptions, one-time, invoices, or a combination. Do not guess these business decisions.
 
 Acquisition reporting: project-owner GET /api/projects/{id}/acquisition supports first, last, and last-non-direct observed touchpoints. See docs/ACQUISITION_REPORT.md. No revenue attribution is inferred. PostgreSQL integration tests pass locally; no production deployment performed.
+
+## Revenue-first overview milestone
+
+Dashboard displays project-scoped acquisition sources using the existing acquisition endpoint, attribution model selector, date filter, loading/error/retry states, and a disclosure that property filters do not apply. Revenue reporting is marked unavailable. See docs/REVENUE_OVERVIEW.md. No migration or deployment. Full Phase 1 overview metrics and remaining phases are incomplete. Skip all Stripe and payment-provider work per latest user instruction.
+
+## Overview v1 work (local only)
+
+Added owner-scoped GET /api/projects/{id}/overview with UTC date windows, previous-period visitor/session/pageview/new/returning counts, daily series, selected acquisition/campaign attribution, landing sessions and recent event names/paths. See docs/REVENUE_OVERVIEW.md for definitions and limitations. Conversion goals, conversion rates, revenue, campaign-detail navigation, shared filtering of legacy sections and browser visual verification remain incomplete. No migration or deployment; skip payment-provider work.

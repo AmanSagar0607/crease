@@ -2,14 +2,37 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
 import ThemeToggle from '../theme-toggle';
+import VerifiedBadge from './VerifiedBadge';
+import ProjectOnboarding from './ProjectOnboarding';
+import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import LivingCat from '../mascot/living-cat';
 import AnalyticsCharts from './AnalyticsCharts';
+import OverviewV1 from './OverviewV1';
 import { dispatchMascotEvent } from '../mascot/mascot-events';
 import s from './dashboard.module.css';
+
+function ProjectNavigation({ children }: { children: ReactNode }) {
+  const { isMobile, setOpenMobile } = useSidebar();
+  return (
+    <aside
+      className={s.projectSidebar}
+      aria-label="Project navigation"
+      onClick={(event) => {
+        if (isMobile && (event.target as Element).closest('a')) setOpenMobile(false);
+      }}
+      onChange={(event) => {
+        if (isMobile && (event.target as Element).matches('select')) setOpenMobile(false);
+      }}
+    >
+      {children}
+    </aside>
+  );
+}
 
 type User = { id: string; login: string };
 type Project = {
@@ -29,7 +52,7 @@ type Verification = {
   verified: boolean;
   verified_at: string | null;
   record: string;
-  meta: string;
+  dns_name?: string;
 };
 type Breakdown = { label: string; count: number };
 type SeriesPoint = { date: string; events: number; pageviews: number; visitors: number; sessions: number };
@@ -467,9 +490,11 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState('');
   const [showProjects, setShowProjects] = useState(false);
+  const [onboarding, setOnboarding] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [busy, setBusy] = useState(true);
   const [summaryBusy, setSummaryBusy] = useState(false);
+  const [acquisitionRefresh, setAcquisitionRefresh] = useState(0);
   const [summaryError, setSummaryError] = useState('');
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
@@ -600,13 +625,13 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   }, [selected, loadSummary, router]);
 
   useEffect(() => {
-    if (tab !== 'installation' || !project || project.last_event_at) return;
+    if ((tab !== 'installation' && !onboarding) || !project || project.last_event_at) return;
     void pollSetup();
     const timer = window.setInterval(() => {
       void pollSetup();
     }, 10000);
     return () => window.clearInterval(timer);
-  }, [tab, project?.id, project?.last_event_at, pollSetup]);
+  }, [tab, onboarding, project?.id, project?.last_event_at, pollSetup]);
 
   const loadProperties = useCallback(async () => {
     if (!selected) {
@@ -702,6 +727,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   }
 
   function refreshAnalytics() {
+    setAcquisitionRefresh((value) => value + 1);
     setError('');
     void loadSummary();
     void loadProperties();
@@ -711,6 +737,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   useEffect(() => {
     setOrigin(window.location.origin);
+    setOnboarding(new URLSearchParams(window.location.search).get('onboarding') === '1');
     const read = () => {
       const candidate = window.location.hash.slice(1);
       if (ANALYTICS_SECTIONS.includes(candidate as AnalyticsSection)) {
@@ -841,7 +868,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       if (isFirstProject) {
         dispatchMascotEvent({ kind: 'project-created', projectName: created.name });
       }
-      router.push(`/dashboard/projects/${encodeURIComponent(created.id)}`);
+      setOnboarding(true);
+      router.push(`/dashboard/projects/${encodeURIComponent(created.id)}?onboarding=1`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create the project.');
     } finally {
@@ -942,20 +970,44 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const rangeLabel = days === 7 ? 'Last 7 days' : days === 90 ? 'Last 90 days' : 'Last 30 days';
   const isLive = Boolean(project?.last_event_at) && Date.now() - new Date(project?.last_event_at ?? 0).getTime() < 7 * 864e5;
 
+  if (onboarding && project) {
+    return <ProjectOnboarding
+      name={project.name}
+      domain={project.domain}
+      projectId={project.id}
+      writeKey={writeKey}
+      origin={origin}
+      endpoint={collector}
+      verified={project.verified === true}
+      verification={verification}
+      checking={verificationBusy}
+      notice={verificationNotice || error}
+      eventReceived={Boolean(project.last_event_at)}
+      eventChecking={setupChecking}
+      eventNotice={setupNotice}
+      onVerify={() => void checkVerification()}
+      onCheckEvents={() => void pollSetup()}
+      onFinish={() => { setOnboarding(false); window.history.replaceState(null, '', `/dashboard/projects/${encodeURIComponent(project.id)}`); }}
+    />;
+  }
+
   return (
+    <TooltipProvider>
+    <SidebarProvider className={s.sidebarProvider} style={{ '--sidebar-width': '218px' } as CSSProperties}>
     <div className={`${s.dashboard} ${project ? s.analyticsDashboard : ''}`}>
       <a className={s.skip} href="#main">
         Skip to content
       </a>
 
       {project && (
-        <aside className={s.projectSidebar} aria-label="Project navigation">
+        <Sidebar className={s.sidebar16}>
+        <ProjectNavigation>
           <Link className={s.sidebarBrand} href="/">
             <span aria-hidden="true">✳</span> crease.
           </Link>
           <div className={s.sidebarProject}>
             <span className={s.sidebarProjectMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
-            <span className={s.sidebarProjectText}><strong>{project.domain}</strong><small>personal workspace</small></span>
+            <span className={s.sidebarProjectText}><strong className={s.verifiedName}><span>{project.domain}</span>{project.verified === true && <VerifiedBadge />}</strong><small>personal workspace</small></span>
           </div>
           <label className={s.sidebarSwitcher}>
             <span className={s.srOnly}>Switch project</span>
@@ -984,17 +1036,26 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
             {user && <span className={s.sidebarUser}><span className={s.avatar} aria-hidden="true">{user.login.slice(0, 1).toUpperCase()}</span><span>{user.login}</span></span>}
             <button className={s.signOut} type="button" onClick={logout}>Sign out</button>
           </div>
-        </aside>
+        </ProjectNavigation>
+        </Sidebar>
       )}
 
       <header className={`${s.header} ${project ? s.analyticsHeader : ''}`}>
         <div className={s.headerInner}>
-          <Link className={s.brand} href="/">
-            <span className={s.brandMark}>✳</span>
-            crease.
-          </Link>
-          <span className={s.headerDivider} aria-hidden="true" />
-          <span className={s.workspaceLabel}>WORKSPACE</span>
+          <div className={s.headerIdentity}>
+            {project && <SidebarTrigger aria-label="Toggle project navigation" />}
+            <Link className={s.brand} href="/">
+              <span className={s.brandMark}>✳</span>
+              crease.
+            </Link>
+            <span className={s.headerDivider} aria-hidden="true" />
+            {!project && user && (
+              <span className={s.userChip}>
+                <span className={s.avatar} aria-hidden="true">{user.login.slice(0, 1).toUpperCase()}</span>
+                <span>{user.login}</span>
+              </span>
+            )}
+          </div>
           <nav className={s.breadcrumb} aria-label="Breadcrumb">
             <Link
               href="/dashboard?view=projects"
@@ -1014,18 +1075,10 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           </nav>
           <div className={s.account}>
             <ThemeToggle />
-            {user && (
-              <span className={s.userChip}>
-                <span className={s.avatar} aria-hidden="true">
-                  {user.login.slice(0, 1).toUpperCase()}
-                </span>
-                <span>{user.login}</span>
-              </span>
-            )}
             <Link className={s.headerLink} href="/docs">
               Docs
             </Link>
-            {user && (
+            {!project && user && (
               <button className={s.signOut} type="button" onClick={logout}>
                 Sign out
               </button>
@@ -1146,9 +1199,10 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                 <div className={s.tabPanel} key={tab}>
                   {tab === 'analytics' && (
                     <>
-                      <div className={s.analyticsBar} id="overview" tabIndex={-1}>
+                      <OverviewV1 projectId={selected} refresh={acquisitionRefresh} filtered={Boolean(activeFilter)} />
+                      <div className={s.analyticsBar} tabIndex={-1}>
                         <div>
-                          <h2>Overview</h2>
+                          <h2>Detailed analytics</h2>
                           <p>
                             {rangeLabel} · {project.domain} · {SESSION_DEFINITION}
                             {activeFilter ? ` · ${activeFilter.property} = ${activeFilter.value}` : ''}
@@ -1504,6 +1558,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                       <section className={s.installCopy}>
                         <p className={s.eyebrow}>GET CONNECTED / 01</p>
                         <h2>Bring your site into focus.</h2>
+                        <button className={`${s.btn} ${s.btnQuiet}`} type="button" onClick={() => { setOnboarding(true); window.history.replaceState(null, '', `/dashboard/projects/${encodeURIComponent(project.id)}?onboarding=1`); }}>Open setup guide</button>
                         <p>
                           Add this snippet to your site after obtaining any required visitor consent. The collector URL
                           must be publicly reachable by your visitors.
@@ -1754,7 +1809,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             </span>
                             <span className={s.projectCardName}>
                               <strong>{item.name}</strong>
-                              <span>{item.domain}</span>
+                              <span className={s.projectDomain}><span>{item.domain}</span>{item.verified === true && <VerifiedBadge />}</span>
                             </span>
                             <span className={s.projectCardArrow} aria-hidden="true">
                               <ArrowRightIcon />
@@ -1841,5 +1896,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         </div>
       </footer>
     </div>
+    </SidebarProvider>
+    </TooltipProvider>
   );
 }
