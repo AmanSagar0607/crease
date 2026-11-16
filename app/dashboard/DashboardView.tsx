@@ -2,15 +2,35 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
 import ThemeToggle from '../theme-toggle';
 import VerifiedBadge from './VerifiedBadge';
+import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import LivingCat from '../mascot/living-cat';
 import AnalyticsCharts from './AnalyticsCharts';
 import { dispatchMascotEvent } from '../mascot/mascot-events';
 import s from './dashboard.module.css';
+
+function ProjectNavigation({ children }: { children: ReactNode }) {
+  const { isMobile, setOpenMobile } = useSidebar();
+  return (
+    <aside
+      className={s.projectSidebar}
+      aria-label="Project navigation"
+      onClick={(event) => {
+        if (isMobile && (event.target as Element).closest('a')) setOpenMobile(false);
+      }}
+      onChange={(event) => {
+        if (isMobile && (event.target as Element).matches('select')) setOpenMobile(false);
+      }}
+    >
+      {children}
+    </aside>
+  );
+}
 
 type User = { id: string; login: string };
 type Project = {
@@ -944,13 +964,16 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const isLive = Boolean(project?.last_event_at) && Date.now() - new Date(project?.last_event_at ?? 0).getTime() < 7 * 864e5;
 
   return (
+    <TooltipProvider>
+    <SidebarProvider className={s.sidebarProvider} style={{ '--sidebar-width': '218px' } as CSSProperties}>
     <div className={`${s.dashboard} ${project ? s.analyticsDashboard : ''}`}>
       <a className={s.skip} href="#main">
         Skip to content
       </a>
 
       {project && (
-        <aside className={s.projectSidebar} aria-label="Project navigation">
+        <Sidebar className={s.sidebar16}>
+        <ProjectNavigation>
           <Link className={s.sidebarBrand} href="/">
             <span aria-hidden="true">✳</span> crease.
           </Link>
@@ -985,18 +1008,20 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
             {user && <span className={s.sidebarUser}><span className={s.avatar} aria-hidden="true">{user.login.slice(0, 1).toUpperCase()}</span><span>{user.login}</span></span>}
             <button className={s.signOut} type="button" onClick={logout}>Sign out</button>
           </div>
-        </aside>
+        </ProjectNavigation>
+        </Sidebar>
       )}
 
       <header className={`${s.header} ${project ? s.analyticsHeader : ''}`}>
         <div className={s.headerInner}>
           <div className={s.headerIdentity}>
+            {project && <SidebarTrigger aria-label="Toggle project navigation" />}
             <Link className={s.brand} href="/">
               <span className={s.brandMark}>✳</span>
               crease.
             </Link>
             <span className={s.headerDivider} aria-hidden="true" />
-            {user && (
+            {!project && user && (
               <span className={s.userChip}>
                 <span className={s.avatar} aria-hidden="true">{user.login.slice(0, 1).toUpperCase()}</span>
                 <span>{user.login}</span>
@@ -1025,7 +1050,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
             <Link className={s.headerLink} href="/docs">
               Docs
             </Link>
-            {user && (
+            {!project && user && (
               <button className={s.signOut} type="button" onClick={logout}>
                 Sign out
               </button>
@@ -1841,5 +1866,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         </div>
       </footer>
     </div>
+    </SidebarProvider>
+    </TooltipProvider>
   );
 }
