@@ -7,6 +7,7 @@ import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
 import ThemeToggle from '../theme-toggle';
 import VerifiedBadge from './VerifiedBadge';
+import ProjectOnboarding from './ProjectOnboarding';
 import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import LivingCat from '../mascot/living-cat';
@@ -50,7 +51,7 @@ type Verification = {
   verified: boolean;
   verified_at: string | null;
   record: string;
-  meta: string;
+  dns_name?: string;
 };
 type Breakdown = { label: string; count: number };
 type SeriesPoint = { date: string; events: number; pageviews: number; visitors: number; sessions: number };
@@ -488,6 +489,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState('');
   const [showProjects, setShowProjects] = useState(false);
+  const [onboarding, setOnboarding] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [busy, setBusy] = useState(true);
   const [summaryBusy, setSummaryBusy] = useState(false);
@@ -621,13 +623,13 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   }, [selected, loadSummary, router]);
 
   useEffect(() => {
-    if (tab !== 'installation' || !project || project.last_event_at) return;
+    if ((tab !== 'installation' && !onboarding) || !project || project.last_event_at) return;
     void pollSetup();
     const timer = window.setInterval(() => {
       void pollSetup();
     }, 10000);
     return () => window.clearInterval(timer);
-  }, [tab, project?.id, project?.last_event_at, pollSetup]);
+  }, [tab, onboarding, project?.id, project?.last_event_at, pollSetup]);
 
   const loadProperties = useCallback(async () => {
     if (!selected) {
@@ -732,6 +734,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   useEffect(() => {
     setOrigin(window.location.origin);
+    setOnboarding(new URLSearchParams(window.location.search).get('onboarding') === '1');
     const read = () => {
       const candidate = window.location.hash.slice(1);
       if (ANALYTICS_SECTIONS.includes(candidate as AnalyticsSection)) {
@@ -862,7 +865,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       if (isFirstProject) {
         dispatchMascotEvent({ kind: 'project-created', projectName: created.name });
       }
-      router.push(`/dashboard/projects/${encodeURIComponent(created.id)}`);
+      setOnboarding(true);
+      router.push(`/dashboard/projects/${encodeURIComponent(created.id)}?onboarding=1`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create the project.');
     } finally {
@@ -962,6 +966,27 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const showCharts = !summary || hasEvents;
   const rangeLabel = days === 7 ? 'Last 7 days' : days === 90 ? 'Last 90 days' : 'Last 30 days';
   const isLive = Boolean(project?.last_event_at) && Date.now() - new Date(project?.last_event_at ?? 0).getTime() < 7 * 864e5;
+
+  if (onboarding && project) {
+    return <ProjectOnboarding
+      name={project.name}
+      domain={project.domain}
+      projectId={project.id}
+      writeKey={writeKey}
+      origin={origin}
+      endpoint={collector}
+      verified={project.verified === true}
+      verification={verification}
+      checking={verificationBusy}
+      notice={verificationNotice || error}
+      eventReceived={Boolean(project.last_event_at)}
+      eventChecking={setupChecking}
+      eventNotice={setupNotice}
+      onVerify={() => void checkVerification()}
+      onCheckEvents={() => void pollSetup()}
+      onFinish={() => { setOnboarding(false); window.history.replaceState(null, '', `/dashboard/projects/${encodeURIComponent(project.id)}`); }}
+    />;
+  }
 
   return (
     <TooltipProvider>
@@ -1529,6 +1554,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                       <section className={s.installCopy}>
                         <p className={s.eyebrow}>GET CONNECTED / 01</p>
                         <h2>Bring your site into focus.</h2>
+                        <button className={`${s.btn} ${s.btnQuiet}`} type="button" onClick={() => { setOnboarding(true); window.history.replaceState(null, '', `/dashboard/projects/${encodeURIComponent(project.id)}?onboarding=1`); }}>Open setup guide</button>
                         <p>
                           Add this snippet to your site after obtaining any required visitor consent. The collector URL
                           must be publicly reachable by your visitors.
