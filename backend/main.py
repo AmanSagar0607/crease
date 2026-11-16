@@ -715,14 +715,25 @@ async def stripe_webhook(integration_id: str, request: Request):
     return {'received':True,'duplicate':False}
 
 
+def report_window(days, start_date, end_date):
+    if (start_date is None) != (end_date is None): raise HTTPException(422, 'Provide both start and end dates')
+    if start_date is None:
+        end = now()
+        return end - timedelta(days=days-1), end + timedelta(microseconds=1), days
+    if end_date < start_date or (end_date-start_date).days >= 90 or end_date > now().date():
+        raise HTTPException(422, 'Date range must cover 1 to 90 days and end no later than today')
+    start = datetime.combine(start_date, datetime.min.time(), timezone.utc)
+    end = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), timezone.utc)
+    return start, end, (end_date-start_date).days + 1
+
+
 @app.get('/api/projects/{project_id}/summary')
-async def summary(project_id: str, days: int = 30, property: str | None = Query(default=None, max_length=64), value: str | None = Query(default=None, max_length=256), user=Depends(session_user)):
+async def summary(project_id: str, days: int = 30, start: date | None = None, end: date | None = None, property: str | None = Query(default=None, max_length=64), value: str | None = Query(default=None, max_length=256), user=Depends(session_user)):
     if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
     if (property is None) != (value is None): raise HTTPException(422, 'property and value must be provided together')
-    end = now()
-    start = end - timedelta(days=days-1)
+    start, end, days = report_window(days, start, end)
     previous_start = start - timedelta(days=days)
-    params={'id':project_id,'since':stamp(start)}
+    params={'id':project_id,'since':stamp(start),'until':stamp(end)}
     previous_params={'id':project_id,'since':stamp(previous_start),'until':stamp(start)}
     with engine.connect() as db:
         owned(db, project_id, user['id'])
@@ -744,12 +755,12 @@ async def summary(project_id: str, days: int = 30, property: str | None = Query(
                 session_clause = ' AND started_at<:until' if until else ''
                 row['sessions'] = db.execute(text(f'SELECT COUNT(*) FROM analytics_sessions WHERE project_id=:id AND started_at>=:since{session_clause}'), query_params).scalar_one()
             return {k:(v or 0) for k,v in row.items()}
-        metrics=metric_window(params)
+        metrics=metric_window(params, until=True)
         previous=metric_window(previous_params, until=True)
         if property is not None:
-            session_rows=db.execute(text(f'SELECT MIN(occurred_at) AS started_at, MAX(occurred_at) AS last_activity_at FROM {source} WHERE project_id=:id AND occurred_at>=:since AND session_id IS NOT NULL GROUP BY session_id'), params).mappings().all()
+            session_rows=db.execute(text(f'SELECT MIN(occurred_at) AS started_at, MAX(occurred_at) AS last_activity_at FROM {source} WHERE project_id=:id AND occurred_at>=:since AND occurred_at<:until AND session_id IS NOT NULL GROUP BY session_id'), params).mappings().all()
         else:
-            session_rows=db.execute(text('SELECT started_at,last_activity_at FROM analytics_sessions WHERE project_id=:id AND started_at>=:since'), params).mappings().all()
+            session_rows=db.execute(text('SELECT started_at,last_activity_at FROM analytics_sessions WHERE project_id=:id AND started_at>=:since AND started_at<:until'), params).mappings().all()
         durations=[]
         for row in session_rows:
             try:
@@ -758,17 +769,17 @@ async def summary(project_id: str, days: int = 30, property: str | None = Query(
             except (TypeError, ValueError):
                 continue
         last_event_at=db.execute(text('SELECT MAX(occurred_at) FROM events WHERE project_id=:id'), {'id':project_id}).scalar()
-        daily=db.execute(text(f"SELECT substr(occurred_at,1,10) AS day, COUNT(*) AS events, SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews, COUNT(DISTINCT visitor_id) AS visitors, COUNT(DISTINCT session_id) AS sessions FROM {source} WHERE project_id=:id AND occurred_at>=:since GROUP BY substr(occurred_at,1,10) ORDER BY day"), params).mappings()
+        daily=db.execute(text(f"SELECT substr(occurred_at,1,10) AS day, COUNT(*) AS events, SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews, COUNT(DISTINCT visitor_id) AS visitors, COUNT(DISTINCT session_id) AS sessions FROM {source} WHERE project_id=:id AND occurred_at>=:since AND occurred_at<:until GROUP BY substr(occurred_at,1,10) ORDER BY day"), params).mappings()
         daily_rows={row['day']:row for row in daily}
         series=[]
         day=start.date()
-        while day<=end.date():
+        while day<=(end-timedelta(microseconds=1)).date():
             row=daily_rows.get(day.isoformat())
             series.append({'date':day.isoformat(),'events':int((row or {}).get('events') or 0),'pageviews':int((row or {}).get('pageviews') or 0),'visitors':int((row or {}).get('visitors') or 0),'sessions':int((row or {}).get('sessions') or 0)})
             day += timedelta(days=1)
         def breakdown(column):
-            return [dict(r) for r in db.execute(text(f'SELECT COALESCE({column}, :unknown) AS label, COUNT(*) AS count FROM {source} WHERE project_id=:id AND occurred_at>=:since AND name=:name GROUP BY {column} ORDER BY count DESC LIMIT 10'), {**params,'unknown':'Unknown','name':'pageview'}).mappings()]
-        event_names=[dict(r) for r in db.execute(text('SELECT name AS label, COUNT(*) AS count FROM events WHERE project_id=:id AND occurred_at>=:since GROUP BY name ORDER BY count DESC LIMIT 20'), params).mappings()]
+            return [dict(r) for r in db.execute(text(f'SELECT COALESCE({column}, :unknown) AS label, COUNT(*) AS count FROM {source} WHERE project_id=:id AND occurred_at>=:since AND occurred_at<:until AND name=:name GROUP BY {column} ORDER BY count DESC LIMIT 10'), {**params,'unknown':'Unknown','name':'pageview'}).mappings()]
+        event_names=[dict(r) for r in db.execute(text('SELECT name AS label, COUNT(*) AS count FROM events WHERE project_id=:id AND occurred_at>=:since AND occurred_at<:until GROUP BY name ORDER BY count DESC LIMIT 20'), params).mappings()]
         return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'referrers':breakdown('referrer'),'event_names':event_names,'days':days,'filter':{'property':property,'value':value},'average_session_duration_seconds':round(sum(durations)/len(durations)) if durations else 0}
 
 @app.get('/api/projects/{project_id}/overview')
@@ -849,15 +860,16 @@ async def properties(project_id: str, user=Depends(session_user)):
     return [{**dict(row), 'event_count':int(row['event_count']), 'distinct_values':int(row['distinct_values']), 'values':values.get(row['name'], [])[:20]} for row in rows]
 
 @app.get('/api/projects/{project_id}/events')
-async def project_events(project_id: str, days: int = 30, event: str | None = Query(default=None, max_length=64), path: str | None = Query(default=None, max_length=512), property: str | None = Query(default=None, max_length=64), value: str | None = Query(default=None, max_length=256), limit: int = 100, user=Depends(session_user)):
+async def project_events(project_id: str, days: int = 30, start: date | None = None, end: date | None = None, event: str | None = Query(default=None, max_length=64), path: str | None = Query(default=None, max_length=512), property: str | None = Query(default=None, max_length=64), value: str | None = Query(default=None, max_length=256), limit: int = 100, user=Depends(session_user)):
     if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
     if not 1 <= limit <= 200: raise HTTPException(422, 'Limit must be between 1 and 200')
     if (property is None) != (value is None): raise HTTPException(422, 'property and value must be provided together')
-    params = {'id':project_id, 'since':stamp(now()-timedelta(days=days-1)), 'limit':limit}
+    start, end, days = report_window(days, start, end)
+    params = {'id':project_id, 'since':stamp(start), 'until':stamp(end), 'limit':limit}
     with engine.connect() as db:
         owned(db, project_id, user['id'])
         source = 'events e'
-        where = ['e.project_id=:id', 'e.occurred_at>=:since']
+        where = ['e.project_id=:id', 'e.occurred_at>=:since', 'e.occurred_at<:until']
         if property is not None:
             known = db.execute(text('SELECT 1 FROM project_property_keys WHERE project_id=:id AND name=:name'), {'id':project_id,'name':property}).first()
             if not known: raise HTTPException(422, 'Unknown property key')
@@ -873,22 +885,23 @@ async def project_events(project_id: str, days: int = 30, event: str | None = Qu
     return [{'id':row['id'],'name':row['name'],'occurred_at':row['occurred_at'],'path':row['path'],'visitor_id':row['visitor_id'],'session_id':row['session_id'],'country':row['country'],'device':row['device'],'referrer':row['referrer'],'properties':json.loads(row['properties'])} for row in rows]
 
 @app.get('/api/projects/{project_id}/funnel')
-async def funnel(project_id: str, first: str = Query(min_length=1, max_length=64), second: str = Query(min_length=1, max_length=64), days: int = 30, user=Depends(session_user)):
+async def funnel(project_id: str, first: str = Query(min_length=1, max_length=64), second: str = Query(min_length=1, max_length=64), days: int = 30, start: date | None = None, end: date | None = None, user=Depends(session_user)):
     if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
-    params = {'id':project_id, 'since':stamp(now()-timedelta(days=days-1)), 'first':first, 'second':second}
+    start, end, days = report_window(days, start, end)
+    params = {'id':project_id, 'since':stamp(start), 'until':stamp(end), 'first':first, 'second':second}
     with engine.connect() as db:
         owned(db, project_id, user['id'])
         row = db.execute(text('''
             WITH first_step AS (
                 SELECT session_id, MIN(occurred_at) AS at
                 FROM events
-                WHERE project_id=:id AND name=:first AND occurred_at>=:since AND session_id IS NOT NULL
+                WHERE project_id=:id AND name=:first AND occurred_at>=:since AND occurred_at<:until AND session_id IS NOT NULL
                 GROUP BY session_id
             ), second_step AS (
                 SELECT DISTINCT f.session_id
                 FROM first_step f
                 JOIN events e ON e.project_id=:id AND e.session_id=f.session_id
-                    AND e.name=:second AND e.occurred_at>=f.at AND e.occurred_at>=:since
+                    AND e.name=:second AND e.occurred_at>=f.at AND e.occurred_at>=:since AND e.occurred_at<:until
             )
             SELECT (SELECT COUNT(*) FROM first_step) AS first_count,
                    (SELECT COUNT(*) FROM second_step) AS second_count
