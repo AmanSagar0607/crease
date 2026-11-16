@@ -15,7 +15,9 @@ export function init(options = {}) {
 
   const endpoint = options.endpoint || DEFAULT_ENDPOINT;
   let enabled = options.enabled !== false;
-  let queue = [], timer = null, lastUrl = null;
+  let queue = [], timer = null, lastUrl = null, lastPath = null;
+  let vitals = {}, vitalsSent = false;
+  const observerList = [];
   const originals = {};
   const read = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
   const write = (key, value) => { try { localStorage.setItem(key, value); } catch {} };
@@ -29,6 +31,25 @@ export function init(options = {}) {
     }
     state.lastActivity = now; write(SESSION_KEY, JSON.stringify(state)); return state;
   };
+  const observe = (type, update) => {
+    try { const observer = new PerformanceObserver((list) => update(list.getEntries())); observer.observe({ type, buffered: true }); observerList.push(observer); } catch {}
+  };
+  const observeVitals = () => {
+    if (typeof PerformanceObserver === 'undefined') return;
+    observe('largest-contentful-paint', (entries) => { const last = entries[entries.length - 1]; if (last) vitals.lcp = Math.round(last.startTime); });
+    observe('layout-shift', (entries) => entries.forEach((entry) => { vitals.clsSeen = true; if (!entry.hadRecentInput) vitals.cls = Math.round(((vitals.cls || 0) + entry.value) * 10000) / 10000; }));
+    observe('event', (entries) => { const list = vitals.interactions || []; entries.forEach((entry) => { if (entry.duration) list.push(entry.duration); }); vitals.interactions = list.slice(-50).sort((a, b) => a - b); });
+  };
+  const resetVitals = () => { vitals = {}; vitalsSent = false; };
+  const flushVitals = (path) => {
+    if (!enabled || vitalsSent) return;
+    const properties = {}, interactions = vitals.interactions || [];
+    if (vitals.lcp) properties.lcp_ms = vitals.lcp;
+    if (vitals.clsSeen) properties.cls = vitals.cls || 0;
+    if (interactions.length) properties.inp_ms = Math.round(interactions[Math.floor((interactions.length - 1) * 0.98)]);
+    if (!properties.lcp_ms && !properties.cls && !properties.inp_ms) return;
+    vitalsSent = true; track('web_vitals', properties, path);
+  };
   const flush = () => {
     if (timer) clearTimeout(timer); timer = null;
     if (!enabled || !queue.length) return;
@@ -38,7 +59,7 @@ export function init(options = {}) {
       .catch(() => { if (enabled) { queue = [...batch, ...queue].slice(0, 100); timer ??= setTimeout(flush, 10000); } });
     if (queue.length) timer ??= setTimeout(flush, 2000);
   };
-  const track = (name, properties = {}) => {
+  const track = (name, properties = {}, pathOverride) => {
     if (!enabled || typeof name !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$/.test(name)) return;
     const clean = {};
     if (properties && typeof properties === 'object') Object.entries(properties).slice(0, 20).forEach(([key, value]) => {
@@ -48,15 +69,18 @@ export function init(options = {}) {
     if (name === 'pageview') { active.pageviews += 1; active.exitPage = location.pathname; write(SESSION_KEY, JSON.stringify(active)); }
     let referrer;
     try { referrer = document.referrer ? new URL(document.referrer).hostname : null; } catch { referrer = null; }
-    queue.push({ id: makeId(), name, timestamp: new Date().toISOString(), path: location.pathname, visitorId: visitor(), sessionId: active.id, referrer, properties: clean, schemaVersion: 1 });
+    queue.push({ id: makeId(), name, timestamp: new Date().toISOString(), path: pathOverride || location.pathname, visitorId: visitor(), sessionId: active.id, referrer, properties: clean, schemaVersion: 1 });
     if (queue.length > 100) queue.shift();
     if (queue.length >= 20) flush(); else timer ??= setTimeout(flush, 2000);
   };
   const page = () => {
     const url = location.pathname + location.search;
     if (!enabled || url === lastUrl) return;
-    lastUrl = url; track('pageview');
+    flushVitals(lastPath || location.pathname); resetVitals();
+    lastUrl = url; lastPath = location.pathname; track('pageview');
   };
+  const leaving = () => { flushVitals(lastPath); flush(); };
+  const hidden = () => { if (document.visibilityState === 'hidden') leaving(); };
   const dispatchRoute = () => window.dispatchEvent(new Event('crease:navigation'));
   ['pushState', 'replaceState'].forEach((method) => {
     const original = history[method];
@@ -66,17 +90,19 @@ export function init(options = {}) {
   });
   const api = {
     track, page, flush, identify: visitor,
-    reset() { remove(VISITOR_KEY); remove(SESSION_KEY); lastUrl = null; page(); },
-    optOut() { enabled = false; queue = []; lastUrl = null; if (timer) clearTimeout(timer); timer = null; remove(VISITOR_KEY); remove(SESSION_KEY); },
+    reset() { remove(VISITOR_KEY); remove(SESSION_KEY); resetVitals(); lastUrl = null; lastPath = null; page(); },
+    optOut() { enabled = false; queue = []; lastUrl = null; resetVitals(); observerList.forEach((observer) => { try { observer.disconnect(); } catch {} }); observerList.length = 0; if (timer) clearTimeout(timer); timer = null; remove(VISITOR_KEY); remove(SESSION_KEY); },
     destroy() {
-      window.removeEventListener('popstate', page); window.removeEventListener('crease:navigation', page); window.removeEventListener('pagehide', flush);
+      window.removeEventListener('popstate', page); window.removeEventListener('crease:navigation', page); window.removeEventListener('pagehide', leaving);
+      document.removeEventListener('visibilitychange', hidden);
       Object.entries(originals).forEach(([method, original]) => { if (history[method]?.__creasePatched) history[method] = original; });
       if (timer) clearTimeout(timer); timer = null;
       if (window.__creaseAnalytics === api) delete window.__creaseAnalytics;
     },
   };
   if (enabled) {
-    window.addEventListener('popstate', page); window.addEventListener('crease:navigation', page); window.addEventListener('pagehide', flush); page();
+    observeVitals();
+    window.addEventListener('popstate', page); window.addEventListener('crease:navigation', page); window.addEventListener('pagehide', leaving); document.addEventListener('visibilitychange', hidden); page();
   }
   window.__creaseAnalytics = api;
   return api;

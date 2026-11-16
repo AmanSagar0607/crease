@@ -41,8 +41,10 @@ PUBLIC_API_URL = os.getenv('PUBLIC_API_URL', 'http://localhost:3000').rstrip('/'
 CLIENT_ID = os.getenv('GITHUB_CLIENT_ID', '')
 CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET', '')
 SECURE = os.getenv('COOKIE_SECURE', 'false').lower() == 'true'
-# Enable only behind infrastructure that overwrites this header and prevents direct access.
+# Country data is accepted only on the authenticated internal ingestion route.
 TRUST_VERCEL_GEO = os.getenv('TRUST_VERCEL_GEO', 'false').lower() == 'true'
+GEO_FORWARD_SECRET = os.getenv('GEO_FORWARD_SECRET', '')
+ISO_COUNTRIES = frozenset('AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW'.split())
 GITHUB_APP_SLUG = os.getenv('GITHUB_APP_SLUG', '')
 GITHUB_APP_CLIENT_ID = os.getenv('GITHUB_APP_CLIENT_ID', '')
 GITHUB_APP_CLIENT_SECRET = os.getenv('GITHUB_APP_CLIENT_SECRET', '')
@@ -522,9 +524,16 @@ async def limits(request: Request, call_next):
     origin = request.headers.get('origin')
     if request.url.path == '/api/events' and request.method == 'OPTIONS':
         return Response(status_code=204, headers={'Access-Control-Allow-Origin': origin or 'null', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Crease-Key', 'Vary': 'Origin'})
-    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path != '/api/events' and origin != FRONTEND_URL:
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events') and origin != FRONTEND_URL:
         return Response(status_code=403)
-    if request.url.path == '/api/events':
+    if request.url.path in ('/api/events', '/internal/events'):
+        if request.url.path == '/internal/events':
+            peer = request.client.host if request.client else 'unknown'
+            if not limiter.consume('forward-peer:' + peer, RATE_LIMIT_PROJECT_PER_MINUTE):
+                return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
+            supplied_secret = request.headers.get('x-crease-forward-secret', '')
+            if not GEO_FORWARD_SECRET or not secrets.compare_digest(digest(supplied_secret), digest(GEO_FORWARD_SECRET)):
+                return Response(status_code=401)
         length = request.headers.get('content-length')
         if length and (not length.isdigit() or int(length)>32768): return Response(status_code=413)
         body = await request.body()
@@ -535,6 +544,12 @@ async def limits(request: Request, call_next):
         except (ValueError, UnicodeDecodeError):
             project_id = None
         client_key = request.client.host if request.client else 'unknown'
+        if request.url.path == '/internal/events':
+            forwarded_ip = request.headers.get('x-crease-client-ip', '')
+            try:
+                client_key = str(ipaddress.ip_address(forwarded_ip))
+            except ValueError:
+                client_key = 'proxy-unknown'
         if not limiter.consume('ip:' + client_key, RATE_LIMIT_IP_PER_MINUTE):
             return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
         if isinstance(project_id, str) and project_id and not limiter.consume('project:' + project_id, RATE_LIMIT_PROJECT_PER_MINUTE):
@@ -546,7 +561,16 @@ async def limits(request: Request, call_next):
     return response
 
 @app.post('/api/events')
+@app.post('/internal/events')
 async def ingest(data: Batch, request: Request):
+    country = None
+    if request.url.path == '/internal/events':
+        forwarded_country = request.headers.get('x-crease-country')
+        if forwarded_country is not None:
+            if forwarded_country not in ISO_COUNTRIES:
+                raise HTTPException(422, 'Invalid country code')
+            if TRUST_VERCEL_GEO:
+                country = forwarded_country
     origin = request.headers.get('origin', '')
     with engine.begin() as db:
         project = db.execute(text('SELECT domain, write_key_hash, verified_at FROM projects WHERE id=:id'), {'id':data.projectId}).mappings().first()
@@ -570,8 +594,6 @@ async def ingest(data: Batch, request: Request):
             event_time = t.astimezone(timezone.utc)
             if abs((now()-event_time).total_seconds()) > 86400 * 7: raise HTTPException(422, 'Event timestamp out of range')
             ua = request.headers.get('user-agent','').lower(); device = 'mobile' if 'mobile' in ua else 'desktop' if ua else 'unknown'
-            country = request.headers.get('x-vercel-ip-country', '').upper() if TRUST_VERCEL_GEO else ''
-            if not re.fullmatch(r'[A-Z]{2}', country): country = None
             referrer = e.referrer.lower() if e.referrer and re.fullmatch(r'[a-zA-Z0-9.-]+', e.referrer) else None
             session_id = resolve_session(db, data.projectId, e.visitorId, e.id, event_time)
             result=db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,country,device,referrer,properties) VALUES (:project,:id,:name,:ts,:path,:visitor,:session,:country,:device,:referrer,:properties) ON CONFLICT (project_id,id) DO NOTHING'), {'project':data.projectId,'id':e.id,'name':e.name,'ts':stamp(event_time),'path':e.path,'visitor':e.visitorId,'session':session_id,'country':country,'device':device,'referrer':referrer,'properties':json.dumps(e.properties)})

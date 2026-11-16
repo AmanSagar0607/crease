@@ -279,22 +279,27 @@ class ApiTest(unittest.TestCase):
         self.client.cookies.set('crease_session','u2')
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel?first=view_pricing&second=signup').status_code, 404)
 
-    def test_spoofed_country_header_is_ignored_unless_trusted(self):
+    def test_authenticated_country_forwarding_and_direct_spoofing(self):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
         p = self.client.post('/api/projects', json={'name':'Geo','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
-        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key'],'x-vercel-ip-country':'US'}
-        def send(event_id):
+        base = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        def send(event_id, path, extra):
             event = {'id':event_id,'name':'pageview','timestamp':main.stamp(main.now()),'path':'/','visitorId':'v'}
-            self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[event]}, headers=event_headers).status_code, 200)
-        with patch.object(main, 'TRUST_VERCEL_GEO', False):
-            send('untrusted')
-        with patch.object(main, 'TRUST_VERCEL_GEO', True):
-            send('trusted')
+            return self.client.post(path, json={'projectId':p['id'],'events':[event]}, headers={**base, **extra})
+        with patch.object(main, 'TRUST_VERCEL_GEO', True), patch.object(main, 'GEO_FORWARD_SECRET', 'test-secret'):
+            self.assertEqual(send('direct', '/api/events', {'x-vercel-ip-country':'US', 'x-crease-country':'US'}).status_code, 200)
+            self.assertEqual(send('no-secret', '/internal/events', {'x-crease-country':'US'}).status_code, 401)
+            self.assertEqual(send('bad-secret', '/internal/events', {'x-crease-forward-secret':'wrong','x-crease-country':'US'}).status_code, 401)
+            self.assertEqual(send('invalid', '/internal/events', {'x-crease-forward-secret':'test-secret','x-crease-country':'ZZ'}).status_code, 422)
+            self.assertEqual(send('malformed', '/internal/events', {'x-crease-forward-secret':'test-secret','x-crease-country':'us'}).status_code, 422)
+            self.assertEqual(send('missing', '/internal/events', {'x-crease-forward-secret':'test-secret'}).status_code, 200)
+            self.assertEqual(send('valid', '/internal/events', {'x-crease-forward-secret':'test-secret','x-crease-country':'US'}).status_code, 200)
+        with patch.object(main, 'TRUST_VERCEL_GEO', False), patch.object(main, 'GEO_FORWARD_SECRET', 'test-secret'):
+            self.assertEqual(send('disabled', '/internal/events', {'x-crease-forward-secret':'test-secret','x-crease-country':'US'}).status_code, 200)
         with main.engine.connect() as db:
             rows = dict(db.execute(text('SELECT id, country FROM events WHERE project_id=:id'), {'id':p['id']}).all())
-        self.assertIsNone(rows['untrusted'])
-        self.assertEqual(rows['trusted'], 'US')
+        self.assertEqual(rows, {'direct':None, 'missing':None, 'valid':'US', 'disabled':None})
 
     def test_event_preflight_allows_sdk_write_key_header(self):
         response = self.client.options('/api/events', headers={'origin':'https://example.com','access-control-request-method':'POST','access-control-request-headers':'content-type,x-crease-key'})

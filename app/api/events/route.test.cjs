@@ -1,0 +1,26 @@
+﻿const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const ts = require('typescript');
+const Module = require('node:module');
+const source = fs.readFileSync('app/api/events/route.ts', 'utf8');
+const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const loaded = new Module('route-test', module); loaded._compile(compiled, 'route-test.js');
+const { POST } = loaded.exports;
+test('forwarder bounds requests and copies only explicitly allowed headers', async () => {
+  process.env.BACKEND_URL = 'https://render.example';
+  process.env.GEO_FORWARD_SECRET = 'server-only';
+  delete process.env.VERCEL;
+  let captured;
+  global.fetch = async (url, options) => { captured = {url, options}; return new Response('{"accepted":1}', {status:200}); };
+  const request = new Request('https://crease.example/api/events', {method:'POST', headers:{origin:'https://example.com','x-crease-key':'key','x-vercel-ip-country':'US','x-crease-country':'CA','x-crease-forward-secret':'attacker'}, body:'{"projectId":"p","events":[]}'});
+  const response = await POST(request);
+  assert.equal(response.status, 200);
+  assert.equal(captured.url.pathname, '/internal/events');
+  assert.equal(captured.options.headers.get('x-crease-forward-secret'), 'server-only');
+  assert.equal(captured.options.headers.get('x-crease-country'), null);
+  assert.equal(captured.options.headers.get('x-vercel-ip-country'), null);
+  assert.equal(response.headers.get('x-crease-forward-secret'), null);
+  assert.equal((await POST(new Request('https://crease.example/api/events', {method:'POST',body:'x'.repeat(32769)}))).status, 413);
+  assert.equal((await POST(new Request('https://crease.example/api/events', {method:'POST',body:'not json'}))).status, 400);
+});
