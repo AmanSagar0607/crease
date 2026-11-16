@@ -105,7 +105,7 @@ Each item was developed on its own branch and merged locally with `--no-ff`. `gh
 | Command | Result |
 | --- | --- |
 | `cd backend; python -m unittest test_api` with `TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:5433/crease_test` | 29 tests pass |
-| `node --test sdk/crease.test.cjs` | 3 tests pass |
+| `node --test sdk/crease.test.cjs` | 5 tests pass |
 | `npx tsc --noEmit` | passes |
 | `npm run build` | passes |
 | `alembic upgrade head` on a fresh SQLite file | passes |
