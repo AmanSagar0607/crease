@@ -1,17 +1,35 @@
-# Database connection and migration status
+# Database connection and migrations
 
 ## Production database
 
-Neon is the source of truth for the deployed Crease account. The production database contains one user, one project, and 16 analytics events. The local Windows SQLite snapshot contains an older copy of that same GitHub identity and site domain, has different internal IDs, and has no analytics events. Importing those rows would create duplicate/orphaned records, so no SQLite rows were copied. Existing Neon analytics data remains intact.
+Neon is the source of truth for the deployed Crease account. The production database contains one user, one project, and 16 analytics events. The local Windows SQLite snapshot is stale, has different internal IDs, and has no analytics events, so no SQLite rows were copied.
 
-The API now requires `DATABASE_URL` and rejects SQLite URLs. Set the Render service's `DATABASE_URL` to the existing Neon PostgreSQL connection URL. The URL must remain a secret and must not be committed or included in logs. `/health` returns `{"status":"ok","database":"connected"}` only after a `SELECT 1` succeeds.
+The API requires `DATABASE_URL` and rejects SQLite URLs. Set the Render service's `DATABASE_URL` to the existing Neon PostgreSQL connection URL. The URL must remain a secret and must not be committed or included in logs. `/health` returns `{"status":"ok","database":"connected"}` only after a `SELECT 1` succeeds.
 
-## Current schema upgrade
+## Alembic baseline
 
-`backend/main.py` still applies additive, idempotent schema changes during API startup rather than using Alembic. Startup creates missing `analytics_sessions` and `rate_limits` tables and indexes, adds missing project verification columns, and backfills session summaries from retained events. The backfill uses an upsert that replaces each aggregate from source events, so restarting the service does not double-count page views. Existing event, user, and project rows are not deleted or rewritten.
+`backend/migrations/versions/0001_baseline.py` matches the schema that existed when Alembic was introduced: users, sessions, OAuth state, projects, repository/Vercel connections, events, analytics session summaries, and durable rate-limit counters.
 
-The production Neon database was checked read-only: it has the current account/project/events tables and 16 events; `analytics_sessions` and `rate_limits` are not present yet. The next successful Render startup with the updated code creates these structures and backfills eight session summaries from existing events. The local SQLite database was not migrated because it is stale and duplicates the production identity/site.
+Run migrations from `backend` before starting the API:
 
-## Follow-up
+```powershell
+$env:DATABASE_URL='postgresql+psycopg://user:password@host:5432/crease'
+alembic upgrade head
+```
 
-This startup migration is a temporary mechanism. Before adding more schema changes, introduce versioned Alembic migrations, test them on a disposable Neon branch, and run production upgrades as a controlled release step. Keep startup from mutating the schema after versioned migrations are established.
+The API no longer creates or alters tables on startup. A fresh database must be upgraded first.
+
+## Existing production database
+
+The existing Neon database already has the pre-Alembic tables. Do not run the baseline migration against it; mark the baseline as applied instead, then apply any later migrations normally:
+
+```powershell
+alembic stamp 0001_baseline
+alembic upgrade head
+```
+
+Take a backup or a Neon branch before stamping or upgrading production. Verify `/health` after the release.
+
+## Adding schema changes
+
+Create a new revision with `alembic revision -m "describe change"`, review the generated SQL, and test it against a disposable PostgreSQL database (and SQLite where the change is portable) before releasing it.
