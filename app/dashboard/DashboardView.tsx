@@ -989,12 +989,19 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
       <header className={`${s.header} ${project ? s.analyticsHeader : ''}`}>
         <div className={s.headerInner}>
-          <Link className={s.brand} href="/">
-            <span className={s.brandMark}>✳</span>
-            crease.
-          </Link>
-          <span className={s.headerDivider} aria-hidden="true" />
-          <span className={s.workspaceLabel}>WORKSPACE</span>
+          <div className={s.headerIdentity}>
+            <Link className={s.brand} href="/">
+              <span className={s.brandMark}>✳</span>
+              crease.
+            </Link>
+            <span className={s.headerDivider} aria-hidden="true" />
+            {user && (
+              <span className={s.userChip}>
+                <span className={s.avatar} aria-hidden="true">{user.login.slice(0, 1).toUpperCase()}</span>
+                <span>{user.login}</span>
+              </span>
+            )}
+          </div>
           <nav className={s.breadcrumb} aria-label="Breadcrumb">
             <Link
               href="/dashboard?view=projects"
@@ -1014,14 +1021,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           </nav>
           <div className={s.account}>
             <ThemeToggle />
-            {user && (
-              <span className={s.userChip}>
-                <span className={s.avatar} aria-hidden="true">
-                  {user.login.slice(0, 1).toUpperCase()}
-                </span>
-                <span>{user.login}</span>
-              </span>
-            )}
             <Link className={s.headerLink} href="/docs">
               Docs
             </Link>

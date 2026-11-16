@@ -141,12 +141,20 @@
 }
 
 .headerInner {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 14px;
   width: min(1240px, calc(100% - 48px));
   height: 64px;
   margin-inline: auto;
+}
+
+.headerIdentity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
 .brand {
@@ -180,6 +188,7 @@
 
 .breadcrumb {
   display: flex;
+  justify-self: center;
   align-items: center;
   gap: 7px;
   min-width: 0;
@@ -201,6 +210,7 @@
 
 .account {
   display: flex;
+  justify-self: end;
   align-items: center;
   gap: 10px;
   margin-left: auto;
@@ -1952,8 +1962,6 @@
 }
 
 @media (max-width: 900px) {
-  .breadcrumb,
-  .headerDivider,
   .workspaceLabel {
     display: none;
   }
@@ -2016,6 +2024,27 @@
 
   .tabs {
     top: 56px;
+  }
+
+  .headerInner {
+    gap: 8px;
+  }
+
+  .headerIdentity {
+    gap: 8px;
+  }
+
+  .headerDivider {
+    display: none;
+  }
+
+  .breadcrumb {
+    max-width: min(32vw, 180px);
+    white-space: nowrap;
+  }
+
+  .account {
+    gap: 7px;
   }
 
   .userChip span:last-child {
@@ -2638,8 +2667,11 @@
     gap: 7px;
   }
 
-  .analyticsHeader .headerLink,
-  .analyticsHeader .userChip {
+  .analyticsHeader .headerLink {
+    display: none;
+  }
+
+  .analyticsHeader .userChip span:last-child {
     display: none;
   }
 
