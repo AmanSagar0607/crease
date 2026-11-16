@@ -3074,3 +3074,32 @@
   height: 15px;
   vertical-align: middle;
 }
+
+/* sidebar-16: a persistent top bar with the project navigation beneath it. */
+.sidebarProvider { display: block; min-height: 100vh; }
+.analyticsHeader { left: 0; }
+.analyticsHeader .brand { display: inline-flex; }
+.sidebar16 { top: 56px; height: calc(100svh - 56px); }
+.sidebar16 .projectSidebar,
+[data-mobile='true'] .projectSidebar { position: static; inset: auto; width: 100%; height: 100%; border: 0; padding: 14px; overflow-y: auto; }
+[data-mobile='true'] .sidebarAccount { display: flex; }
+[data-mobile='true'] .sidebarBrand,
+[data-mobile='true'] .sidebarAllProjects,
+[data-mobile='true'] .sidebarCaption { display: flex; }
+[data-mobile='true'] .sidebarNav { display: grid; overflow: visible; }
+[data-mobile='true'] .sidebarSwitcher { position: relative; inset: auto; width: 100%; margin: 0; }
+@media (max-width: 760px) {
+  .analyticsHeader { position: sticky; inset: 0 0 auto; height: 49px; }
+}
+
+@media (min-width: 761px) {
+  .analyticsDashboard:has([data-slot="sidebar"][data-state="collapsed"]) .main,
+  .analyticsDashboard:has([data-slot="sidebar"][data-state="collapsed"]) .footer { margin-left: 0; }
+}
+
+@media (max-width: 767px) {
+  .analyticsHeader { position: sticky; inset: 0 0 auto; height: 49px; }
+  .analyticsHeader .headerInner { width: calc(100% - 28px); height: 48px; }
+  .analyticsDashboard .main { margin-left: 0; padding: 22px 14px 38px; }
+  .analyticsDashboard .footer { margin-left: 0; }
+}
