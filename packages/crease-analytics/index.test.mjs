@@ -19,6 +19,10 @@ test('npm tracker collects allowed UTMs only after activation and clears identit
     assert.equal(sent[0].events[0].path, '/landing');
     assert.deepEqual(sent[0].events[0].attribution, { utm_source: 'search', utm_campaign: 'spring' });
     assert.equal(sent[0].events[0].referrer, 'search.example');
+    location.href = 'https://example.com/pricing';
+    tracker.page();
+    tracker.flush();
+    assert.equal(sent[1].events[0].referrer, 'example.com');
     tracker.optOut();
     assert.equal(tracker.identify(), null);
     assert.equal(storage.getItem('crease_visitor:project'), null);

@@ -63,7 +63,7 @@ export function init(options = {}) {
       .catch(() => { if (enabled) { queue = [...batch, ...queue].slice(0, 100); timer ??= setTimeout(flush, 10000); } });
     if (queue.length) timer ??= setTimeout(flush, 2000);
   };
-  const track = (name, properties = {}, pathOverride) => {
+  const track = (name, properties = {}, pathOverride, pageReferrer) => {
     if (!enabled || typeof name !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$/.test(name)) return;
     const clean = {};
     if (properties && typeof properties === 'object') Object.entries(properties).slice(0, 20).forEach(([key, value]) => {
@@ -71,8 +71,10 @@ export function init(options = {}) {
     });
     const active = session();
     if (name === 'pageview') { active.pageviews += 1; active.exitPage = location.pathname; write(sessionKey, JSON.stringify(active)); }
-    let referrer;
-    try { referrer = document.referrer ? new URL(document.referrer).hostname : null; } catch { referrer = null; }
+    let referrer = pageReferrer;
+    if (typeof referrer === 'undefined') {
+      try { referrer = document.referrer ? new URL(document.referrer).hostname : null; } catch { referrer = null; }
+    }
     const event = { id: makeId(), name, timestamp: new Date().toISOString(), path: pathOverride || location.pathname, visitorId: visitor(), sessionId: active.id, referrer, properties: clean, schemaVersion: 1 };
     if (name === 'pageview') event.attribution = campaign();
     queue.push(event);
@@ -83,7 +85,11 @@ export function init(options = {}) {
     const url = location.pathname + location.search;
     if (!enabled || url === lastUrl) return;
     flushVitals(lastPath || location.pathname); resetVitals();
-    lastUrl = url; lastPath = location.pathname; track('pageview');
+    const previous = lastUrl;
+    lastUrl = url; lastPath = location.pathname;
+    // SPA navigation comes from this site, not from the original external referrer.
+    const referrer = previous ? location.hostname : undefined;
+    track('pageview', {}, undefined, referrer);
   };
   const leaving = () => { flushVitals(lastPath); flush(); };
   const hidden = () => { if (document.visibilityState === 'hidden') leaving(); };
