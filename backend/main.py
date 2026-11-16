@@ -783,13 +783,13 @@ async def summary(project_id: str, days: int = 30, start: date | None = None, en
         return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'referrers':breakdown('referrer'),'event_names':event_names,'days':days,'filter':{'property':property,'value':value},'average_session_duration_seconds':round(sum(durations)/len(durations)) if durations else 0}
 
 @app.get('/api/projects/{project_id}/overview')
-async def overview(project_id: str, start: date, end: date, model: str = 'first_touch', user=Depends(session_user)):
+async def overview(project_id: str, start: date, end: date, model: str = 'first_touch', conversion_event: str | None = Query(default=None, min_length=1, max_length=64), user=Depends(session_user)):
     if end < start or (end - start).days >= 90: raise HTTPException(422, 'Date range must cover 1 to 90 days')
     if end > now().date(): raise HTTPException(422, 'End date cannot be in the future')
     if model not in overview_reporting.MODELS: raise HTTPException(422, 'Unsupported attribution model')
     with engine.connect() as db:
         owned(db, project_id, user['id'])
-        return overview_reporting.report(db, project_id, start, end, model)
+        return overview_reporting.report(db, project_id, start, end, model, conversion_event)
 
 
 @app.get('/api/projects/{project_id}/acquisition')

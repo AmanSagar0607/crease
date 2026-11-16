@@ -1201,7 +1201,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                 <div className={s.tabPanel} key={tab}>
                   {tab === 'analytics' && (
                     <>
-                      <OverviewV1 projectId={selected} refresh={acquisitionRefresh} filtered={Boolean(activeFilter)} onRangeChange={setReportRange} />
+                      <OverviewV1 key={selected} projectId={selected} refresh={acquisitionRefresh} filtered={Boolean(activeFilter)} onRangeChange={setReportRange} />
                       <div className={s.analyticsBar} tabIndex={-1}>
                         <div>
                           <h2>Detailed analytics</h2>
