@@ -64,62 +64,6 @@ async def health():
         raise HTTPException(503, 'Database connection is unavailable') from exc
     return {'status': 'ok', 'database': 'connected'}
 
-def setup():
-    with engine.begin() as db:
-        for sql in [
-            'CREATE TABLE IF NOT EXISTS users (id VARCHAR(64) PRIMARY KEY, github_id VARCHAR(64) UNIQUE NOT NULL, login VARCHAR(255) NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS sessions (token_hash VARCHAR(64) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, expires_at VARCHAR(32) NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS oauth_states (state_hash VARCHAR(64) PRIMARY KEY, expires_at VARCHAR(32) NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS projects (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, name VARCHAR(100) NOT NULL, domain VARCHAR(253) NOT NULL, retention_days INTEGER NOT NULL DEFAULT 90, write_key_hash VARCHAR(64), verification_token VARCHAR(64), verified_at VARCHAR(32))',
-            'CREATE TABLE IF NOT EXISTS project_repositories (project_id VARCHAR(36) PRIMARY KEY, full_name VARCHAR(200) NOT NULL, installation_id BIGINT NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS github_connections (user_id VARCHAR(64) PRIMARY KEY, encrypted_token TEXT NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS vercel_connections (user_id VARCHAR(64) PRIMARY KEY, encrypted_token TEXT NOT NULL, team_id VARCHAR(128))',
-            'CREATE TABLE IF NOT EXISTS project_vercel (project_id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, vercel_project_id VARCHAR(128) NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS events (project_id VARCHAR(36) NOT NULL, id VARCHAR(64) NOT NULL, name VARCHAR(64) NOT NULL, occurred_at VARCHAR(40) NOT NULL, path VARCHAR(512) NOT NULL, visitor_id VARCHAR(64), session_id VARCHAR(64), country VARCHAR(2), device VARCHAR(16), referrer VARCHAR(253), properties TEXT NOT NULL, PRIMARY KEY(project_id,id))',
-            'CREATE INDEX IF NOT EXISTS events_project_time ON events(project_id, occurred_at)',
-            'CREATE TABLE IF NOT EXISTS analytics_sessions (project_id VARCHAR(36) NOT NULL, session_id VARCHAR(64) NOT NULL, visitor_id VARCHAR(64), started_at VARCHAR(40) NOT NULL, last_activity_at VARCHAR(40) NOT NULL, entry_page VARCHAR(512) NOT NULL, exit_page VARCHAR(512) NOT NULL, pageview_count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(project_id,session_id))',
-            'CREATE INDEX IF NOT EXISTS analytics_sessions_project_time ON analytics_sessions(project_id, started_at)',
-            'CREATE TABLE IF NOT EXISTS rate_limits (bucket VARCHAR(160) PRIMARY KEY, window_start BIGINT NOT NULL, hits INTEGER NOT NULL)',
-        ]: db.execute(text(sql))
-        if DATABASE_URL.startswith('sqlite'):
-            columns = {row[1] for row in db.execute(text('PRAGMA table_info(projects)'))}
-            for column, ddl in (('write_key_hash', 'VARCHAR(64)'), ('verification_token', 'VARCHAR(64)'), ('verified_at', 'VARCHAR(32)')):
-                if column not in columns:
-                    db.execute(text(f'ALTER TABLE projects ADD COLUMN {column} {ddl}'))
-        else:
-            for column, ddl in (('write_key_hash', 'VARCHAR(64)'), ('verification_token', 'VARCHAR(64)'), ('verified_at', 'VARCHAR(32)')):
-                db.execute(text(f'ALTER TABLE projects ADD COLUMN IF NOT EXISTS {column} {ddl}'))
-            # Rebuild session summaries from retained event history. Assignment (rather than
-            # addition) keeps this backfill safe to repeat on every process start.
-            db.execute(text('''
-                WITH session_rollup AS (
-                    SELECT project_id, session_id,
-                        (array_agg(visitor_id ORDER BY occurred_at) FILTER (WHERE visitor_id IS NOT NULL))[1] AS visitor_id,
-                        min(occurred_at) AS started_at,
-                        max(occurred_at) AS last_activity_at,
-                        (array_agg(path ORDER BY occurred_at))[1] AS entry_page,
-                        (array_agg(path ORDER BY occurred_at DESC))[1] AS exit_page,
-                        count(*) FILTER (WHERE name='pageview') AS pageview_count
-                    FROM events
-                    WHERE session_id IS NOT NULL AND session_id <> ''
-                    GROUP BY project_id, session_id
-                )
-                INSERT INTO analytics_sessions
-                    (project_id, session_id, visitor_id, started_at, last_activity_at, entry_page, exit_page, pageview_count)
-                SELECT project_id, session_id, visitor_id, started_at, last_activity_at, entry_page, exit_page, pageview_count
-                FROM session_rollup
-                ON CONFLICT (project_id, session_id) DO UPDATE SET
-                    visitor_id=excluded.visitor_id,
-                    started_at=excluded.started_at,
-                    last_activity_at=excluded.last_activity_at,
-                    entry_page=excluded.entry_page,
-                    exit_page=excluded.exit_page,
-                    pageview_count=excluded.pageview_count
-            '''))
-        for row in db.execute(text('SELECT id FROM projects WHERE verification_token IS NULL')).mappings():
-            db.execute(text('UPDATE projects SET verification_token=:token WHERE id=:id'), {'token':secrets.token_urlsafe(24),'id':row['id']})
-
-setup()
 def now(): return datetime.now(timezone.utc)
 def digest(value): return hashlib.sha256(value.encode()).hexdigest()
 def new_write_key(): return 'crease_' + secrets.token_urlsafe(24)

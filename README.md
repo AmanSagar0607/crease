@@ -4,7 +4,7 @@ An early multi-project analytics MVP with a Next.js frontend, a Python/FastAPI b
 
 ## Local setup
 
-Requirements: Node.js 20.9+, Python 3.10+, and a GitHub OAuth app. In [GitHub Developer Settings](https://github.com/settings/developers), register a new OAuth app with homepage `http://localhost:3000` and authorization callback `http://localhost:3000/api/auth/callback`. Generate a client secret. Copy `backend/.env.example` to `backend/.env` and fill in the client ID and secret locally; never commit or share the secret. Restart the Python server after editing `.env`.
+Requirements: Node.js 20.9+, Python 3.10+, PostgreSQL 14+, and a GitHub OAuth app. In [GitHub Developer Settings](https://github.com/settings/developers), register a new OAuth app with homepage `http://localhost:3000` and authorization callback `http://localhost:3000/api/auth/callback`. Generate a client secret. Copy `backend/.env.example` to `backend/.env` and fill in the client ID, secret, and a PostgreSQL `DATABASE_URL` locally; never commit or share the secret. Restart the Python server after editing `.env`.
 
 In one terminal, from `backend`:
 
@@ -12,6 +12,8 @@ In one terminal, from `backend`:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements-local.txt
+$env:DATABASE_URL='postgresql+psycopg://user:password@localhost:5432/crease'
+alembic upgrade head
 uvicorn main:app --reload --port 8000
 ```
 
@@ -22,7 +24,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000/api/auth/github` to sign in. SQLite is used locally by default. Set `DATABASE_URL` to a SQLAlchemy PostgreSQL URL such as `postgresql+psycopg://user:password@host:5432/crease` to use PostgreSQL. Tables are created on API startup; a migration system is still needed before upgrading a deployed database. `BACKEND_URL` controls the frontend's API proxy; `FRONTEND_URL` and `PUBLIC_API_URL` configure the backend's redirect and origin settings. In a real HTTPS environment, set `COOKIE_SECURE=true`; route OAuth and API requests through the same public host and register that callback URL.
+Open `http://localhost:3000/api/auth/github` to sign in. PostgreSQL is required; SQLite is rejected. Set `DATABASE_URL` to a SQLAlchemy PostgreSQL URL such as `postgresql+psycopg://user:password@host:5432/crease`, then run `alembic upgrade head` from `backend` before starting the API. The API no longer creates or alters tables on startup. `BACKEND_URL` controls the frontend's API proxy; `FRONTEND_URL` and `PUBLIC_API_URL` configure the backend's redirect and origin settings. In a real HTTPS environment, set `COOKIE_SECURE=true`; route OAuth and API requests through the same public host and register that callback URL.
 
 ## Tracking
 
@@ -69,8 +71,11 @@ Register a separate connectable-account integration in Vercel with Project read/
 ```powershell
 node --test sdk/crease.test.cjs
 cd backend
+$env:TEST_DATABASE_URL='postgresql://user:password@localhost:5432/crease_test'
 python -m unittest test_api -v
 ```
+
+The backend suite creates an isolated PostgreSQL schema per run and drops it afterward. It refuses to run against the production `DATABASE_URL` or SQLite.
 
 ## Current limitations
 

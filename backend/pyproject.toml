@@ -5,6 +5,7 @@ requires-python = ">=3.14"
 dependencies = [
   "fastapi==0.115.6",
   "SQLAlchemy==2.0.41",
+  "alembic==1.16.5",
   "pg8000>=1.31,<2",
   "httpx==0.28.1",
   "python-dotenv==1.2.2",

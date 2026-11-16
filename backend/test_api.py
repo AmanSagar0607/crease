@@ -1,5 +1,6 @@
 import os
 import unittest
+from pathlib import Path
 from uuid import uuid4
 from unittest.mock import patch, AsyncMock
 import asyncio
@@ -10,6 +11,8 @@ from urllib.parse import parse_qs, urlsplit
 from datetime import timedelta
 from sqlalchemy.engine import make_url
 from sqlalchemy import create_engine, text
+from alembic import command
+from alembic.config import Config
 
 test_database_url = os.getenv('TEST_DATABASE_URL')
 if not test_database_url or not test_database_url.startswith(('postgresql://', 'postgresql+')):
@@ -23,6 +26,9 @@ with admin_engine.begin() as db:
     db.execute(text(f'CREATE SCHEMA "{test_schema}"'))
 test_url = admin_url.set(query={**admin_url.query, 'options':f'-csearch_path={test_schema}'}).render_as_string(hide_password=False)
 os.environ['DATABASE_URL'] = test_url
+alembic_config = Config(str(Path(__file__).with_name('alembic.ini')))
+alembic_config.set_main_option('script_location', str(Path(__file__).with_name('migrations')))
+command.upgrade(alembic_config, 'head')
 from fastapi.testclient import TestClient
 import main
 import github_install
@@ -426,7 +432,7 @@ class ApiTest(unittest.TestCase):
             async def __aexit__(self, *args): pass
             async def post(self, *args, **kwargs): return FakeResponse({'access_token':'test-token'})
             async def get(self, *args, **kwargs): return FakeResponse({'id':12345, 'login':'octocat'})
-        with patch.object(main, 'CLIENT_ID', 'test-id'), patch.object(main, 'CLIENT_SECRET', 'test-secret'), patch.object(main.httpx, 'AsyncClient', GitHubClient):
+        with patch.object(main, 'CLIENT_ID', 'test-id'), patch.object(main, 'CLIENT_SECRET', 'test-secret'), patch.object(main, 'PUBLIC_API_URL', 'http://localhost:3000'), patch.object(main, 'FRONTEND_URL', 'http://localhost:3000'), patch.object(main.httpx, 'AsyncClient', GitHubClient):
             start = self.client.get('/api/auth/github', follow_redirects=False)
             self.assertEqual(start.status_code, 302)
             params = parse_qs(urlsplit(start.headers['location']).query)
