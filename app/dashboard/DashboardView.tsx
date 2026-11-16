@@ -12,7 +12,7 @@ import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from '@/componen
 import { TooltipProvider } from '@/components/ui/tooltip';
 import LivingCat from '../mascot/living-cat';
 import AnalyticsCharts from './AnalyticsCharts';
-import AcquisitionOverview from './AcquisitionOverview';
+import OverviewV1 from './OverviewV1';
 import { dispatchMascotEvent } from '../mascot/mascot-events';
 import s from './dashboard.module.css';
 
@@ -1199,9 +1199,10 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                 <div className={s.tabPanel} key={tab}>
                   {tab === 'analytics' && (
                     <>
-                      <div className={s.analyticsBar} id="overview" tabIndex={-1}>
+                      <OverviewV1 projectId={selected} refresh={acquisitionRefresh} filtered={Boolean(activeFilter)} />
+                      <div className={s.analyticsBar} tabIndex={-1}>
                         <div>
-                          <h2>Overview</h2>
+                          <h2>Detailed analytics</h2>
                           <p>
                             {rangeLabel} · {project.domain} · {SESSION_DEFINITION}
                             {activeFilter ? ` · ${activeFilter.property} = ${activeFilter.value}` : ''}
@@ -1373,7 +1374,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           series={series.map((point) => point.events)}
                         />
                       </div>
-                      <AcquisitionOverview projectId={selected} days={days} filtered={Boolean(activeFilter)} refresh={acquisitionRefresh} />
 
                       {showCharts && (
                         <AnalyticsCharts

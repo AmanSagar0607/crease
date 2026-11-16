@@ -91,6 +91,45 @@ class ApiTest(unittest.TestCase):
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT count(*) FROM attribution_touchpoints WHERE project_id=:id'), {'id':p['id']}).scalar_one(),0)
 
+    def test_overview_utc_ranges_attribution_and_isolation(self):
+        self.client.cookies.set('crease_session', 'u1')
+        p = self.client.post('/api/projects', json={'name':'Overview','domain':'example.com'}, headers={'origin':main.FRONTEND_URL}).json()
+        self.verify_project(p['id'])
+        day = main.now().date()-timedelta(days=2)
+        at = datetime.combine(day, datetime.min.time(), timezone.utc)
+        events = [
+            {'id':'old','name':'pageview','timestamp':main.stamp(at-timedelta(days=1)),'path':'/old','visitorId':'v1','attribution':{'utm_source':'search','utm_campaign':'launch'}},
+            {'id':'one','name':'pageview','timestamp':main.stamp(at+timedelta(hours=1)),'path':'/landing','visitorId':'v1','referrer':'social.example'},
+            {'id':'two','name':'pageview','timestamp':main.stamp(at+timedelta(hours=1,minutes=2)),'path':'/pricing','visitorId':'v1','referrer':'example.com'},
+            {'id':'three','name':'pageview','timestamp':main.stamp(at+timedelta(hours=2)),'path':'/landing','visitorId':'v2','attribution':{'utm_source':'email','utm_medium':'newsletter','utm_campaign':'launch'}},
+            {'id':'boundary','name':'pageview','timestamp':main.stamp(at+timedelta(days=1)),'path':'/later','visitorId':'v3'},
+        ]
+        self.assertEqual(self.client.post('/api/events',json={'projectId':p['id'],'events':events},headers={'origin':'https://example.com','x-crease-key':p['write_key']}).json()['accepted'],5)
+        url=f'/api/projects/{p["id"]}/overview?start={day}&end={day}'
+        first=self.client.get(url).json()
+        self.assertEqual({k:first['metrics'][k] for k in ('visitors','sessions','pageviews','new_visitors','returning_visitors')},{'visitors':2,'sessions':2,'pageviews':3,'new_visitors':1,'returning_visitors':1})
+        self.assertEqual(first['previous']['visitors'],1)
+        self.assertIsNone(first['metrics']['conversions'])
+        self.assertEqual(first['landing_pages'][0]['path'],'/landing')
+        self.assertEqual(first['landing_pages'][0]['sessions'],2)
+        self.assertEqual(len(first['recent_activity']),3)
+        self.assertIn('search', [r['source'] for r in first['acquisition']])
+        self.assertEqual(sum(r['visitors'] for r in first['campaigns']),2)
+        last=self.client.get(url+'&model=last_touch').json()
+        non_direct=self.client.get(url+'&model=last_non_direct').json()
+        self.assertIn('Direct or unknown',[r['source'] for r in last['acquisition']])
+        self.assertIn('social.example',[r['source'] for r in non_direct['acquisition']])
+        self.assertEqual(self.client.get(url+'&model=bad').status_code,422)
+        self.assertEqual(self.client.get(f'/api/projects/{p["id"]}/overview?start={day}&end={day-timedelta(days=1)}').status_code,422)
+        self.assertEqual(self.client.get(f'/api/projects/{p["id"]}/overview?start={day-timedelta(days=90)}&end={day}').status_code,422)
+        empty=self.client.get(f'/api/projects/{p["id"]}/overview?start={day-timedelta(days=5)}&end={day-timedelta(days=5)}').json()
+        self.assertEqual(empty['metrics']['visitors'],0)
+        self.assertEqual(empty['acquisition'],[])
+        self.client.cookies.set('crease_session','u2')
+        self.assertEqual(self.client.get(url).status_code,404)
+        self.client.cookies.clear()
+        self.assertEqual(self.client.get(url).status_code,401)
+
     def test_acquisition_models_preserve_first_and_last_non_direct_across_sessions(self):
         self.client.cookies.set('crease_session','u1')
         headers={'origin':main.FRONTEND_URL}
