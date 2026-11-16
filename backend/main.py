@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import ipaddress
 import json
+import math
 import os
 import re
 import secrets
@@ -22,6 +23,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import IntegrityError
 from github_install import create_install_pr, enable_tracking_pr, installation_status
+from payment_adapters import StripeAdapter
 from cryptography.fernet import Fernet, InvalidToken
 
 load_dotenv(Path(__file__).with_name('.env'))
@@ -50,6 +52,7 @@ GITHUB_APP_CLIENT_ID = os.getenv('GITHUB_APP_CLIENT_ID', '')
 GITHUB_APP_CLIENT_SECRET = os.getenv('GITHUB_APP_CLIENT_SECRET', '')
 GITHUB_APP_TOKEN_KEY = os.getenv('GITHUB_APP_TOKEN_KEY', '')
 CREASE_PUBLIC_ORIGIN = os.getenv('CREASE_PUBLIC_ORIGIN', '')
+PAYMENT_ENCRYPTION_KEY = os.getenv('PAYMENT_ENCRYPTION_KEY', '')
 VERCEL_INTEGRATION_SLUG = os.getenv('VERCEL_INTEGRATION_SLUG', '')
 VERCEL_INTEGRATION_CLIENT_ID = os.getenv('VERCEL_INTEGRATION_CLIENT_ID', '')
 VERCEL_INTEGRATION_CLIENT_SECRET = os.getenv('VERCEL_INTEGRATION_CLIENT_SECRET', '')
@@ -482,6 +485,17 @@ async def retention(project_id: str, data: RetentionInput, user=Depends(session_
         db.execute(text('UPDATE projects SET retention_days=:days WHERE id=:id'), {'days':data.retention_days,'id':project_id})
     return {'retention_days':data.retention_days}
 
+# Campaign values deliberately exclude URL fragments and common personal identifiers.
+class Attribution(BaseModel):
+    utm_source: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,127}$')
+    utm_medium: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,127}$')
+    utm_campaign: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,127}$')
+    utm_content: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,127}$')
+    utm_term: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,127}$')
+
+    class Config:
+        extra = 'forbid'
+
 class Event(BaseModel):
     id: str = Field(min_length=1,max_length=64)
     name: str = Field(pattern=r'^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$')
@@ -491,6 +505,7 @@ class Event(BaseModel):
     sessionId: str | None = Field(default=None,max_length=64)
     properties: dict = Field(default_factory=dict)
     referrer: str | None = Field(default=None,max_length=253)
+    attribution: Attribution | None = None
 
 class Batch(BaseModel):
     projectId: str = Field(max_length=36)
@@ -499,10 +514,23 @@ class Batch(BaseModel):
 @app.middleware('http')
 async def limits(request: Request, call_next):
     origin = request.headers.get('origin')
+    payment_webhook = bool(re.fullmatch(r'/api/payment-webhooks/stripe/[0-9a-f-]{36}', request.url.path))
     if request.url.path == '/api/events' and request.method == 'OPTIONS':
         return Response(status_code=204, headers={'Access-Control-Allow-Origin': origin or 'null', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Crease-Key', 'Vary': 'Origin'})
-    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events') and origin != FRONTEND_URL:
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events') and not payment_webhook and origin != FRONTEND_URL:
         return Response(status_code=403)
+    if payment_webhook:
+        peer = request.client.host if request.client else 'unknown'
+        if not limiter.consume('webhook-ip:' + peer, RATE_LIMIT_PROJECT_PER_MINUTE):
+            return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
+        length = request.headers.get('content-length')
+        if length and (not length.isdigit() or int(length) > 262144): return Response(status_code=413)
+        chunks, size = [], 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > 262144: return Response(status_code=413)
+            chunks.append(chunk)
+        request._body = b''.join(chunks)
     if request.url.path in ('/api/events', '/internal/events'):
         if request.url.path == '/internal/events':
             peer = request.client.host if request.client else 'unknown'
@@ -513,8 +541,14 @@ async def limits(request: Request, call_next):
                 return Response(status_code=401)
         length = request.headers.get('content-length')
         if length and (not length.isdigit() or int(length)>32768): return Response(status_code=413)
-        body = await request.body()
-        if len(body)>32768: return Response(status_code=413)
+        chunks, size = [], 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > 32768: return Response(status_code=413)
+            chunks.append(chunk)
+        body = b''.join(chunks)
+        # Keep the bounded body available to FastAPI's request parser.
+        request._body = body
         try:
             parsed = json.loads(body)
             project_id = parsed.get('projectId') if isinstance(parsed, dict) else None
@@ -529,7 +563,7 @@ async def limits(request: Request, call_next):
                 client_key = 'proxy-unknown'
         if not limiter.consume('ip:' + client_key, RATE_LIMIT_IP_PER_MINUTE):
             return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
-        if isinstance(project_id, str) and project_id and not limiter.consume('project:' + project_id, RATE_LIMIT_PROJECT_PER_MINUTE):
+        if isinstance(project_id, str) and 0 < len(project_id) <= 36 and not limiter.consume('project:' + project_id, RATE_LIMIT_PROJECT_PER_MINUTE):
             return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
     response = await call_next(request)
     if request.url.path == '/api/events' and origin:
@@ -566,7 +600,7 @@ async def ingest(data: Batch, request: Request):
         inserted = 0
         for e in data.events:
             if not e.path.startswith('/') or '?' in e.path or '#' in e.path: raise HTTPException(422, 'Invalid path')
-            if len(e.properties)>20 or any(not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_.-]{0,63}', k) or re.search(r'password|token|secret|email', k, re.I) or not isinstance(v, (int, float, bool)) for k,v in e.properties.items()): raise HTTPException(422, 'Invalid event properties')
+            if len(e.properties)>20 or any(not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_.-]{0,63}', k) or re.search(r'password|token|secret|email', k, re.I) or not isinstance(v, (int, float, bool)) or (isinstance(v, float) and not math.isfinite(v)) for k,v in e.properties.items()): raise HTTPException(422, 'Invalid event properties')
             t = e.timestamp if e.timestamp.tzinfo else e.timestamp.replace(tzinfo=timezone.utc)
             event_time = t.astimezone(timezone.utc)
             if abs((now()-event_time).total_seconds()) > 86400 * 7: raise HTTPException(422, 'Event timestamp out of range')
@@ -575,6 +609,18 @@ async def ingest(data: Batch, request: Request):
             session_id = resolve_session(db, data.projectId, e.visitorId, e.id, event_time)
             result=db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,country,device,referrer,properties) VALUES (:project,:id,:name,:ts,:path,:visitor,:session,:country,:device,:referrer,:properties) ON CONFLICT (project_id,id) DO NOTHING'), {'project':data.projectId,'id':e.id,'name':e.name,'ts':stamp(event_time),'path':e.path,'visitor':e.visitorId,'session':session_id,'country':country,'device':device,'referrer':referrer,'properties':json.dumps(e.properties)})
             inserted += result.rowcount
+            if result.rowcount and e.name == 'pageview' and e.visitorId and session_id:
+                external_referrer = referrer if referrer not in (domain, alternate) else None
+                campaign = e.attribution.model_dump() if e.attribution else {}
+                db.execute(text('''
+                    INSERT INTO attribution_touchpoints
+                      (project_id,event_id,visitor_id,session_id,occurred_at,landing_page,referrer_domain,
+                       utm_source,utm_medium,utm_campaign,utm_content,utm_term)
+                    VALUES (:project,:event,:visitor,:session,:at,:path,:referrer,
+                            :utm_source,:utm_medium,:utm_campaign,:utm_content,:utm_term)
+                '''), {'project':data.projectId,'event':e.id,'visitor':e.visitorId,
+                       'session':session_id,'at':event_time,'path':e.path,'referrer':external_referrer,
+                       **{key:campaign.get(key) for key in ('utm_source','utm_medium','utm_campaign','utm_content','utm_term')}})
             if result.rowcount and e.properties:
                 store_event_properties(db, data.projectId, e.id, e.properties, stamp(event_time))
             if result.rowcount and session_id:
@@ -590,6 +636,83 @@ async def ingest(data: Batch, request: Request):
                       pageview_count=analytics_sessions.pageview_count+excluded.pageview_count
                 '''), {'project':data.projectId,'session':session_id,'visitor':e.visitorId,'at':stamp(event_time),'path':e.path,'pageview':1 if e.name == 'pageview' else 0})
     return {'accepted': inserted}
+
+def payment_cipher():
+    if not PAYMENT_ENCRYPTION_KEY:
+        raise HTTPException(503, 'Payment integration encryption is not configured')
+    try:
+        return Fernet(PAYMENT_ENCRYPTION_KEY.encode())
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(503, 'Payment integration encryption is invalid') from exc
+
+
+class StripeConnection(BaseModel):
+    signing_secret: str = Field(min_length=16, max_length=255, pattern=r'^whsec_[A-Za-z0-9]+$')
+    live_mode: bool
+
+
+@app.post('/api/projects/{project_id}/payment-integrations/stripe', status_code=201)
+async def connect_stripe(project_id: str, data: StripeConnection, user=Depends(session_user)):
+    cipher = payment_cipher()
+    integration_id = str(uuid4())
+    with engine.begin() as db:
+        owned(db, project_id, user['id'])
+        exists = db.execute(text("SELECT 1 FROM payment_integrations WHERE project_id=:project AND provider='stripe'"), {'project':project_id}).first()
+        if exists: raise HTTPException(409, 'Disconnect the existing Stripe integration first')
+        try:
+            db.execute(text("INSERT INTO payment_integrations (id,project_id,provider,live_mode,encrypted_signing_secret,created_at) VALUES (:id,:project,'stripe',:live,:secret,:at)"), {'id':integration_id,'project':project_id,'live':data.live_mode,'secret':cipher.encrypt(data.signing_secret.encode()).decode(),'at':now()})
+        except IntegrityError as exc:
+            raise HTTPException(409, 'Stripe integration already exists') from exc
+    return {'id':integration_id,'provider':'stripe','live_mode':data.live_mode,'status':'awaiting_webhook','webhook_url':PUBLIC_API_URL + '/api/payment-webhooks/stripe/' + integration_id}
+
+
+@app.get('/api/projects/{project_id}/payment-integrations/stripe')
+async def stripe_status(project_id: str, user=Depends(session_user)):
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        row = db.execute(text("SELECT id,live_mode,last_verified_event_at FROM payment_integrations WHERE project_id=:project AND provider='stripe'"), {'project':project_id}).mappings().first()
+    if not row: return {'connected':False}
+    return {'connected':True,'live_mode':row['live_mode'],'status':'receiving' if row['last_verified_event_at'] else 'awaiting_webhook','last_verified_event_at':row['last_verified_event_at'],'webhook_url':PUBLIC_API_URL + '/api/payment-webhooks/stripe/' + row['id']}
+
+
+@app.delete('/api/projects/{project_id}/payment-integrations/stripe')
+async def disconnect_stripe(project_id: str, user=Depends(session_user)):
+    with engine.begin() as db:
+        owned(db, project_id, user['id'])
+        db.execute(text("DELETE FROM payment_integrations WHERE project_id=:project AND provider='stripe'"), {'project':project_id})
+    return {'connected':False}
+
+
+@app.post('/api/payment-webhooks/stripe/{integration_id}')
+async def stripe_webhook(integration_id: str, request: Request):
+    with engine.begin() as db:
+        row = db.execute(text("SELECT i.*, p.retention_days FROM payment_integrations i JOIN projects p ON p.id=i.project_id WHERE i.id=:id AND i.provider='stripe' FOR UPDATE OF i"), {'id':integration_id}).mappings().first()
+        if not row: raise HTTPException(404, 'Integration not found')
+        try:
+            secret = payment_cipher().decrypt(row['encrypted_signing_secret'].encode()).decode()
+            event = StripeAdapter().verify(await request.body(), request.headers.get('stripe-signature', ''), secret)
+        except (InvalidToken, UnicodeDecodeError) as exc:
+            raise HTTPException(503, 'Integration credentials are unavailable') from exc
+        except ValueError as exc:
+            raise HTTPException(400, 'Invalid Stripe webhook') from exc
+        if event.live_mode != row['live_mode']: raise HTTPException(400, 'Webhook mode does not match integration')
+        inserted = db.execute(text('''INSERT INTO payment_webhook_events (integration_id,provider_event_id,event_type,received_at)
+            VALUES (:integration,:event,:type,:at) ON CONFLICT DO NOTHING RETURNING provider_event_id'''), {'integration':integration_id,'event':event.event_id,'type':event.event_type,'at':now()}).first()
+        if not inserted: return {'received':True,'duplicate':True}
+        if event.payment and event.payment.occurred_at >= now() - timedelta(days=row['retention_days']):
+            payment = event.payment
+            result = db.execute(text('''INSERT INTO payments
+                (project_id,provider,live_mode,provider_transaction_id,provider_customer_id,amount_minor,refunded_minor,currency,occurred_at)
+                VALUES (:project,'stripe',:live,:transaction,:customer,:amount,:refunded,:currency,:occurred)
+                ON CONFLICT (project_id,provider,live_mode,provider_transaction_id) DO UPDATE SET
+                  refunded_minor=GREATEST(payments.refunded_minor,excluded.refunded_minor),
+                  provider_customer_id=COALESCE(payments.provider_customer_id,excluded.provider_customer_id)
+                WHERE payments.currency=excluded.currency AND payments.amount_minor=excluded.amount_minor
+                RETURNING provider_transaction_id'''), {'project':row['project_id'],'live':event.live_mode,'transaction':payment.transaction_id,'customer':payment.customer_id,'amount':payment.amount_minor,'refunded':payment.refunded_minor,'currency':payment.currency,'occurred':payment.occurred_at}).first()
+            if not result: raise HTTPException(409, 'Conflicting payment data requires reconciliation')
+        db.execute(text('UPDATE payment_integrations SET last_verified_event_at=:at WHERE id=:id'), {'at':now(),'id':integration_id})
+    return {'received':True,'duplicate':False}
+
 
 @app.get('/api/projects/{project_id}/summary')
 async def summary(project_id: str, days: int = 30, property: str | None = Query(default=None, max_length=64), value: str | None = Query(default=None, max_length=256), user=Depends(session_user)):
@@ -646,6 +769,49 @@ async def summary(project_id: str, days: int = 30, property: str | None = Query(
             return [dict(r) for r in db.execute(text(f'SELECT COALESCE({column}, :unknown) AS label, COUNT(*) AS count FROM {source} WHERE project_id=:id AND occurred_at>=:since AND name=:name GROUP BY {column} ORDER BY count DESC LIMIT 10'), {**params,'unknown':'Unknown','name':'pageview'}).mappings()]
         event_names=[dict(r) for r in db.execute(text('SELECT name AS label, COUNT(*) AS count FROM events WHERE project_id=:id AND occurred_at>=:since GROUP BY name ORDER BY count DESC LIMIT 20'), params).mappings()]
         return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'referrers':breakdown('referrer'),'event_names':event_names,'days':days,'filter':{'property':property,'value':value},'average_session_duration_seconds':round(sum(durations)/len(durations)) if durations else 0}
+
+@app.get('/api/projects/{project_id}/acquisition')
+async def acquisition(project_id: str, days: int = 30, model: str = 'first_touch', user=Depends(session_user)):
+    """Count active visitors by observed source; no payment or identity inference."""
+    if days not in (7, 30, 90): raise HTTPException(422, 'Unsupported date range')
+    if model not in ('first_touch', 'last_touch', 'last_non_direct'): raise HTTPException(422, 'Unsupported attribution model')
+    end = now()
+    start = end - timedelta(days=days)
+    rank = {'first_touch':'first_rank', 'last_touch':'last_rank', 'last_non_direct':'non_direct_rank'}[model]
+    query = f"""
+        WITH visitors AS (
+          SELECT DISTINCT visitor_id FROM attribution_touchpoints
+          WHERE project_id=:project AND occurred_at>=:start AND occurred_at<:end
+        ), classified AS (
+          SELECT t.visitor_id, t.event_id, t.occurred_at,
+            CASE WHEN t.utm_source IS NOT NULL OR t.utm_medium IS NOT NULL OR t.utm_campaign IS NOT NULL
+                       OR t.utm_content IS NOT NULL OR t.utm_term IS NOT NULL THEN 'campaign'
+                 WHEN t.referrer_domain IS NOT NULL THEN 'referral' ELSE 'direct_or_unknown' END AS source_type,
+            CASE WHEN t.utm_source IS NOT NULL THEN t.utm_source
+                 WHEN t.referrer_domain IS NOT NULL THEN t.referrer_domain
+                 WHEN t.utm_medium IS NOT NULL OR t.utm_campaign IS NOT NULL OR t.utm_content IS NOT NULL OR t.utm_term IS NOT NULL THEN 'Unknown source'
+                 ELSE 'Direct or unknown' END AS source
+          FROM attribution_touchpoints t JOIN visitors v ON v.visitor_id=t.visitor_id
+          WHERE t.project_id=:project AND t.occurred_at<:end
+        ), ranked AS (
+          SELECT *,
+            ROW_NUMBER() OVER (PARTITION BY visitor_id ORDER BY occurred_at ASC,event_id ASC) AS first_rank,
+            ROW_NUMBER() OVER (PARTITION BY visitor_id ORDER BY occurred_at DESC,event_id DESC) AS last_rank,
+            ROW_NUMBER() OVER (PARTITION BY visitor_id ORDER BY CASE WHEN source_type='direct_or_unknown' THEN 1 ELSE 0 END,occurred_at DESC,event_id DESC) AS non_direct_rank
+          FROM classified
+        ), grouped AS (
+          SELECT source_type,source,COUNT(*) AS visitors FROM ranked WHERE {rank}=1 GROUP BY source_type,source
+        )
+        SELECT source_type,source,visitors,SUM(visitors) OVER () AS total_visitors
+        FROM grouped ORDER BY visitors DESC,source_type,source LIMIT 50
+    """
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        rows = db.execute(text(query), {'project':project_id, 'start':start, 'end':end}).mappings().all()
+    return {'model':model,'days':days,'start':stamp(start),'end':stamp(end),
+            'total_visitors':int(rows[0]['total_visitors']) if rows else 0,
+            'sources':[{'type':r['source_type'],'source':r['source'],'visitors':r['visitors']} for r in rows]}
+
 
 @app.get('/api/projects/{project_id}/properties')
 async def properties(project_id: str, user=Depends(session_user)):

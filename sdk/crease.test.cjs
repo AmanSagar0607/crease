@@ -124,3 +124,17 @@ test('does not collect web vitals before consent or without PerformanceObserver'
   window.crease.flush();
   assert.equal(calls.length, 0);
 });
+
+test('captures only allowlisted campaign parameters after consent', () => {
+  const { window, calls } = setup();
+  window.history.replaceState({}, '', '/landing?utm_source=search&utm_medium=paid&utm_campaign=spring&utm_content=hello%40example.com&email=private');
+  assert.equal(window.crease.identify(), null);
+  window.crease.init({ projectId: 'p', writeKey: 'crease_0123456789abcdef', endpoint: 'https://collector.example/events' });
+  window.crease.flush();
+  const event = calls[0].body.events[0];
+  assert.equal(event.path, '/landing');
+  assert.deepEqual(event.attribution, { utm_source: 'search', utm_medium: 'paid', utm_campaign: 'spring' });
+  window.crease.optOut();
+  assert.equal(window.crease.identify(), null);
+  assert.equal(window.localStorage.getItem('crease_visitor:p'), undefined);
+});

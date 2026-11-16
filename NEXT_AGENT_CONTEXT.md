@@ -234,3 +234,32 @@ The npm account must own the `@crease` scope. If it does not, choose a package n
 - Do not auto-create or merge tracking PRs. The user must review and merge them.
 - Do not claim installation status means data is flowing. Show both repository-installation state and actual event receipt count.
 - Keep the user’s analytics dashboard concise and project-focused.
+
+## Revenue-first phase 1 (local, not deployed)
+
+- Audited the existing Next.js/FastAPI/PostgreSQL architecture and documented the phased implementation and rollout in `docs/REVENUE_FOUNDATION_PLAN.md`.
+- Added Alembic revision `0003_attribution_touchpoints`; new consent-enabled pageviews capture bounded UTM evidence and referrer hostnames, scoped to projects and server-assigned sessions. Existing events are not backfilled with invented attribution. Duplicate event IDs do not create duplicate touchpoints. Project deletion and the retention job remove touchpoints.
+- Standalone and npm SDKs namespace browser identity by project while retaining existing legacy identity when available; identify no longer creates an identity when tracking is disabled. Both SDKs omit non-allowlisted query parameters and refuse invalid campaign values. The npm package remains unpublished.
+- Hardened ingestion against oversized streaming bodies, overlong rate-limit keys and non-finite numeric properties. These browser inputs remain forgeable and cannot verify a transaction.
+- Local validation: PostgreSQL fresh upgrade and existing `0002` upgrade/downgrade preserve legacy events; backend tests, SDK tests, and build/type checks were run against the local workspace. Production migrations were not executed. Run `alembic upgrade head` separately only after backup and rollout review. Payment ingestion, customer association, attribution reports, currency handling, revenue dashboard, funnels, and other later phases remain unimplemented.
+
+## Revenue phase 2 foundation (local, not deployed)
+
+- Commit `b2026fe` records phase 1. Added an initial provider-neutral event model and a Stripe adapter using the official SDK to verify raw webhook signatures; synthetic signed events are tested, but no real Stripe sandbox webhook has been verified and the integration must not be presented as production-ready.
+- Added revision `0004_payment_foundation`, encrypted per-project Stripe signing-secret storage, owner-scoped setup/status/disconnect endpoints, webhook event deduplication, captured-charge records and monotonic cumulative refunds. Test/live modes and currencies are separated, there is no exchange-rate conversion, and conflicting payment data returns 409. Retention and project deletion cover the new data; disconnect does not remove historical payments.
+- `PAYMENT_ENCRYPTION_KEY` must be a dedicated Fernet key and migrations must be reviewed and run separately. See `docs/payment-integrations.md`. Do not collect or store card data or raw webhook payloads. The adapter is incomplete until actual sandbox testing, reconciliation, subscription/dispute/partial-capture handling, and a trustworthy customer-to-visitor association exist. All revenue must remain unattributed until such a link is established. Other payment providers, reporting, customer intelligence, and dashboard work remain later phases.
+
+- Attribution follow-up: npm SPA pageviews now send the previous same-site hostname rather than repeatedly attributing every route to the initial external document referrer. The backend consequently records subsequent same-site visits as direct evidence. Both SDK test suites pass. Stripe CLI is connected to the live account, but no sandbox is authorized; do not run payment tests in live mode. Stripe's requested implementation-planner MCP tool was not available in this session.
+
+
+## Stripe sandbox verification update
+
+- The user confirmed that Crease connects merchants' existing Stripe accounts for revenue analytics and does not route their funds or payouts. Stripe CLI `Crease development` is in test mode; always verify mode before testing.
+- A real sandbox PaymentIntent for USD 12.00 and a USD 3.00 partial refund were delivered through the Stripe CLI to the local FastAPI webhook and recorded correctly in a disposable PostgreSQL database (original amount 1200, refund 300, USD, live_mode false). Temporary listeners, database, keys and test dependencies were removed. This verifies only that narrow charge/refund path, not production readiness, Connect, subscriptions, disputes, full reconciliation, or customer-to-visitor association. The CLI's built-in trigger fixture failed on a deprecated payment method parameter; a sandbox PaymentIntent using current dynamic defaults succeeded.
+- The Stripe MCP implementation planner became available but returned that it needs more business context. Awaiting the user's description of what Crease sells and whether payments are subscriptions, one-time, invoices, or a combination. Do not guess these business decisions.
+
+Acquisition reporting: project-owner GET /api/projects/{id}/acquisition supports first, last, and last-non-direct observed touchpoints. See docs/ACQUISITION_REPORT.md. No revenue attribution is inferred. PostgreSQL integration tests pass locally; no production deployment performed.
+
+## Revenue-first overview milestone
+
+Dashboard displays project-scoped acquisition sources using the existing acquisition endpoint, attribution model selector, date filter, loading/error/retry states, and a disclosure that property filters do not apply. Revenue reporting is marked unavailable. See docs/REVENUE_OVERVIEW.md. No migration or deployment. Full Phase 1 overview metrics and remaining phases are incomplete. Skip all Stripe and payment-provider work per latest user instruction.

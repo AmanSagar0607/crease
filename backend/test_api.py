@@ -5,6 +5,10 @@ from uuid import uuid4
 from unittest.mock import patch, AsyncMock
 import asyncio
 import base64
+import hashlib
+import hmac
+import json
+import time as wall_time
 import httpx
 from cryptography.fernet import Fernet
 from urllib.parse import parse_qs, urlsplit
@@ -54,6 +58,114 @@ class ApiTest(unittest.TestCase):
     def verify_project(self, project_id):
         with main.engine.begin() as db:
             db.execute(text('UPDATE projects SET verified_at=:at WHERE id=:id'), {'at':main.stamp(main.now()),'id':project_id})
+
+    def test_attribution_persists_evidence_deduplicates_and_is_tenant_scoped(self):
+        self.client.cookies.set('crease_session', 'u1')
+        headers = {'origin':main.FRONTEND_URL}
+        p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
+        self.verify_project(p['id'])
+        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        base = {'name':'pageview','timestamp':main.stamp(main.now()-timedelta(hours=2)),'path':'/landing','visitorId':'visitor'}
+        event = dict(base, id='first', referrer='search.example', attribution={'utm_source':'search','utm_campaign':'spring'})
+        direct = dict(base, id='second', referrer='example.com')
+        later = dict(base, id='third', timestamp=main.stamp(main.now()), referrer='social.example', attribution={'utm_source':'social'})
+        payload = {'projectId':p['id'],'events':[event,direct,later]}
+        self.assertEqual(self.client.post('/api/events', json=payload, headers=event_headers).json()['accepted'],3)
+        self.assertEqual(self.client.post('/api/events', json=payload, headers=event_headers).json()['accepted'],0)
+        with main.engine.connect() as db:
+            rows = db.execute(text('SELECT event_id,visitor_id,session_id,referrer_domain,utm_source,utm_campaign FROM attribution_touchpoints WHERE project_id=:id ORDER BY event_id'), {'id':p['id']}).mappings().all()
+        self.assertEqual(len(rows), 3)
+        self.assertEqual((rows[0]['referrer_domain'],rows[0]['utm_source'],rows[0]['utm_campaign']),('search.example','search','spring'))
+        self.assertIsNone(rows[1]['referrer_domain'])
+        self.assertIsNone(rows[1]['utm_source'])
+        self.assertEqual(rows[0]['visitor_id'],rows[1]['visitor_id'])
+        self.assertEqual(rows[0]['session_id'],rows[1]['session_id'])
+        self.assertNotEqual(rows[0]['session_id'],rows[2]['session_id'])
+        self.assertEqual(rows[0]['visitor_id'],rows[2]['visitor_id'])
+        bad = dict(base,id='bad',attribution={'utm_source':'person@example.com'})
+        self.assertEqual(self.client.post('/api/events',json={'projectId':p['id'],'events':[bad]},headers=event_headers).status_code,422)
+        self.client.cookies.set('crease_session','u2')
+        self.assertEqual(self.client.delete('/api/projects/'+p['id'],headers=headers).status_code,404)
+        self.client.cookies.set('crease_session','u1')
+        self.assertEqual(self.client.delete('/api/projects/'+p['id'],headers=headers).status_code,200)
+        with main.engine.connect() as db:
+            self.assertEqual(db.execute(text('SELECT count(*) FROM attribution_touchpoints WHERE project_id=:id'), {'id':p['id']}).scalar_one(),0)
+
+    def test_acquisition_models_preserve_first_and_last_non_direct_across_sessions(self):
+        self.client.cookies.set('crease_session','u1')
+        headers={'origin':main.FRONTEND_URL}
+        p=self.client.post('/api/projects',json={'name':'Acquisition','domain':'example.com'},headers=headers).json()
+        self.verify_project(p['id'])
+        base=main.now()-timedelta(hours=3)
+        events=[
+            {'id':'a','name':'pageview','timestamp':main.stamp(base),'path':'/landing','visitorId':'v1','referrer':'search.example','attribution':{'utm_source':'search'}},
+            {'id':'b','name':'pageview','timestamp':main.stamp(base+timedelta(hours=1)),'path':'/pricing','visitorId':'v1','referrer':'social.example'},
+            {'id':'c','name':'pageview','timestamp':main.stamp(base+timedelta(hours=2)),'path':'/','visitorId':'v1','referrer':'example.com'},
+            {'id':'d','name':'pageview','timestamp':main.stamp(base),'path':'/','visitorId':'v2'},
+            {'id':'e','name':'pageview','timestamp':main.stamp(base),'path':'/','visitorId':'v3','attribution':{'utm_campaign':'spring'}},
+        ]
+        self.assertEqual(self.client.post('/api/events',json={'projectId':p['id'],'events':events},headers={'origin':'https://example.com','x-crease-key':p['write_key']}).json()['accepted'],5)
+        def report(model):
+            response=self.client.get('/api/projects/'+p['id']+'/acquisition?days=7&model='+model)
+            self.assertEqual(response.status_code,200)
+            return response.json()
+        first=report('first_touch')
+        self.assertEqual(first['total_visitors'],3)
+        self.assertEqual({(x['type'],x['source'],x['visitors']) for x in first['sources']},{('campaign','search',1),('direct_or_unknown','Direct or unknown',1),('campaign','Unknown source',1)})
+        last=report('last_touch')
+        self.assertIn({'type':'direct_or_unknown','source':'Direct or unknown','visitors':2},last['sources'])
+        non_direct=report('last_non_direct')
+        self.assertIn({'type':'referral','source':'social.example','visitors':1},non_direct['sources'])
+        self.assertIn({'type':'direct_or_unknown','source':'Direct or unknown','visitors':1},non_direct['sources'])
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/acquisition?model=invalid').status_code,422)
+        self.client.cookies.set('crease_session','u2')
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/acquisition').status_code,404)
+
+    def test_ingestion_rejects_large_streams_and_overlong_project_ids(self):
+        response = self.client.post('/api/events', content=iter([b'x' * 20000, b'y' * 20000]), headers={'content-type':'application/json'})
+        self.assertEqual(response.status_code, 413)
+        response = self.client.post('/api/events', json={'projectId':'x' * 1000, 'events':[]})
+        self.assertEqual(response.status_code, 422)
+
+    def test_stripe_webhooks_verify_deduplicate_and_reconcile_refunds(self):
+        self.client.cookies.set('crease_session','u1')
+        headers = {'origin':main.FRONTEND_URL}
+        p = self.client.post('/api/projects', json={'name':'Pay','domain':'example.com'}, headers=headers).json()
+        key, secret = Fernet.generate_key().decode(), 'whsec_12345678901234567890'
+        with patch.object(main, 'PAYMENT_ENCRYPTION_KEY', key):
+            response = self.client.post('/api/projects/'+p['id']+'/payment-integrations/stripe', json={'signing_secret':secret,'live_mode':False}, headers=headers)
+            self.assertEqual(response.status_code, 201)
+            integration = response.json()['id']
+            path = '/api/payment-webhooks/stripe/' + integration
+            with main.engine.connect() as db:
+                stored = db.execute(text('SELECT encrypted_signing_secret FROM payment_integrations WHERE id=:id'), {'id':integration}).scalar_one()
+            self.assertNotIn(secret, stored)
+            def send(event_id, event_type, refunded=0, signature=True, live=False, amount=1000):
+                body = json.dumps({'id':event_id,'type':event_type,'livemode':live,'data':{'object':{'object':'charge','id':'ch_123','paid':True,'captured':True,'amount_captured':amount,'amount_refunded':refunded,'currency':'usd','created':int(wall_time.time()),'customer':'cus_123'}}}, separators=(',',':')).encode()
+                timestamp = str(int(wall_time.time()))
+                digest = hmac.new(secret.encode(), timestamp.encode()+b'.'+body, hashlib.sha256).hexdigest() if signature else '0'*64
+                return self.client.post(path, content=body, headers={'stripe-signature':'t='+timestamp+',v1='+digest,'content-type':'application/json'})
+            self.assertEqual(send('evt_bad','charge.succeeded',signature=False).status_code,400)
+            self.assertEqual(send('evt_wrongmode','charge.succeeded',live=True).status_code,400)
+            self.assertEqual(send('evt_refund','charge.refunded',refunded=400).status_code,200)
+            self.assertEqual(send('evt_success','charge.succeeded',refunded=0).status_code,200)
+            self.assertTrue(send('evt_refund','charge.refunded',refunded=400).json()['duplicate'])
+            self.assertEqual(send('evt_conflict','charge.succeeded',amount=900).status_code,409)
+            with main.engine.connect() as db:
+                payment = db.execute(text('SELECT amount_minor,refunded_minor,currency FROM payments WHERE project_id=:id'), {'id':p['id']}).mappings().one()
+                self.assertEqual((payment['amount_minor'],payment['refunded_minor'],payment['currency']),(1000,400,'USD'))
+                self.assertEqual(db.execute(text('SELECT count(*) FROM payment_webhook_events WHERE integration_id=:id'), {'id':integration}).scalar_one(),2)
+            self.client.cookies.set('crease_session','u2')
+            self.assertEqual(self.client.get('/api/projects/'+p['id']+'/payment-integrations/stripe').status_code,404)
+            self.assertEqual(self.client.delete('/api/projects/'+p['id']+'/payment-integrations/stripe',headers=headers).status_code,404)
+            self.client.cookies.set('crease_session','u1')
+            self.assertEqual(self.client.delete('/api/projects/'+p['id']+'/payment-integrations/stripe',headers=headers).status_code,200)
+            self.assertEqual(send('evt_after','charge.succeeded').status_code,404)
+            with main.engine.connect() as db:
+                self.assertEqual(db.execute(text('SELECT count(*) FROM payments WHERE project_id=:id'), {'id':p['id']}).scalar_one(),1)
+            self.assertEqual(self.client.delete('/api/projects/'+p['id'],headers=headers).status_code,200)
+            with main.engine.connect() as db:
+                self.assertEqual(db.execute(text('SELECT count(*) FROM payments WHERE project_id=:id'), {'id':p['id']}).scalar_one(),0)
 
     def test_rate_limiter_instances_share_one_counter(self):
         second_engine = create_engine(main.DATABASE_URL)
@@ -240,6 +352,8 @@ class ApiTest(unittest.TestCase):
             for event_id, at, session_id in (('old-event', old, 'old-session'), ('recent-event', recent, 'recent-session')):
                 db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,properties) VALUES (:project,:id,:name,:at,:path,:visitor,:session,:properties)'), {'project':p['id'],'id':event_id,'name':'pageview','at':at,'path':'/','visitor':'v','session':session_id,'properties':'{}'})
                 db.execute(text('INSERT INTO event_properties (project_id,event_id,name,value_text,value_number,value_boolean) VALUES (:project,:id,:name,:text,:number,NULL)'), {'project':p['id'],'id':event_id,'name':'seats','text':'2','number':2})
+                db.execute(text('INSERT INTO attribution_touchpoints (project_id,event_id,visitor_id,session_id,occurred_at,landing_page) VALUES (:project,:id,:visitor,:session,:at,:path)'), {'project':p['id'],'id':event_id,'visitor':'v','session':session_id,'at':main.parse_stamp(at),'path':'/'})
+                db.execute(text("INSERT INTO payments (project_id,provider,live_mode,provider_transaction_id,amount_minor,refunded_minor,currency,occurred_at) VALUES (:project,'stripe',false,:id,100,0,'USD',:at)"), {'project':p['id'],'id':event_id,'at':main.parse_stamp(at)})
                 db.execute(text('INSERT INTO analytics_sessions (project_id,session_id,visitor_id,started_at,last_activity_at,entry_page,exit_page,pageview_count) VALUES (:project,:session,:visitor,:at,:at,:path,:path,:pageviews)'), {'project':p['id'],'session':session_id,'visitor':'v','at':at,'path':'/','pageviews':1})
         self.assertEqual(self.client.patch('/api/projects/'+p['id']+'/retention', json={'retention_days':7}, headers=headers).status_code,200)
         with main.engine.connect() as db:
@@ -251,6 +365,8 @@ class ApiTest(unittest.TestCase):
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT id FROM events WHERE project_id=:id ORDER BY id'), {'id':p['id']}).scalars().all(), ['recent-event'])
             self.assertEqual(db.execute(text('SELECT event_id FROM event_properties WHERE project_id=:id'), {'id':p['id']}).scalars().all(), ['recent-event'])
+            self.assertEqual(db.execute(text('SELECT event_id FROM attribution_touchpoints WHERE project_id=:id'), {'id':p['id']}).scalars().all(), ['recent-event'])
+            self.assertEqual(db.execute(text('SELECT provider_transaction_id FROM payments WHERE project_id=:id'), {'id':p['id']}).scalars().all(), ['recent-event'])
             self.assertEqual(db.execute(text('SELECT session_id FROM analytics_sessions WHERE project_id=:id'), {'id':p['id']}).scalars().all(), ['recent-session'])
         self.assertTrue(any(p['id'] in line for line in logs.output))
 

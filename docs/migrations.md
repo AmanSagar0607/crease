@@ -37,3 +37,11 @@ Take a backup or a Neon branch before stamping or upgrading production. Verify `
 ## Adding schema changes
 
 Create a new revision with `alembic revision -m "describe change"`, review the generated SQL, and test it against a disposable PostgreSQL database (and SQLite where the change is portable) before releasing it.
+
+## Phase 1 attribution touchpoints (not deployed)
+
+Revision `0003_attribution_touchpoints` adds a project-scoped table linked to `events` and `projects` with cascading foreign keys and project/visitor/time indexes. Only accepted, unique pageviews with a visitor ID create touchpoints. No historical UTM data is invented. Test a fresh upgrade and an upgrade from `0002_property_filters` on an isolated PostgreSQL database before separately applying the migration. Do not run it automatically in production. Rollback to `0002_property_filters` removes the new table and its collected touchpoints, while preserving existing events; export touchpoints first if required.
+
+## Payment foundation (not deployed)
+
+Revision `0004_payment_foundation` adds encrypted integration credentials, a deduplicated webhook ledger, and currency-separated payment records. It cascades project deletion; disconnect deletes the integration and event ledger while retaining payments. Test upgrades and downgrades on isolated PostgreSQL first. Downgrading deletes all payment data and integration credentials in these new tables, so export and back up first. No production migrations are automatic.
