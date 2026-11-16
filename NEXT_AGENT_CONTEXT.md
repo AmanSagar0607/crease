@@ -234,3 +234,11 @@ The npm account must own the `@crease` scope. If it does not, choose a package n
 - Do not auto-create or merge tracking PRs. The user must review and merge them.
 - Do not claim installation status means data is flowing. Show both repository-installation state and actual event receipt count.
 - Keep the user’s analytics dashboard concise and project-focused.
+
+## Revenue-first phase 1 (local, not deployed)
+
+- Audited the existing Next.js/FastAPI/PostgreSQL architecture and documented the phased implementation and rollout in `docs/REVENUE_FOUNDATION_PLAN.md`.
+- Added Alembic revision `0003_attribution_touchpoints`; new consent-enabled pageviews capture bounded UTM evidence and referrer hostnames, scoped to projects and server-assigned sessions. Existing events are not backfilled with invented attribution. Duplicate event IDs do not create duplicate touchpoints. Project deletion and the retention job remove touchpoints.
+- Standalone and npm SDKs namespace browser identity by project while retaining existing legacy identity when available; identify no longer creates an identity when tracking is disabled. Both SDKs omit non-allowlisted query parameters and refuse invalid campaign values. The npm package remains unpublished.
+- Hardened ingestion against oversized streaming bodies, overlong rate-limit keys and non-finite numeric properties. These browser inputs remain forgeable and cannot verify a transaction.
+- Local validation: PostgreSQL fresh upgrade and existing `0002` upgrade/downgrade preserve legacy events; backend tests, SDK tests, and build/type checks were run against the local workspace. Production migrations were not executed. Run `alembic upgrade head` separately only after backup and rollout review. Payment ingestion, customer association, attribution reports, currency handling, revenue dashboard, funnels, and other later phases remain unimplemented.

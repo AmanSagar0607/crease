@@ -10,6 +10,7 @@
   function write(key, value) { try { root.localStorage.setItem(key, value); } catch (_) {} }
   function remove(key) { try { root.localStorage.removeItem(key); } catch (_) {} }
   function visitorId() {
+    if (!enabled) return null;
     var value = read(visitorKey);
     if (!value) { value = id(); if (value) write(visitorKey, value); }
     return value;
@@ -26,6 +27,15 @@
   }
   function safePath() { return root.location.pathname; }
   function routeKey() { return root.location.pathname + root.location.search; }
+  function campaign() {
+    var values = {}, params;
+    try { params = new URL(root.location.href).searchParams; } catch (_) { return values; }
+    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'].forEach(function (key) {
+      var value = params.get(key);
+      if (value && /^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,127}$/.test(value)) values[key] = value;
+    });
+    return values;
+  }
   function observe(type, update) {
     try {
       var observer = new root.PerformanceObserver(function (list) { update(list.getEntries()); });
@@ -74,7 +84,9 @@
     if (typeof pageReferrer === 'undefined') { try { if (root.document.referrer) referrer = new URL(root.document.referrer).hostname; } catch (_) {} }
     var activeSession = session();
     if (name === 'pageview') { activeSession.pageviews += 1; activeSession.exitPage = safePath(); write(sessionKey, JSON.stringify(activeSession)); }
-    queue.push({ id: eventId, name: name, timestamp: new Date().toISOString(), path: pathOverride || safePath(), visitorId: visitorId(), sessionId: activeSession.id, referrer: referrer, properties: clean, schemaVersion: 1 });
+    var event = { id: eventId, name: name, timestamp: new Date().toISOString(), path: pathOverride || safePath(), visitorId: visitorId(), sessionId: activeSession.id, referrer: referrer, properties: clean, schemaVersion: 1 };
+    if (name === 'pageview') event.attribution = campaign();
+    queue.push(event);
     if (queue.length > 100) queue.shift();
     if (queue.length >= 20) flush(); else schedule();
   }
@@ -101,6 +113,9 @@
     var endpoint; try { endpoint = new URL(config.endpoint, root.location.href); } catch (_) { return; }
     if (endpoint.protocol !== 'https:' && endpoint.hostname !== 'localhost') return;
     options = { projectId: String(config.projectId), endpoint: endpoint.href, writeKey: config.writeKey };
+    visitorKey = 'crease_visitor:' + options.projectId; sessionKey = 'crease_session:' + options.projectId;
+    if (!read(visitorKey) && read('crease_visitor')) write(visitorKey, read('crease_visitor'));
+    if (!read(sessionKey) && read('crease_session')) write(sessionKey, read('crease_session'));
     enabled = true; currentUrl = null; resetVitals(); observeVitals();
     patchHistory('pushState'); patchHistory('replaceState');
     routeHandler = pageview; leaveHandler = leaving; visibilityHandler = hidden;
@@ -118,7 +133,7 @@
     if (leaveHandler) root.removeEventListener('pagehide', leaveHandler);
     if (visibilityHandler && root.document && root.document.removeEventListener) root.document.removeEventListener('visibilitychange', visibilityHandler);
     observerList.forEach(function (observer) { try { observer.disconnect(); } catch (_) {} }); observerList = [];
-    resetVitals(); remove(visitorKey); remove(sessionKey);
+    resetVitals(); remove(visitorKey); remove(sessionKey); remove('crease_visitor'); remove('crease_session');
   }
   root.crease = { init: init, capture: capture, pageview: pageview, flush: flush, optOut: optOut, reset: reset, identify: function () { return visitorId(); } };
 })(window);

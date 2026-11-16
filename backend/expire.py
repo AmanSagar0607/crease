@@ -24,6 +24,10 @@ def enforce_retention(db_engine=engine, log=logger):
         for project in projects:
             cutoff = stamp(now() - timedelta(days=project['retention_days']))
             db.execute(
+                text('DELETE FROM attribution_touchpoints WHERE project_id=:id AND occurred_at<:cutoff'),
+                {'id': project['id'], 'cutoff': now() - timedelta(days=project['retention_days'])},
+            )
+            db.execute(
                 text('DELETE FROM event_properties WHERE project_id=:id AND event_id IN (SELECT id FROM events WHERE project_id=:id AND occurred_at<:cutoff)'),
                 {'id': project['id'], 'cutoff': cutoff},
             )
