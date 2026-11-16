@@ -6,6 +6,7 @@ import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useStat
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
 import ThemeToggle from '../theme-toggle';
+import VerifiedBadge from './VerifiedBadge';
 import LivingCat from '../mascot/living-cat';
 import AnalyticsCharts from './AnalyticsCharts';
 import { dispatchMascotEvent } from '../mascot/mascot-events';
@@ -955,7 +956,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           </Link>
           <div className={s.sidebarProject}>
             <span className={s.sidebarProjectMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
-            <span className={s.sidebarProjectText}><strong>{project.domain}</strong><small>personal workspace</small></span>
+            <span className={s.sidebarProjectText}><strong className={s.verifiedName}><span>{project.domain}</span>{project.verified === true && <VerifiedBadge />}</strong><small>personal workspace</small></span>
           </div>
           <label className={s.sidebarSwitcher}>
             <span className={s.srOnly}>Switch project</span>
@@ -1753,7 +1754,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             </span>
                             <span className={s.projectCardName}>
                               <strong>{item.name}</strong>
-                              <span>{item.domain}</span>
+                              <span className={s.projectDomain}><span>{item.domain}</span>{item.verified === true && <VerifiedBadge />}</span>
                             </span>
                             <span className={s.projectCardArrow} aria-hidden="true">
                               <ArrowRightIcon />

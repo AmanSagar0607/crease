@@ -3048,3 +3048,29 @@
     width: 100%;
   }
 }
+
+/* Verified-domain mark: keep the icon visible as long hostnames truncate. */
+.verifiedName,
+.projectCardName .projectDomain {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.verifiedName > span,
+.projectCardName .projectDomain > span {
+  overflow: hidden;
+  min-width: 0;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.verifiedIcon {
+  display: inline-block;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  vertical-align: middle;
+}
