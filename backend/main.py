@@ -15,7 +15,7 @@ from uuid import uuid4
 import httpx
 from dotenv import load_dotenv
 from pathlib import Path
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
@@ -94,6 +94,44 @@ def resolve_session(db, project_id, visitor_id, event_id, event_time):
         if gap <= SESSION_IDLE_SECONDS and last.astimezone(timezone.utc).date() == event_time.astimezone(timezone.utc).date():
             return row['session_id']
     return str(uuid4())
+
+def typed_property(value):
+    """Return canonical storage columns and a type name for a property value."""
+    if isinstance(value, bool):
+        return ('true' if value else 'false'), None, value, 'boolean'
+    return str(value), float(value), None, 'number'
+
+def store_event_properties(db, project_id, event_id, properties, at):
+    """Index each property and update the project's declared-key registry."""
+    for name, value in properties.items():
+        value_text, value_number, value_boolean, value_type = typed_property(value)
+        db.execute(text('''
+            INSERT INTO event_properties (project_id,event_id,name,value_text,value_number,value_boolean)
+            VALUES (:project,:event,:name,:text,:number,:boolean)
+            ON CONFLICT (project_id,event_id,name) DO NOTHING
+        '''), {'project':project_id,'event':event_id,'name':name,'text':value_text,'number':value_number,'boolean':value_boolean})
+        db.execute(text('''
+            INSERT INTO project_property_keys (project_id,name,value_type,first_seen_at,last_seen_at)
+            VALUES (:project,:name,:type,:at,:at)
+            ON CONFLICT (project_id,name) DO UPDATE SET
+              value_type=CASE WHEN project_property_keys.value_type=excluded.value_type THEN project_property_keys.value_type ELSE 'mixed' END,
+              first_seen_at=LEAST(project_property_keys.first_seen_at,excluded.first_seen_at),
+              last_seen_at=GREATEST(project_property_keys.last_seen_at,excluded.last_seen_at)
+        '''), {'project':project_id,'name':name,'type':value_type,'at':at})
+
+def property_filter(property_key, value):
+    """Return a SQL fragment and params matching an indexed property, or empty when unfiltered."""
+    if not property_key:
+        return '', {}
+    params = {'prop_name': property_key, 'prop_text': value}
+    match = 'ep.value_text = :prop_text'
+    try:
+        params['prop_number'] = float(value)
+    except (TypeError, ValueError):
+        pass
+    else:
+        match = '(ep.value_text = :prop_text OR ep.value_number = :prop_number)'
+    return f'ep.name = :prop_name AND {match}', params
 
 RATE_WINDOW_SECONDS = 60
 RATE_LIMIT_IP_PER_MINUTE = int(os.getenv('RATE_LIMIT_IP_PER_MINUTE', '120'))
@@ -451,6 +489,8 @@ async def delete_project(project_id: str, user=Depends(session_user)):
         owned(db, project_id, user['id'])
         db.execute(text('DELETE FROM project_repositories WHERE project_id=:id'), {'id':project_id})
         db.execute(text('DELETE FROM project_vercel WHERE project_id=:id'), {'id':project_id})
+        db.execute(text('DELETE FROM event_properties WHERE project_id=:id'), {'id':project_id})
+        db.execute(text('DELETE FROM project_property_keys WHERE project_id=:id'), {'id':project_id})
         db.execute(text('DELETE FROM events WHERE project_id=:id'), {'id':project_id})
         db.execute(text('DELETE FROM analytics_sessions WHERE project_id=:id'), {'id':project_id})
         db.execute(text('DELETE FROM projects WHERE id=:id'), {'id':project_id})
@@ -536,6 +576,8 @@ async def ingest(data: Batch, request: Request):
             session_id = resolve_session(db, data.projectId, e.visitorId, e.id, event_time)
             result=db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,country,device,referrer,properties) VALUES (:project,:id,:name,:ts,:path,:visitor,:session,:country,:device,:referrer,:properties) ON CONFLICT (project_id,id) DO NOTHING'), {'project':data.projectId,'id':e.id,'name':e.name,'ts':stamp(event_time),'path':e.path,'visitor':e.visitorId,'session':session_id,'country':country,'device':device,'referrer':referrer,'properties':json.dumps(e.properties)})
             inserted += result.rowcount
+            if result.rowcount and e.properties:
+                store_event_properties(db, data.projectId, e.id, e.properties, stamp(event_time))
             if result.rowcount and session_id:
                 db.execute(text('''
                     INSERT INTO analytics_sessions (project_id,session_id,visitor_id,started_at,last_activity_at,entry_page,exit_page,pageview_count)
@@ -551,8 +593,9 @@ async def ingest(data: Batch, request: Request):
     return {'accepted': inserted}
 
 @app.get('/api/projects/{project_id}/summary')
-async def summary(project_id: str, days: int = 30, user=Depends(session_user)):
+async def summary(project_id: str, days: int = 30, property: str | None = Query(default=None, max_length=64), value: str | None = Query(default=None, max_length=256), user=Depends(session_user)):
     if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
+    if (property is None) != (value is None): raise HTTPException(422, 'property and value must be provided together')
     end = now()
     start = end - timedelta(days=days-1)
     previous_start = start - timedelta(days=days)
@@ -560,16 +603,30 @@ async def summary(project_id: str, days: int = 30, user=Depends(session_user)):
     previous_params={'id':project_id,'since':stamp(previous_start),'until':stamp(start)}
     with engine.connect() as db:
         owned(db, project_id, user['id'])
+        source = 'events'
+        if property is not None:
+            known = db.execute(text('SELECT 1 FROM project_property_keys WHERE project_id=:id AND name=:name'), {'id':project_id,'name':property}).first()
+            if not known: raise HTTPException(422, 'Unknown property key')
+            clause, extra = property_filter(property, value)
+            params.update(extra)
+            previous_params.update(extra)
+            source = f'(SELECT e.* FROM events e JOIN event_properties ep ON ep.project_id=e.project_id AND ep.event_id=e.id WHERE {clause}) AS events'
         def metric_window(query_params, until=False):
             clause = ' AND occurred_at<:until' if until else ''
-            row = db.execute(text(f"SELECT COUNT(*) AS events, SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews, COUNT(DISTINCT visitor_id) AS visitors FROM events WHERE project_id=:id AND occurred_at>=:since{clause}"), query_params).mappings().one()
-            session_clause = ' AND started_at<:until' if until else ''
+            row = db.execute(text(f"SELECT COUNT(*) AS events, SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews, COUNT(DISTINCT visitor_id) AS visitors FROM {source} WHERE project_id=:id AND occurred_at>=:since{clause}"), query_params).mappings().one()
             row = dict(row)
-            row['sessions'] = db.execute(text(f'SELECT COUNT(*) FROM analytics_sessions WHERE project_id=:id AND started_at>=:since{session_clause}'), query_params).scalar_one()
+            if property is not None:
+                row['sessions'] = db.execute(text(f'SELECT COUNT(DISTINCT session_id) FROM {source} WHERE project_id=:id AND occurred_at>=:since{clause}'), query_params).scalar_one()
+            else:
+                session_clause = ' AND started_at<:until' if until else ''
+                row['sessions'] = db.execute(text(f'SELECT COUNT(*) FROM analytics_sessions WHERE project_id=:id AND started_at>=:since{session_clause}'), query_params).scalar_one()
             return {k:(v or 0) for k,v in row.items()}
         metrics=metric_window(params)
         previous=metric_window(previous_params, until=True)
-        session_rows=db.execute(text('SELECT started_at,last_activity_at FROM analytics_sessions WHERE project_id=:id AND started_at>=:since'), params).mappings().all()
+        if property is not None:
+            session_rows=db.execute(text(f'SELECT MIN(occurred_at) AS started_at, MAX(occurred_at) AS last_activity_at FROM {source} WHERE project_id=:id AND occurred_at>=:since AND session_id IS NOT NULL GROUP BY session_id'), params).mappings().all()
+        else:
+            session_rows=db.execute(text('SELECT started_at,last_activity_at FROM analytics_sessions WHERE project_id=:id AND started_at>=:since'), params).mappings().all()
         durations=[]
         for row in session_rows:
             try:
@@ -578,7 +635,7 @@ async def summary(project_id: str, days: int = 30, user=Depends(session_user)):
             except (TypeError, ValueError):
                 continue
         last_event_at=db.execute(text('SELECT MAX(occurred_at) FROM events WHERE project_id=:id'), {'id':project_id}).scalar()
-        daily=db.execute(text("SELECT substr(occurred_at,1,10) AS day, COUNT(*) AS events, SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews, COUNT(DISTINCT visitor_id) AS visitors, COUNT(DISTINCT session_id) AS sessions FROM events WHERE project_id=:id AND occurred_at>=:since GROUP BY substr(occurred_at,1,10) ORDER BY day"), params).mappings()
+        daily=db.execute(text(f"SELECT substr(occurred_at,1,10) AS day, COUNT(*) AS events, SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews, COUNT(DISTINCT visitor_id) AS visitors, COUNT(DISTINCT session_id) AS sessions FROM {source} WHERE project_id=:id AND occurred_at>=:since GROUP BY substr(occurred_at,1,10) ORDER BY day"), params).mappings()
         daily_rows={row['day']:row for row in daily}
         series=[]
         day=start.date()
@@ -587,8 +644,56 @@ async def summary(project_id: str, days: int = 30, user=Depends(session_user)):
             series.append({'date':day.isoformat(),'events':int((row or {}).get('events') or 0),'pageviews':int((row or {}).get('pageviews') or 0),'visitors':int((row or {}).get('visitors') or 0),'sessions':int((row or {}).get('sessions') or 0)})
             day += timedelta(days=1)
         def breakdown(column):
-            return [dict(r) for r in db.execute(text(f'SELECT COALESCE({column}, :unknown) AS label, COUNT(*) AS count FROM events WHERE project_id=:id AND occurred_at>=:since AND name=:name GROUP BY {column} ORDER BY count DESC LIMIT 10'), {**params,'unknown':'Unknown','name':'pageview'}).mappings()]
-        return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'referrers':breakdown('referrer'),'days':days,'average_session_duration_seconds':round(sum(durations)/len(durations)) if durations else 0}
+            return [dict(r) for r in db.execute(text(f'SELECT COALESCE({column}, :unknown) AS label, COUNT(*) AS count FROM {source} WHERE project_id=:id AND occurred_at>=:since AND name=:name GROUP BY {column} ORDER BY count DESC LIMIT 10'), {**params,'unknown':'Unknown','name':'pageview'}).mappings()]
+        return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'referrers':breakdown('referrer'),'days':days,'filter':{'property':property,'value':value},'average_session_duration_seconds':round(sum(durations)/len(durations)) if durations else 0}
+
+@app.get('/api/projects/{project_id}/properties')
+async def properties(project_id: str, user=Depends(session_user)):
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        rows = db.execute(text('''
+            SELECT k.name, k.value_type, k.first_seen_at, k.last_seen_at,
+                   COUNT(ep.event_id) AS event_count,
+                   COUNT(DISTINCT ep.value_text) AS distinct_values
+            FROM project_property_keys k
+            LEFT JOIN event_properties ep ON ep.project_id=k.project_id AND ep.name=k.name
+            WHERE k.project_id=:id
+            GROUP BY k.name, k.value_type, k.first_seen_at, k.last_seen_at
+            ORDER BY k.name
+        '''), {'id':project_id}).mappings().all()
+        value_rows = db.execute(text('''
+            SELECT name, value_text, COUNT(*) AS count
+            FROM event_properties WHERE project_id=:id
+            GROUP BY name, value_text ORDER BY name, count DESC
+        '''), {'id':project_id}).mappings().all()
+    values = {}
+    for row in value_rows:
+        values.setdefault(row['name'], []).append({'value':row['value_text'],'count':int(row['count'])})
+    return [{**dict(row), 'event_count':int(row['event_count']), 'distinct_values':int(row['distinct_values']), 'values':values.get(row['name'], [])[:20]} for row in rows]
+
+@app.get('/api/projects/{project_id}/events')
+async def project_events(project_id: str, days: int = 30, event: str | None = Query(default=None, max_length=64), path: str | None = Query(default=None, max_length=512), property: str | None = Query(default=None, max_length=64), value: str | None = Query(default=None, max_length=256), limit: int = 100, user=Depends(session_user)):
+    if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
+    if not 1 <= limit <= 200: raise HTTPException(422, 'Limit must be between 1 and 200')
+    if (property is None) != (value is None): raise HTTPException(422, 'property and value must be provided together')
+    params = {'id':project_id, 'since':stamp(now()-timedelta(days=days-1)), 'limit':limit}
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        source = 'events e'
+        where = ['e.project_id=:id', 'e.occurred_at>=:since']
+        if property is not None:
+            known = db.execute(text('SELECT 1 FROM project_property_keys WHERE project_id=:id AND name=:name'), {'id':project_id,'name':property}).first()
+            if not known: raise HTTPException(422, 'Unknown property key')
+            clause, extra = property_filter(property, value)
+            params.update(extra)
+            source = 'events e JOIN event_properties ep ON ep.project_id=e.project_id AND ep.event_id=e.id'
+            where.append(clause)
+        if event is not None:
+            where.append('e.name=:event'); params['event'] = event
+        if path is not None:
+            where.append('e.path=:path'); params['path'] = path
+        rows = db.execute(text(f"SELECT e.id, e.name, e.occurred_at, e.path, e.visitor_id, e.session_id, e.country, e.device, e.referrer, e.properties FROM {source} WHERE " + ' AND '.join(where) + ' ORDER BY e.occurred_at DESC LIMIT :limit'), params).mappings().all()
+    return [{'id':row['id'],'name':row['name'],'occurred_at':row['occurred_at'],'path':row['path'],'visitor_id':row['visitor_id'],'session_id':row['session_id'],'country':row['country'],'device':row['device'],'referrer':row['referrer'],'properties':json.loads(row['properties'])} for row in rows]
 
 # Vercel access is per Crease account, encrypted at rest, and never sent to the browser.
 def vercel_cipher():
