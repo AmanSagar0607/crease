@@ -2927,3 +2927,92 @@
 .funnelStep:nth-child(2) .funnelBar i {
   background: var(--chartThird);
 }
+
+.statePanel {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+}
+
+.statePanel[data-tone='warn'] {
+  border-color: var(--negativeLine);
+  background: var(--warningBg);
+  color: var(--warning);
+}
+
+.statePanel[data-tone='error'] {
+  border-color: var(--negativeLine);
+  background: var(--negativeBg);
+  color: var(--negative);
+}
+
+.statePanel[data-tone='empty'] {
+  border-style: dashed;
+}
+
+.statePanel .icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 1px;
+}
+
+.statePanelBody {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+}
+
+.statePanelBody strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.statePanelBody p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.statePanel[data-tone='warn'] .statePanelBody p,
+.statePanel[data-tone='error'] .statePanelBody p {
+  color: inherit;
+  opacity: 0.82;
+}
+
+.metaChip[data-tone='ok'] .statusDot {
+  background: var(--positiveDot);
+}
+
+.metaChip[data-tone='warn'] {
+  border-color: var(--negativeLine);
+  background: var(--warningBg);
+  color: var(--warning);
+}
+
+.metaChip[data-tone='warn'] .statusDot {
+  background: var(--warning);
+}
+
+.statusLine[data-warn='true'] {
+  color: var(--warning);
+}
+
+.statusLine[data-warn='true'] i {
+  background: var(--warning);
+}
+
+@media (max-width: 640px) {
+  .statePanel {
+    flex-wrap: wrap;
+  }
+
+  .statePanel .btn {
+    width: 100%;
+  }
+}

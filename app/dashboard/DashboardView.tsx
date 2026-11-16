@@ -470,6 +470,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [busy, setBusy] = useState(true);
   const [summaryBusy, setSummaryBusy] = useState(false);
+  const [summaryError, setSummaryError] = useState('');
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
@@ -553,6 +554,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       return;
     }
     setSummaryBusy(true);
+    setSummaryError('');
     try {
       const result = await api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=${days}${filterQuery}`);
       setSummary(result);
@@ -562,7 +564,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         router.replace('/login');
         return;
       }
-      setError(e instanceof Error ? e.message : 'Could not load analytics.');
+      setSummaryError(e instanceof Error ? e.message : 'Could not load analytics.');
     } finally {
       setSummaryBusy(false);
     }
@@ -746,6 +748,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setFunnelFirst('');
     setFunnelSecond('');
     setFunnel(null);
+    setSummaryError('');
   }, [selected]);
 
   const loadVerification = useCallback(async () => {
@@ -934,6 +937,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   const series = summary?.series ?? [];
   const totalEvents = summary?.metrics.events ?? 0;
+  const hasEvents = totalEvents > 0;
+  const showCharts = !summary || hasEvents;
   const rangeLabel = days === 7 ? 'Last 7 days' : days === 90 ? 'Last 90 days' : 'Last 30 days';
   const isLive = Boolean(project?.last_event_at) && Date.now() - new Date(project?.last_event_at ?? 0).getTime() < 7 * 864e5;
 
@@ -1085,6 +1090,10 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         <span className={s.statusDot} aria-hidden="true" />
                         {isLive ? 'Receiving events' : 'Waiting for events'}
                       </span>
+                      <span className={s.metaChip} data-tone={project.verified ? 'ok' : 'warn'}>
+                        <span className={s.statusDot} aria-hidden="true" />
+                        {project.verified ? 'Domain verified' : 'Domain unverified'}
+                      </span>
                       <span className={s.metaChip}>
                         <span className={s.statusDot} aria-hidden="true" />
                         Last event {relativeWhen(project.last_event_at)}
@@ -1174,6 +1183,64 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         </div>
                       </div>
 
+                      {project.verified === false && (
+                        <div className={s.statePanel} data-tone="warn" role="status">
+                          <AlertIcon className={s.icon} />
+                          <div className={s.statePanelBody}>
+                            <strong>Domain not verified</strong>
+                            <p>
+                              Crease rejects events until {project.domain} proves ownership. Finish verification to
+                              start collecting.
+                            </p>
+                          </div>
+                          <button
+                            className={`${s.btn} ${s.btnSecondary}`}
+                            type="button"
+                            onClick={() => selectTab('installation')}
+                          >
+                            Finish setup
+                          </button>
+                        </div>
+                      )}
+
+                      {summaryError && (
+                        <div className={s.statePanel} data-tone="error" role="alert">
+                          <AlertIcon className={s.icon} />
+                          <div className={s.statePanelBody}>
+                            <strong>Analytics could not load</strong>
+                            <p>{summaryError}</p>
+                          </div>
+                          <button
+                            className={`${s.btn} ${s.btnSecondary}`}
+                            type="button"
+                            onClick={() => void loadSummary()}
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      )}
+
+                      {!summaryError && !summaryBusy && summary && !hasEvents && (
+                        <div className={s.statePanel} data-tone="empty" role="status">
+                          <ZapIcon className={s.icon} />
+                          <div className={s.statePanelBody}>
+                            <strong>{activeFilter ? 'No events match this filter' : 'No events yet'}</strong>
+                            <p>
+                              {activeFilter
+                                ? 'Clear the property filter or choose another value.'
+                                : 'Install the tracker, verify your domain, and open your site to send the first event.'}
+                            </p>
+                          </div>
+                          <button
+                            className={`${s.btn} ${s.btnSecondary}`}
+                            type="button"
+                            onClick={() => (activeFilter ? clearPropertyFilter() : selectTab('installation'))}
+                          >
+                            {activeFilter ? 'Clear filter' : 'Open installation'}
+                          </button>
+                        </div>
+                      )}
+
                       <div className={s.filterBar} role="group" aria-label="Custom property filter">
                         <span className={s.filterLabel}>Filter events</span>
                         <label className={s.filterField}>
@@ -1254,8 +1321,14 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         />
                       </div>
 
-                      <AnalyticsCharts series={series} metrics={summary?.metrics ?? { events: 0, pageviews: 0, visitors: 0, sessions: 0 }} />
+                      {showCharts && (
+                        <AnalyticsCharts
+                          series={series}
+                          metrics={summary?.metrics ?? { events: 0, pageviews: 0, visitors: 0, sessions: 0 }}
+                        />
+                      )}
 
+                      {showCharts && (
                       <div className={s.breakdownGrid}>
                         <BreakdownCard
                           id="pages"
@@ -1289,6 +1362,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           empty="No country data yet."
                         />
                       </div>
+                      )}
 
                       <section className={s.funnelSection} id="funnel">
                         <div className={s.sectionHead}>
@@ -1701,9 +1775,12 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             </span>
                           </span>
                           <span className={s.projectFoot}>
-                            <span className={`${s.statusLine} ${live ? s.isLive : ''}`}>
+                            <span
+                              className={`${s.statusLine} ${live ? s.isLive : ''}`}
+                              data-warn={item.verified === false ? 'true' : undefined}
+                            >
                               <i aria-hidden="true" />
-                              {live ? 'Receiving events' : 'No recent events'}
+                              {item.verified === false ? 'Verification required' : live ? 'Receiving events' : 'No recent events'}
                             </span>
                             <span>{item.retention_days}d retention</span>
                           </span>
