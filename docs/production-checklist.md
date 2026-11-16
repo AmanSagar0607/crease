@@ -4,10 +4,10 @@ This checklist records known work before a broad public launch. The tracker and 
 
 ## Before deploying schema changes
 
-- [ ] Establish reviewed Alembic migrations for PostgreSQL and local SQLite workflows.
+- [x] Establish reviewed Alembic migrations for PostgreSQL and local SQLite workflows. Baseline is in `backend/migrations`; SQLite is no longer accepted by the API, but the migration was verified on an empty SQLite file.
 - [ ] Confirm production migration status and backup recovery plan before the new session queries depend on `analytics_sessions`.
 - [ ] Ensure the retention scheduler runs on Render and deletes both expired events and expired session rows.
-- [ ] Run SDK and API regression suites against isolated databases; resolve the current Windows SQLite test hang first.
+- [x] Run SDK and API regression suites against isolated databases; the API suite now uses an isolated PostgreSQL schema.
 
 ## Before broad public launch
 
@@ -22,4 +22,4 @@ This checklist records known work before a broad public launch. The tracker and 
 
 ## Deployment status for this change
 
-The SPA/session SDK updates, CORS header adjustment, API session aggregation, and retention cleanup changes are local only. No production configuration was changed and no deployment was triggered. API integration tests did not complete in the current Windows environment.
+The SPA/session SDK updates, CORS header adjustment, API session aggregation, Alembic baseline, and retention job are local only. No production configuration was changed and no deployment was triggered. API integration tests pass against an isolated local PostgreSQL schema; production migration and scheduler setup remain pending.
