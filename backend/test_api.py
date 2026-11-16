@@ -103,6 +103,16 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.post('/api/events',json={'projectId':p['id'],'events':events},headers={'origin':'https://example.com','x-crease-key':p['write_key']}).json()['accepted'],5)
         url=f'/api/projects/{p["id"]}/overview?start={day}&end={day}'
         first=self.client.get(url).json()
+        dates=f'start={day}&end={day}'
+        summary=self.client.get(f'/api/projects/{p["id"]}/summary?{dates}').json()
+        self.assertEqual((summary['metrics']['visitors'],summary['metrics']['sessions'],summary['metrics']['pageviews']),(2,2,3))
+        self.assertEqual(summary['previous']['pageviews'],1)
+        self.assertEqual(len(summary['series']),1)
+        recent=self.client.get(f'/api/projects/{p["id"]}/events?{dates}').json()
+        self.assertEqual({event['id'] for event in recent},{'one','two','three'})
+        funnel=self.client.get(f'/api/projects/{p["id"]}/funnel?first=pageview&second=pageview&{dates}').json()
+        self.assertEqual((funnel['first_count'],funnel['second_count']),(2,2))
+        self.assertEqual(self.client.get(f'/api/projects/{p["id"]}/events?start={day}').status_code,422)
         self.assertEqual({k:first['metrics'][k] for k in ('visitors','sessions','pageviews','new_visitors','returning_visitors')},{'visitors':2,'sessions':2,'pageviews':3,'new_visitors':1,'returning_visitors':1})
         self.assertEqual(first['previous']['visitors'],1)
         self.assertIsNone(first['metrics']['conversions'])
