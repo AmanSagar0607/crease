@@ -46,7 +46,7 @@ class ApiTest(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(main.app)
         with main.engine.begin() as db:
-            for table in ('rate_limits', 'analytics_sessions', 'events', 'project_repositories', 'project_vercel', 'vercel_connections', 'github_connections', 'projects', 'sessions', 'users'): db.execute(text('DELETE FROM '+table))
+            for table in ('rate_limits', 'event_properties', 'project_property_keys', 'analytics_sessions', 'events', 'project_repositories', 'project_vercel', 'vercel_connections', 'github_connections', 'projects', 'sessions', 'users'): db.execute(text('DELETE FROM '+table))
             db.execute(text("INSERT INTO users VALUES ('u1','g1','first'),('u2','g2','second')"))
             for user in ('u1','u2'):
                 db.execute(text('INSERT INTO sessions VALUES (:token,:user,:expiry)'), {'token':main.digest(user),'user':user,'expiry':main.stamp(main.now()+timedelta(days=1))})
@@ -132,6 +132,57 @@ class ApiTest(unittest.TestCase):
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM analytics_sessions WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
 
+    def test_property_registry_and_filters(self):
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        p = self.client.post('/api/projects', json={'name':'Props','domain':'example.com'}, headers=headers).json()
+        self.verify_project(p['id'])
+        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        base = main.now() - timedelta(hours=2)
+        events = [
+            {'id':'p1','name':'signup','timestamp':main.stamp(base),'path':'/signup','visitorId':'v1','properties':{'seats':3,'trial':True,'beta':True}},
+            {'id':'p2','name':'signup','timestamp':main.stamp(base+timedelta(minutes=5)),'path':'/signup','visitorId':'v2','properties':{'seats':1,'trial':False,'beta':2}},
+            {'id':'p3','name':'pageview','timestamp':main.stamp(base+timedelta(minutes=10)),'path':'/','visitorId':'v3','properties':{'seats':3}},
+        ]
+        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':events}, headers=event_headers).json()['accepted'], 3)
+        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[events[0]]}, headers=event_headers).json()['accepted'], 0)
+        props = {item['name']: item for item in self.client.get('/api/projects/'+p['id']+'/properties').json()}
+        self.assertEqual(set(props), {'seats','trial','beta'})
+        self.assertEqual(props['seats']['value_type'], 'number')
+        self.assertEqual(props['seats']['event_count'], 3)
+        self.assertEqual(props['seats']['distinct_values'], 2)
+        self.assertEqual(props['trial']['value_type'], 'boolean')
+        self.assertEqual(props['beta']['value_type'], 'mixed')
+        self.assertEqual({item['value']: item['count'] for item in props['seats']['values']}, {'3':2,'1':1})
+
+        def event_ids(query):
+            return [row['id'] for row in self.client.get('/api/projects/'+p['id']+'/events?'+query).json()]
+        self.assertEqual(event_ids('property=seats&value=3'), ['p3','p1'])
+        self.assertEqual(event_ids('property=seats&value=3.0'), ['p3','p1'])
+        self.assertEqual(event_ids('property=trial&value=true'), ['p1'])
+        self.assertEqual(event_ids('property=trial&value=false'), ['p2'])
+        self.assertEqual(event_ids('property=seats&value=999'), [])
+        self.assertEqual(event_ids('event=signup'), ['p2','p1'])
+        self.assertEqual(event_ids('path=/signup'), ['p2','p1'])
+        self.assertEqual(event_ids('limit=1'), ['p3'])
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/events?property=missing&value=1').status_code, 422)
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/events?property=seats').status_code, 422)
+
+        filtered = self.client.get('/api/projects/'+p['id']+'/summary?days=7&property=seats&value=3').json()
+        self.assertEqual(filtered['metrics'], {'events':2,'pageviews':1,'visitors':2,'sessions':2})
+        self.assertEqual(filtered['filter'], {'property':'seats','value':'3'})
+        self.assertEqual(filtered['pages'], [{'label':'/','count':1}])
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/summary?property=missing&value=1').status_code, 422)
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/summary?property=seats').status_code, 422)
+
+        self.client.cookies.set('crease_session', 'u2')
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/properties').status_code, 404)
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/events').status_code, 404)
+        self.client.cookies.set('crease_session', 'u1')
+        self.assertEqual(self.client.delete('/api/projects/'+p['id'], headers=headers).status_code, 200)
+        with main.engine.connect() as db:
+            self.assertEqual(db.execute(text('SELECT COUNT(*) FROM event_properties WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
+            self.assertEqual(db.execute(text('SELECT COUNT(*) FROM project_property_keys WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
+
     def test_event_sessions_aggregate_pageviews_and_follow_retention(self):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
@@ -188,6 +239,7 @@ class ApiTest(unittest.TestCase):
         with main.engine.begin() as db:
             for event_id, at, session_id in (('old-event', old, 'old-session'), ('recent-event', recent, 'recent-session')):
                 db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,properties) VALUES (:project,:id,:name,:at,:path,:visitor,:session,:properties)'), {'project':p['id'],'id':event_id,'name':'pageview','at':at,'path':'/','visitor':'v','session':session_id,'properties':'{}'})
+                db.execute(text('INSERT INTO event_properties (project_id,event_id,name,value_text,value_number,value_boolean) VALUES (:project,:id,:name,:text,:number,NULL)'), {'project':p['id'],'id':event_id,'name':'seats','text':'2','number':2})
                 db.execute(text('INSERT INTO analytics_sessions (project_id,session_id,visitor_id,started_at,last_activity_at,entry_page,exit_page,pageview_count) VALUES (:project,:session,:visitor,:at,:at,:path,:path,:pageviews)'), {'project':p['id'],'session':session_id,'visitor':'v','at':at,'path':'/','pageviews':1})
         self.assertEqual(self.client.patch('/api/projects/'+p['id']+'/retention', json={'retention_days':7}, headers=headers).status_code,200)
         with main.engine.connect() as db:
@@ -198,6 +250,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(totals['sessions'], 1)
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT id FROM events WHERE project_id=:id ORDER BY id'), {'id':p['id']}).scalars().all(), ['recent-event'])
+            self.assertEqual(db.execute(text('SELECT event_id FROM event_properties WHERE project_id=:id'), {'id':p['id']}).scalars().all(), ['recent-event'])
             self.assertEqual(db.execute(text('SELECT session_id FROM analytics_sessions WHERE project_id=:id'), {'id':p['id']}).scalars().all(), ['recent-session'])
         self.assertTrue(any(p['id'] in line for line in logs.output))
 

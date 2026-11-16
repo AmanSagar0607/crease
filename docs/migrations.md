@@ -30,6 +30,10 @@ alembic upgrade head
 
 Take a backup or a Neon branch before stamping or upgrading production. Verify `/health` after the release.
 
+## Property filter tables
+
+`0002_property_filters` adds `event_properties` (indexed property values) and `project_property_keys` (per-project declared-key registry). Apply it with `alembic upgrade head`. New events populate both tables during ingestion. On PostgreSQL the migration also backfills numeric and boolean properties from the existing `events.properties` JSON text so historical events are filterable; SQLite runs the schema changes without the backfill.
+
 ## Adding schema changes
 
 Create a new revision with `alembic revision -m "describe change"`, review the generated SQL, and test it against a disposable PostgreSQL database (and SQLite where the change is portable) before releasing it.
