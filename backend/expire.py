@@ -23,6 +23,8 @@ def enforce_retention(db_engine=engine, log=logger):
         projects = db.execute(text('SELECT id, name, retention_days FROM projects ORDER BY id')).mappings().all()
         for project in projects:
             cutoff = stamp(now() - timedelta(days=project['retention_days']))
+            db.execute(text('DELETE FROM payment_webhook_events WHERE integration_id IN (SELECT id FROM payment_integrations WHERE project_id=:id) AND received_at<:cutoff'), {'id':project['id'], 'cutoff': now() - timedelta(days=project['retention_days'])})
+            db.execute(text('DELETE FROM payments WHERE project_id=:id AND occurred_at<:cutoff'), {'id':project['id'], 'cutoff': now() - timedelta(days=project['retention_days'])})
             db.execute(
                 text('DELETE FROM attribution_touchpoints WHERE project_id=:id AND occurred_at<:cutoff'),
                 {'id': project['id'], 'cutoff': now() - timedelta(days=project['retention_days'])},

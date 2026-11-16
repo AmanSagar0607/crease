@@ -23,6 +23,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import IntegrityError
 from github_install import create_install_pr, enable_tracking_pr, installation_status
+from payment_adapters import StripeAdapter
 from cryptography.fernet import Fernet, InvalidToken
 
 load_dotenv(Path(__file__).with_name('.env'))
@@ -51,6 +52,7 @@ GITHUB_APP_CLIENT_ID = os.getenv('GITHUB_APP_CLIENT_ID', '')
 GITHUB_APP_CLIENT_SECRET = os.getenv('GITHUB_APP_CLIENT_SECRET', '')
 GITHUB_APP_TOKEN_KEY = os.getenv('GITHUB_APP_TOKEN_KEY', '')
 CREASE_PUBLIC_ORIGIN = os.getenv('CREASE_PUBLIC_ORIGIN', '')
+PAYMENT_ENCRYPTION_KEY = os.getenv('PAYMENT_ENCRYPTION_KEY', '')
 VERCEL_INTEGRATION_SLUG = os.getenv('VERCEL_INTEGRATION_SLUG', '')
 VERCEL_INTEGRATION_CLIENT_ID = os.getenv('VERCEL_INTEGRATION_CLIENT_ID', '')
 VERCEL_INTEGRATION_CLIENT_SECRET = os.getenv('VERCEL_INTEGRATION_CLIENT_SECRET', '')
@@ -512,10 +514,23 @@ class Batch(BaseModel):
 @app.middleware('http')
 async def limits(request: Request, call_next):
     origin = request.headers.get('origin')
+    payment_webhook = bool(re.fullmatch(r'/api/payment-webhooks/stripe/[0-9a-f-]{36}', request.url.path))
     if request.url.path == '/api/events' and request.method == 'OPTIONS':
         return Response(status_code=204, headers={'Access-Control-Allow-Origin': origin or 'null', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Crease-Key', 'Vary': 'Origin'})
-    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events') and origin != FRONTEND_URL:
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events') and not payment_webhook and origin != FRONTEND_URL:
         return Response(status_code=403)
+    if payment_webhook:
+        peer = request.client.host if request.client else 'unknown'
+        if not limiter.consume('webhook-ip:' + peer, RATE_LIMIT_PROJECT_PER_MINUTE):
+            return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
+        length = request.headers.get('content-length')
+        if length and (not length.isdigit() or int(length) > 262144): return Response(status_code=413)
+        chunks, size = [], 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > 262144: return Response(status_code=413)
+            chunks.append(chunk)
+        request._body = b''.join(chunks)
     if request.url.path in ('/api/events', '/internal/events'):
         if request.url.path == '/internal/events':
             peer = request.client.host if request.client else 'unknown'
@@ -621,6 +636,83 @@ async def ingest(data: Batch, request: Request):
                       pageview_count=analytics_sessions.pageview_count+excluded.pageview_count
                 '''), {'project':data.projectId,'session':session_id,'visitor':e.visitorId,'at':stamp(event_time),'path':e.path,'pageview':1 if e.name == 'pageview' else 0})
     return {'accepted': inserted}
+
+def payment_cipher():
+    if not PAYMENT_ENCRYPTION_KEY:
+        raise HTTPException(503, 'Payment integration encryption is not configured')
+    try:
+        return Fernet(PAYMENT_ENCRYPTION_KEY.encode())
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(503, 'Payment integration encryption is invalid') from exc
+
+
+class StripeConnection(BaseModel):
+    signing_secret: str = Field(min_length=16, max_length=255, pattern=r'^whsec_[A-Za-z0-9]+$')
+    live_mode: bool
+
+
+@app.post('/api/projects/{project_id}/payment-integrations/stripe', status_code=201)
+async def connect_stripe(project_id: str, data: StripeConnection, user=Depends(session_user)):
+    cipher = payment_cipher()
+    integration_id = str(uuid4())
+    with engine.begin() as db:
+        owned(db, project_id, user['id'])
+        exists = db.execute(text("SELECT 1 FROM payment_integrations WHERE project_id=:project AND provider='stripe'"), {'project':project_id}).first()
+        if exists: raise HTTPException(409, 'Disconnect the existing Stripe integration first')
+        try:
+            db.execute(text("INSERT INTO payment_integrations (id,project_id,provider,live_mode,encrypted_signing_secret,created_at) VALUES (:id,:project,'stripe',:live,:secret,:at)"), {'id':integration_id,'project':project_id,'live':data.live_mode,'secret':cipher.encrypt(data.signing_secret.encode()).decode(),'at':now()})
+        except IntegrityError as exc:
+            raise HTTPException(409, 'Stripe integration already exists') from exc
+    return {'id':integration_id,'provider':'stripe','live_mode':data.live_mode,'status':'awaiting_webhook','webhook_url':PUBLIC_API_URL + '/api/payment-webhooks/stripe/' + integration_id}
+
+
+@app.get('/api/projects/{project_id}/payment-integrations/stripe')
+async def stripe_status(project_id: str, user=Depends(session_user)):
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        row = db.execute(text("SELECT id,live_mode,last_verified_event_at FROM payment_integrations WHERE project_id=:project AND provider='stripe'"), {'project':project_id}).mappings().first()
+    if not row: return {'connected':False}
+    return {'connected':True,'live_mode':row['live_mode'],'status':'receiving' if row['last_verified_event_at'] else 'awaiting_webhook','last_verified_event_at':row['last_verified_event_at'],'webhook_url':PUBLIC_API_URL + '/api/payment-webhooks/stripe/' + row['id']}
+
+
+@app.delete('/api/projects/{project_id}/payment-integrations/stripe')
+async def disconnect_stripe(project_id: str, user=Depends(session_user)):
+    with engine.begin() as db:
+        owned(db, project_id, user['id'])
+        db.execute(text("DELETE FROM payment_integrations WHERE project_id=:project AND provider='stripe'"), {'project':project_id})
+    return {'connected':False}
+
+
+@app.post('/api/payment-webhooks/stripe/{integration_id}')
+async def stripe_webhook(integration_id: str, request: Request):
+    with engine.begin() as db:
+        row = db.execute(text("SELECT i.*, p.retention_days FROM payment_integrations i JOIN projects p ON p.id=i.project_id WHERE i.id=:id AND i.provider='stripe' FOR UPDATE OF i"), {'id':integration_id}).mappings().first()
+        if not row: raise HTTPException(404, 'Integration not found')
+        try:
+            secret = payment_cipher().decrypt(row['encrypted_signing_secret'].encode()).decode()
+            event = StripeAdapter().verify(await request.body(), request.headers.get('stripe-signature', ''), secret)
+        except (InvalidToken, UnicodeDecodeError) as exc:
+            raise HTTPException(503, 'Integration credentials are unavailable') from exc
+        except ValueError as exc:
+            raise HTTPException(400, 'Invalid Stripe webhook') from exc
+        if event.live_mode != row['live_mode']: raise HTTPException(400, 'Webhook mode does not match integration')
+        inserted = db.execute(text('''INSERT INTO payment_webhook_events (integration_id,provider_event_id,event_type,received_at)
+            VALUES (:integration,:event,:type,:at) ON CONFLICT DO NOTHING RETURNING provider_event_id'''), {'integration':integration_id,'event':event.event_id,'type':event.event_type,'at':now()}).first()
+        if not inserted: return {'received':True,'duplicate':True}
+        if event.payment and event.payment.occurred_at >= now() - timedelta(days=row['retention_days']):
+            payment = event.payment
+            result = db.execute(text('''INSERT INTO payments
+                (project_id,provider,live_mode,provider_transaction_id,provider_customer_id,amount_minor,refunded_minor,currency,occurred_at)
+                VALUES (:project,'stripe',:live,:transaction,:customer,:amount,:refunded,:currency,:occurred)
+                ON CONFLICT (project_id,provider,live_mode,provider_transaction_id) DO UPDATE SET
+                  refunded_minor=GREATEST(payments.refunded_minor,excluded.refunded_minor),
+                  provider_customer_id=COALESCE(payments.provider_customer_id,excluded.provider_customer_id)
+                WHERE payments.currency=excluded.currency AND payments.amount_minor=excluded.amount_minor
+                RETURNING provider_transaction_id'''), {'project':row['project_id'],'live':event.live_mode,'transaction':payment.transaction_id,'customer':payment.customer_id,'amount':payment.amount_minor,'refunded':payment.refunded_minor,'currency':payment.currency,'occurred':payment.occurred_at}).first()
+            if not result: raise HTTPException(409, 'Conflicting payment data requires reconciliation')
+        db.execute(text('UPDATE payment_integrations SET last_verified_event_at=:at WHERE id=:id'), {'at':now(),'id':integration_id})
+    return {'received':True,'duplicate':False}
+
 
 @app.get('/api/projects/{project_id}/summary')
 async def summary(project_id: str, days: int = 30, property: str | None = Query(default=None, max_length=64), value: str | None = Query(default=None, max_length=256), user=Depends(session_user)):
