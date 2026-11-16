@@ -91,6 +91,36 @@ class ApiTest(unittest.TestCase):
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT count(*) FROM attribution_touchpoints WHERE project_id=:id'), {'id':p['id']}).scalar_one(),0)
 
+    def test_acquisition_models_preserve_first_and_last_non_direct_across_sessions(self):
+        self.client.cookies.set('crease_session','u1')
+        headers={'origin':main.FRONTEND_URL}
+        p=self.client.post('/api/projects',json={'name':'Acquisition','domain':'example.com'},headers=headers).json()
+        self.verify_project(p['id'])
+        base=main.now()-timedelta(hours=3)
+        events=[
+            {'id':'a','name':'pageview','timestamp':main.stamp(base),'path':'/landing','visitorId':'v1','referrer':'search.example','attribution':{'utm_source':'search'}},
+            {'id':'b','name':'pageview','timestamp':main.stamp(base+timedelta(hours=1)),'path':'/pricing','visitorId':'v1','referrer':'social.example'},
+            {'id':'c','name':'pageview','timestamp':main.stamp(base+timedelta(hours=2)),'path':'/','visitorId':'v1','referrer':'example.com'},
+            {'id':'d','name':'pageview','timestamp':main.stamp(base),'path':'/','visitorId':'v2'},
+            {'id':'e','name':'pageview','timestamp':main.stamp(base),'path':'/','visitorId':'v3','attribution':{'utm_campaign':'spring'}},
+        ]
+        self.assertEqual(self.client.post('/api/events',json={'projectId':p['id'],'events':events},headers={'origin':'https://example.com','x-crease-key':p['write_key']}).json()['accepted'],5)
+        def report(model):
+            response=self.client.get('/api/projects/'+p['id']+'/acquisition?days=7&model='+model)
+            self.assertEqual(response.status_code,200)
+            return response.json()
+        first=report('first_touch')
+        self.assertEqual(first['total_visitors'],3)
+        self.assertEqual({(x['type'],x['source'],x['visitors']) for x in first['sources']},{('campaign','search',1),('direct_or_unknown','Direct or unknown',1),('campaign','Unknown source',1)})
+        last=report('last_touch')
+        self.assertIn({'type':'direct_or_unknown','source':'Direct or unknown','visitors':2},last['sources'])
+        non_direct=report('last_non_direct')
+        self.assertIn({'type':'referral','source':'social.example','visitors':1},non_direct['sources'])
+        self.assertIn({'type':'direct_or_unknown','source':'Direct or unknown','visitors':1},non_direct['sources'])
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/acquisition?model=invalid').status_code,422)
+        self.client.cookies.set('crease_session','u2')
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/acquisition').status_code,404)
+
     def test_ingestion_rejects_large_streams_and_overlong_project_ids(self):
         response = self.client.post('/api/events', content=iter([b'x' * 20000, b'y' * 20000]), headers={'content-type':'application/json'})
         self.assertEqual(response.status_code, 413)

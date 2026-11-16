@@ -770,6 +770,49 @@ async def summary(project_id: str, days: int = 30, property: str | None = Query(
         event_names=[dict(r) for r in db.execute(text('SELECT name AS label, COUNT(*) AS count FROM events WHERE project_id=:id AND occurred_at>=:since GROUP BY name ORDER BY count DESC LIMIT 20'), params).mappings()]
         return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'referrers':breakdown('referrer'),'event_names':event_names,'days':days,'filter':{'property':property,'value':value},'average_session_duration_seconds':round(sum(durations)/len(durations)) if durations else 0}
 
+@app.get('/api/projects/{project_id}/acquisition')
+async def acquisition(project_id: str, days: int = 30, model: str = 'first_touch', user=Depends(session_user)):
+    """Count active visitors by observed source; no payment or identity inference."""
+    if days not in (7, 30, 90): raise HTTPException(422, 'Unsupported date range')
+    if model not in ('first_touch', 'last_touch', 'last_non_direct'): raise HTTPException(422, 'Unsupported attribution model')
+    end = now()
+    start = end - timedelta(days=days)
+    rank = {'first_touch':'first_rank', 'last_touch':'last_rank', 'last_non_direct':'non_direct_rank'}[model]
+    query = f"""
+        WITH visitors AS (
+          SELECT DISTINCT visitor_id FROM attribution_touchpoints
+          WHERE project_id=:project AND occurred_at>=:start AND occurred_at<:end
+        ), classified AS (
+          SELECT t.visitor_id, t.event_id, t.occurred_at,
+            CASE WHEN t.utm_source IS NOT NULL OR t.utm_medium IS NOT NULL OR t.utm_campaign IS NOT NULL
+                       OR t.utm_content IS NOT NULL OR t.utm_term IS NOT NULL THEN 'campaign'
+                 WHEN t.referrer_domain IS NOT NULL THEN 'referral' ELSE 'direct_or_unknown' END AS source_type,
+            CASE WHEN t.utm_source IS NOT NULL THEN t.utm_source
+                 WHEN t.referrer_domain IS NOT NULL THEN t.referrer_domain
+                 WHEN t.utm_medium IS NOT NULL OR t.utm_campaign IS NOT NULL OR t.utm_content IS NOT NULL OR t.utm_term IS NOT NULL THEN 'Unknown source'
+                 ELSE 'Direct or unknown' END AS source
+          FROM attribution_touchpoints t JOIN visitors v ON v.visitor_id=t.visitor_id
+          WHERE t.project_id=:project AND t.occurred_at<:end
+        ), ranked AS (
+          SELECT *,
+            ROW_NUMBER() OVER (PARTITION BY visitor_id ORDER BY occurred_at ASC,event_id ASC) AS first_rank,
+            ROW_NUMBER() OVER (PARTITION BY visitor_id ORDER BY occurred_at DESC,event_id DESC) AS last_rank,
+            ROW_NUMBER() OVER (PARTITION BY visitor_id ORDER BY CASE WHEN source_type='direct_or_unknown' THEN 1 ELSE 0 END,occurred_at DESC,event_id DESC) AS non_direct_rank
+          FROM classified
+        ), grouped AS (
+          SELECT source_type,source,COUNT(*) AS visitors FROM ranked WHERE {rank}=1 GROUP BY source_type,source
+        )
+        SELECT source_type,source,visitors,SUM(visitors) OVER () AS total_visitors
+        FROM grouped ORDER BY visitors DESC,source_type,source LIMIT 50
+    """
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        rows = db.execute(text(query), {'project':project_id, 'start':start, 'end':end}).mappings().all()
+    return {'model':model,'days':days,'start':stamp(start),'end':stamp(end),
+            'total_visitors':int(rows[0]['total_visitors']) if rows else 0,
+            'sources':[{'type':r['source_type'],'source':r['source'],'visitors':r['visitors']} for r in rows]}
+
+
 @app.get('/api/projects/{project_id}/properties')
 async def properties(project_id: str, user=Depends(session_user)):
     with engine.connect() as db:
