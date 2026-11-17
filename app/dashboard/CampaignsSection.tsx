@@ -77,7 +77,7 @@ export default function CampaignsSection({ range, report, loading, error, onRetr
           <span className={s.eyebrow}>CAMPAIGNS</span>
           <h2>Campaign performance</h2>
           <p>
-            Campaigns observed through UTM campaign parameters between {range.start} â€“ {range.end} UTC. Conversions
+            Campaigns observed through UTM campaign parameters between {range.start} – {range.end} UTC. Conversions
             require a selected conversion event in the controls above.
           </p>
         </div>
@@ -105,7 +105,7 @@ export default function CampaignsSection({ range, report, loading, error, onRetr
 
       {loading ? (
         <div className={s.skeleton} aria-busy="true" role="status">
-          <span className="sr-only">Loading campaignsâ€¦</span>
+          <span className="sr-only">Loading campaigns…</span>
           {[0, 1, 2, 3].map((item) => (
             <i key={item} />
           ))}
@@ -123,7 +123,7 @@ export default function CampaignsSection({ range, report, loading, error, onRetr
           No campaigns in this period. Campaigns appear when visitors arrive with <code>utm_campaign</code> parameters.
         </div>
       ) : !filtered.length ? (
-        <div className={s.empty}>No campaigns match â€œ{query}â€.</div>
+        <div className={s.empty}>No campaigns match “{query}”.</div>
       ) : (
         <div className={s.scroll}>
           <table className={s.table}>
@@ -137,7 +137,7 @@ export default function CampaignsSection({ range, report, loading, error, onRetr
                   >
                     <button type="button" onClick={() => toggleSort(column.key)}>
                       {column.label}
-                      {sort.key === column.key ? (sort.dir === 'asc' ? ' â†‘' : ' â†“') : ''}
+                      {sort.key === column.key ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
                     </button>
                   </th>
                 ))}

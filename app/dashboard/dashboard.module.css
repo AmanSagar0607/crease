@@ -38,6 +38,7 @@
   background: var(--page);
   color: var(--ink);
   font-family: var(--font);
+  font-size: 15px;
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
@@ -135,9 +136,8 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  border-bottom: 1px solid var(--line);
-  background: var(--headerBg);
-  backdrop-filter: blur(14px);
+  padding: 12px 16px 0;
+  background: transparent;
 }
 
 .headerInner {
@@ -145,9 +145,15 @@
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 14px;
-  width: min(1240px, calc(100% - 48px));
-  height: 64px;
+  width: min(1460px, 100%);
+  height: 58px;
   margin-inline: auto;
+  padding: 0 10px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  box-shadow: 0 8px 24px rgba(17, 17, 17, 0.06);
+  backdrop-filter: blur(16px);
 }
 
 .headerIdentity {
@@ -162,7 +168,7 @@
   align-items: center;
   gap: 7px;
   flex: none;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 500;
   letter-spacing: -0.02em;
 }
@@ -193,11 +199,21 @@
   gap: 7px;
   min-width: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13.5px;
 }
 
 .breadcrumb span {
   color: var(--lineStrong);
+}
+
+.crumbRoot {
+  display: inline-flex;
+}
+
+@media (max-width: 560px) {
+  .crumbRoot {
+    display: none;
+  }
 }
 
 .breadcrumb strong {
@@ -250,7 +266,7 @@
   background: none;
   padding: 4px 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12.5px;
   cursor: pointer;
 }
 
@@ -259,11 +275,11 @@
 }
 
 .headerLink {
-  padding: 7px 12px;
+  padding: 8px 14px;
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--ink2);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
 }
@@ -455,7 +471,7 @@
 }
 
 .sectionHead h2 {
-  font-size: 21px;
+  font-size: 24px;
   font-weight: 500;
   letter-spacing: -0.02em;
 }
@@ -463,7 +479,7 @@
 .sectionHead p {
   margin-top: 5px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13.5px;
   line-height: 1.5;
 }
 
@@ -553,7 +569,7 @@
   border-radius: 999px;
   background: var(--soft);
   color: var(--ink2);
-  font-size: 10px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 
@@ -776,7 +792,7 @@
   gap: 8px;
   min-width: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .kpiIcon {
@@ -822,7 +838,7 @@
 .kpiValue {
   display: block;
   margin: 15px 0 2px;
-  font-size: 32px;
+  font-size: 34px;
   font-weight: 500;
   line-height: 1;
   letter-spacing: -0.045em;
@@ -830,7 +846,7 @@
 
 .kpiHint {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .spark {
@@ -913,7 +929,7 @@
 }
 
 .cardTop h3 {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 500;
   letter-spacing: -0.01em;
 }
@@ -921,7 +937,7 @@
 .cardTop p {
   margin-top: 4px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .legend {
@@ -1084,14 +1100,14 @@
 .breakdownLabel {
   overflow: hidden;
   color: var(--ink2);
-  font-size: 11px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .breakdownValue {
   color: var(--ink);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
 }
@@ -1099,7 +1115,7 @@
 .breakdownValue em {
   margin-left: 5px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 10.5px;
   font-style: normal;
   font-weight: 400;
 }
@@ -2320,14 +2336,15 @@
 }
 
 .projectSidebar {
-  position: fixed;
-  inset: 0 auto 0 0;
-  z-index: 60;
+  position: static;
+  inset: auto;
+  z-index: auto;
   display: flex;
   flex-direction: column;
-  width: 218px;
-  padding: 18px 14px 12px;
-  border-right: 1px solid var(--line);
+  width: 100%;
+  height: 100%;
+  padding: 16px 14px 12px;
+  border-right: 0;
   background: #10100f;
   color: var(--ink);
   overflow-y: auto;
@@ -2390,13 +2407,13 @@
 
 .sidebarProjectText strong {
   color: var(--ink);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 550;
 }
 
 .sidebarProjectText small {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 10.5px;
 }
 
 .sidebarSwitcher {
@@ -2409,7 +2426,7 @@
 .sidebarSwitcher select {
   width: 100%;
   min-width: 0;
-  height: 34px;
+  height: 36px;
   appearance: none;
   padding: 0 28px 0 9px;
   border: 1px solid var(--line);
@@ -2417,7 +2434,7 @@
   background: #111110;
   color: var(--ink2);
   font: inherit;
-  font-size: 10px;
+  font-size: 12.5px;
   cursor: pointer;
 }
 
@@ -2434,11 +2451,11 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  min-height: 33px;
+  min-height: 36px;
   padding: 0 9px;
   border-radius: 6px;
   color: var(--ink2);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .sidebarAllProjects:hover {
@@ -2459,12 +2476,24 @@
 .sidebarNavItem {
   display: flex;
   align-items: center;
-  min-height: 31px;
-  padding: 0 10px;
-  border-radius: 6px;
+  gap: 9px;
+  min-height: 36px;
+  padding: 0 11px;
+  border-radius: 7px;
   color: #c1c0bb;
-  font-size: 11px;
+  font-size: 13px;
   transition: background 150ms ease, color 150ms ease;
+}
+
+.navIcon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  opacity: 0.72;
+}
+
+.sidebarNavItem[aria-current='page'] .navIcon {
+  opacity: 1;
 }
 
 .sidebarNavItem:hover {
@@ -2479,9 +2508,9 @@
 }
 
 .sidebarCaption {
-  margin: 23px 10px 0;
+  margin: 20px 10px 0;
   color: #aaa8a2;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 550;
   letter-spacing: 0.12em;
 }
@@ -2492,20 +2521,25 @@
   border: 1px solid #3a3936;
   border-radius: 4px;
   color: #8b8a85;
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .sidebarAccount {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex: none;
   margin-top: auto;
-  padding: 10px 3px 3px;
+  padding: 10px 3px 6px;
   border-top: 1px solid var(--line);
+  background: #10100f;
 }
 
 .sidebarUser {
@@ -2514,7 +2548,7 @@
   gap: 7px;
   min-width: 0;
   color: var(--ink2);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .sidebarUser > span:last-child {
@@ -2524,22 +2558,27 @@
 }
 
 .analyticsHeader {
-  position: fixed;
-  inset: 0 0 auto 218px;
+  position: sticky;
+  inset: auto;
   z-index: 50;
-  height: 56px;
-  border-bottom: 1px solid var(--line);
-  background: rgba(11, 11, 11, 0.96);
-  backdrop-filter: blur(10px);
+  height: auto;
+  border-bottom: 0;
+  background: transparent;
+  backdrop-filter: none;
 }
 
 .analyticsHeader .headerInner {
-  width: min(1280px, calc(100% - 48px));
-  height: 55px;
-  margin-inline: auto;
+  width: min(1460px, 100%);
+  height: 58px;
+  border-color: var(--line);
+  background: rgba(17, 17, 16, 0.92);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.38);
 }
 
-.analyticsHeader .brand,
+.analyticsHeader .brand {
+  display: inline-flex;
+}
+
 .analyticsHeader .headerDivider,
 .analyticsHeader .workspaceLabel {
   display: none;
@@ -2565,8 +2604,8 @@
 .analyticsDashboard .main {
   width: auto;
   max-width: none;
-  margin: 0 0 0 218px;
-  padding: 78px clamp(20px, 3vw, 42px) 54px;
+  margin: 0 0 0 var(--sidebar-width);
+  padding: 24px clamp(20px, 3vw, 42px) 54px;
 }
 
 .analyticsDashboard .projectHero,
@@ -2607,7 +2646,7 @@
 }
 
 .analyticsDashboard :target {
-  scroll-margin-top: 76px;
+  scroll-margin-top: 92px;
 }
 
 .analyticsDashboard .footer {
@@ -2784,7 +2823,7 @@
 
 .filterLabel {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -2803,7 +2842,7 @@
   background: var(--paper);
   color: var(--ink);
   font: inherit;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .filterField select:disabled {
@@ -2833,7 +2872,7 @@
 .filterHint {
   margin-left: auto;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .eventsSection {
@@ -2859,7 +2898,7 @@
   align-items: center;
   padding: 10px 0;
   border-top: 1px solid var(--line);
-  font-size: 12px;
+  font-size: 13.5px;
 }
 
 .eventRow:first-child {
@@ -2954,7 +2993,7 @@
 
 .funnelStepLabel {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .funnelStep strong {
@@ -3023,13 +3062,13 @@
 }
 
 .statePanelBody strong {
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 600;
 }
 
 .statePanelBody p {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -3099,11 +3138,9 @@
 
 /* sidebar-16: a persistent top bar with the project navigation beneath it. */
 .sidebarProvider { display: block; min-height: 100vh; }
-.analyticsHeader { left: 0; }
-.analyticsHeader .brand { display: inline-flex; }
-.sidebar16 { top: 56px; height: calc(100svh - 56px); }
+.dashboard [data-slot='sidebar-container'] { top: 82px; height: calc(100svh - 82px); }
 .sidebar16 .projectSidebar,
-[data-mobile='true'] .projectSidebar { position: static; inset: auto; width: 100%; height: 100%; border: 0; padding: 14px; overflow-y: auto; }
+[data-mobile='true'] .projectSidebar { position: static; inset: auto; width: 100%; height: 100%; border: 0; padding: 16px 14px 12px; overflow-y: auto; }
 [data-mobile='true'] .sidebarAccount { display: flex; }
 [data-mobile='true'] .sidebarBrand,
 [data-mobile='true'] .sidebarAllProjects,
@@ -3111,7 +3148,8 @@
 [data-mobile='true'] .sidebarNav { display: grid; overflow: visible; }
 [data-mobile='true'] .sidebarSwitcher { position: relative; inset: auto; width: 100%; margin: 0; }
 @media (max-width: 760px) {
-  .analyticsHeader { position: sticky; inset: 0 0 auto; height: 49px; }
+  .analyticsHeader { padding: 8px 10px 0; }
+  .analyticsHeader .headerInner { height: 52px; }
 }
 
 @media (min-width: 761px) {
@@ -3120,9 +3158,9 @@
 }
 
 @media (max-width: 767px) {
-  .analyticsHeader { position: sticky; inset: 0 0 auto; height: 49px; }
-  .analyticsHeader .headerInner { width: calc(100% - 28px); height: 48px; }
-  .analyticsDashboard .main { margin-left: 0; padding: 22px 14px 38px; }
+  .analyticsHeader { padding: 8px 10px 0; }
+  .analyticsHeader .headerInner { width: 100%; height: 52px; padding: 0 8px 0 10px; }
+  .analyticsDashboard .main { margin-left: 0; padding: 18px 14px 38px; }
   .analyticsDashboard .footer { margin-left: 0; }
 }
 

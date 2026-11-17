@@ -38,9 +38,11 @@ Take a backup or a Neon branch before stamping or upgrading production. Verify `
 
 Create a new revision with `alembic revision -m "describe change"`, review the generated SQL, and test it against a disposable PostgreSQL database (and SQLite where the change is portable) before releasing it.
 
-## Phase 1 attribution touchpoints (not deployed)
+## Phase 1 attribution touchpoints
 
-Revision `0003_attribution_touchpoints` adds a project-scoped table linked to `events` and `projects` with cascading foreign keys and project/visitor/time indexes. Only accepted, unique pageviews with a visitor ID create touchpoints. No historical UTM data is invented. Test a fresh upgrade and an upgrade from `0002_property_filters` on an isolated PostgreSQL database before separately applying the migration. Do not run it automatically in production. Rollback to `0002_property_filters` removes the new table and its collected touchpoints, while preserving existing events; export touchpoints first if required.
+Revision `0003_attribution_touchpoints` adds a project-scoped table linked to `events` and `projects` with cascading foreign keys and project/visitor/time indexes. Only accepted, unique pageviews with a visitor ID create touchpoints. No historical UTM data is invented. Test a fresh upgrade and an upgrade from `0002_property_filters` on an isolated PostgreSQL database before separately applying the migration. The API still does not migrate on startup, so apply it before deploying code that reads the table. Rollback to `0002_property_filters` removes the new table and its collected touchpoints, while preserving existing events; export touchpoints first if required.
+
+Production was upgraded to `0003_attribution_touchpoints` on 2026-11-17 alongside the overview deployment. Direct TCP to Neon is refused from the development machine, so the revision was applied through Neon's HTTPS SQL endpoint over the same connection string; both indexes were created and `alembic_version` was stamped. Apply future revisions through a connection path that Render or the owner's network can reach, and verify `/health` and the owning endpoint afterwards.
 
 ## Payment foundation (not deployed)
 
