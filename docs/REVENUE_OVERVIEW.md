@@ -11,3 +11,13 @@ The optional `conversion_event` query parameter selects an exact event name. Con
 No schema migration is introduced. Do not run production migrations or deploy as part of this change.
 
 Acquisition source search filters the up-to-50 source groups returned by the overview API. CSV export downloads matching groups with spreadsheet formula protection; conversion rates are decimal fractions and unavailable values are blank. The export is limited to those returned groups and is not a complete dataset export.
+
+## Frontend redesign (local only)
+
+The dashboard now presents reporting as one project-scoped product surface. A single shared toolbar owns the UTC preset or custom range, attribution model, conversion event and refresh, and Overview, Acquisition, Campaigns and Pages all read the same `GET /overview` response. Acquisition can fetch the immediately preceding equal-length window on demand when "Compare previous period" is enabled; that comparison is a second request, not a server-side join.
+
+Acquisition tables sort, paginate 15 rows at a time, search locally over the returned groups and export formula-safe CSV. Campaign "Inspect" moves to Acquisition with the campaign prefilled in the search box. Pages shows top pages from the summary API, landing pages from the overview report, and the existing traffic explorer. Search boxes only filter what the API returned; they do not query the full dataset.
+
+Sections whose APIs do not exist (User journeys, Revenue, Customers) are marked "Soon" in navigation and render an unavailable state listing the missing endpoints. No revenue or customer figures are inferred, and the revenue card continues to state that browser events are never treated as revenue. Live activity polls `GET /events` every 15 seconds while the section is open and discloses that it is a poll, not a stream. The funnel remains a two-step, session-ordered report with a visible limitation note.
+
+No backend, schema, SDK or deployment change accompanies this redesign, and no production migration was run.

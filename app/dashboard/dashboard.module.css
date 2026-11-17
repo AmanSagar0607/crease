@@ -2330,6 +2330,8 @@
   border-right: 1px solid var(--line);
   background: #10100f;
   color: var(--ink);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sidebarBrand {
@@ -2482,6 +2484,18 @@
   font-size: 9px;
   font-weight: 550;
   letter-spacing: 0.12em;
+}
+
+.navSoon {
+  margin-left: auto;
+  padding: 1px 5px;
+  border: 1px solid #3a3936;
+  border-radius: 4px;
+  color: #8b8a85;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .sidebarAccount {
@@ -2918,6 +2932,14 @@
 .funnelArrow {
   color: var(--muted);
   font-size: 14px;
+}
+
+.funnelLimit {
+  max-width: 720px;
+  margin: -4px 0 14px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
 }
 
 .funnelSteps {

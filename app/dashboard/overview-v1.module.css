@@ -43,6 +43,8 @@
 .revenue { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--line); }
 .revenue p { color: var(--muted); font-size: 12px; }
 .revenue > strong { color: var(--muted); font-size: 28px; }
+.revenueActions { display: flex; align-items: center; gap: 16px; }
+.revenueActions a { font-size: 11px; text-decoration: underline; text-underline-offset: 3px; }
 .error { padding: 20px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
 .error p { color: var(--muted); }
 .skeletonGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
