@@ -92,14 +92,14 @@ export default function PagesSection({ range, report, loading, error, onRetry, p
           <h2>Pages and landing pages</h2>
           <p>
             Page views from observed pageview events and entry pages from server-assigned sessions between {range.start}{' '}
-            â€“ {range.end} UTC.
+            – {range.end} UTC.
           </p>
         </div>
       </header>
 
       {loading ? (
         <div className={s.skeleton} aria-busy="true" role="status">
-          <span className="sr-only">Loading pagesâ€¦</span>
+          <span className="sr-only">Loading pages…</span>
           {[0, 1, 2, 3].map((item) => (
             <i key={item} />
           ))}
@@ -146,7 +146,7 @@ export default function PagesSection({ range, report, loading, error, onRetry, p
                         <tr key={`${row.label}-${index}`}>
                           <td title={row.label}>{row.label || 'Unknown'}</td>
                           <td className={s.num}>{row.count.toLocaleString()}</td>
-                          <td className={s.num}>{totalPageviews ? `${((row.count / totalPageviews) * 100).toFixed(1)}%` : 'â€”'}</td>
+                          <td className={s.num}>{totalPageviews ? `${((row.count / totalPageviews) * 100).toFixed(1)}%` : '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -154,7 +154,7 @@ export default function PagesSection({ range, report, loading, error, onRetry, p
                 </div>
               ) : (
                 <div className={s.empty}>
-                  {pageQuery ? `No pages match â€œ${pageQuery}â€.` : 'Page views appear once the tracker records pageviews.'}
+                  {pageQuery ? `No pages match “${pageQuery}”.` : 'Page views appear once the tracker records pageviews.'}
                 </div>
               )}
               <p className={s.note}>
@@ -190,7 +190,7 @@ export default function PagesSection({ range, report, loading, error, onRetry, p
               ) : !landing.length ? (
                 <div className={s.empty}>Landing pages appear after sessions are recorded.</div>
               ) : !filteredLanding.length ? (
-                <div className={s.empty}>No landing pages match â€œ{landingQuery}â€.</div>
+                <div className={s.empty}>No landing pages match “{landingQuery}”.</div>
               ) : (
                 <div className={s.scroll}>
                   <table className={s.table}>
@@ -204,7 +204,7 @@ export default function PagesSection({ range, report, loading, error, onRetry, p
                           >
                             <button type="button" onClick={() => toggleSort(column.key)}>
                               {column.label}
-                              {sort.key === column.key ? (sort.dir === 'asc' ? ' â†‘' : ' â†“') : ''}
+                              {sort.key === column.key ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
                             </button>
                           </th>
                         ))}

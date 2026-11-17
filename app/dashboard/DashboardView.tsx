@@ -22,6 +22,7 @@ import useOverviewReport from './useOverviewReport';
 import {
   LEGACY_HASHES,
   NAV_SECTIONS,
+  PROJECT_ICONS,
   PROJECT_NAV,
   isAnalyticsSection,
   type AnalyticsSection,
@@ -920,7 +921,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   return (
     <TooltipProvider>
-    <SidebarProvider className={s.sidebarProvider} style={{ '--sidebar-width': '218px' } as CSSProperties}>
+    <SidebarProvider className={s.sidebarProvider} style={{ '--sidebar-width': '240px' } as CSSProperties}>
     <div className={`${s.dashboard} ${project ? s.analyticsDashboard : ''}`}>
       <a className={s.skip} href="#main">
         Skip to content
@@ -929,9 +930,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       {project && (
         <Sidebar className={s.sidebar16}>
         <ProjectNavigation>
-          <Link className={s.sidebarBrand} href="/">
-            <span aria-hidden="true">✳</span> crease.
-          </Link>
           <div className={s.sidebarProject}>
             <span className={s.sidebarProjectMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
             <span className={s.sidebarProjectText}><strong className={s.verifiedName}><span>{project.domain}</span>{project.verified === true && <VerifiedBadge />}</strong><small>personal workspace</small></span>
@@ -944,6 +942,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
             <ChevronIcon />
           </label>
           <Link className={s.sidebarAllProjects} href="/dashboard?view=projects" onClick={() => { setShowProjects(true); setSelected(''); }}><ArrowLeftIcon className={s.iconSm} /> All projects</Link>
+          <span className={s.sidebarCaption}>ANALYTICS</span>
           <nav className={s.sidebarNav} aria-label="Analytics sections">
             {NAV_SECTIONS.map((item) => (
               <a
@@ -956,6 +955,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                   selectAnalyticsSection(item.id);
                 }}
               >
+                <item.icon className={s.navIcon} aria-hidden="true" />
                 <span>{item.label}</span>
                 {item.unavailable && (
                   <small className={s.navSoon} title="No backend API yet — the section explains exactly what is missing">
@@ -967,11 +967,15 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           </nav>
           <span className={s.sidebarCaption}>PROJECT</span>
           <nav className={s.sidebarNav} aria-label="Project settings">
-            {PROJECT_NAV.map((section) => (
-              <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-current={tab === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectTab(section); }}>
-                {section[0].toUpperCase() + section.slice(1)}
-              </a>
-            ))}
+            {PROJECT_NAV.map((section) => {
+              const Icon = PROJECT_ICONS[section];
+              return (
+                <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-current={tab === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectTab(section); }}>
+                  <Icon className={s.navIcon} aria-hidden="true" />
+                  <span>{section[0].toUpperCase() + section.slice(1)}</span>
+                </a>
+              );
+            })}
           </nav>
           <div className={s.sidebarAccount}>
             {user && <span className={s.sidebarUser}><span className={s.avatar} aria-hidden="true">{user.login.slice(0, 1).toUpperCase()}</span><span>{user.login}</span></span>}
@@ -999,6 +1003,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           </div>
           <nav className={s.breadcrumb} aria-label="Breadcrumb">
             <Link
+              className={s.crumbRoot}
               href="/dashboard?view=projects"
               onClick={() => {
                 setShowProjects(true);
@@ -1009,13 +1014,15 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
             </Link>
             {project && (
               <>
-                <span aria-hidden="true">/</span>
+                <span className={s.crumbRoot} aria-hidden="true">/</span>
                 <strong>{project.name}</strong>
               </>
             )}
           </nav>
           <div className={s.account}>
-            <ThemeToggle />
+            {/* Project analytics is a deliberately dark-only surface, so the site
+                theme toggle would have no visible effect here. */}
+            {!project && <ThemeToggle />}
             <Link className={s.headerLink} href="/docs">
               Docs
             </Link>

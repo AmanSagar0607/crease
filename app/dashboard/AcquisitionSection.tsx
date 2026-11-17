@@ -11,7 +11,7 @@ type SortDir = 'asc' | 'desc';
 const PAGE_SIZE = 15;
 
 function cell(value: string | null | undefined) {
-  return value && value !== 'Unknown' ? value : 'â€”';
+  return value && value !== 'Unknown' ? value : '—';
 }
 
 function deltaTag(current: number | null, previous: number | null) {
@@ -163,7 +163,7 @@ export default function AcquisitionSection({
           <span className={s.eyebrow}>ACQUISITION</span>
           <h2>Where visitors come from</h2>
           <p>
-            Visitor sources attributed with the {model.replaceAll('_', ' ')} model for {range.start} â€“ {range.end} UTC.
+            Visitor sources attributed with the {model.replaceAll('_', ' ')} model for {range.start} – {range.end} UTC.
             Sources without observed evidence are reported as direct or unknown.
           </p>
         </div>
@@ -183,7 +183,7 @@ export default function AcquisitionSection({
           type="button"
           aria-pressed={compare}
           onClick={() => setCompare((value) => !value)}
-          title={`Fetch the ${previousRange.start} â€“ ${previousRange.end} window for comparison`}
+          title={`Fetch the ${previousRange.start} – ${previousRange.end} window for comparison`}
         >
           {compare ? 'Comparing previous period' : 'Compare previous period'}
         </button>
@@ -200,7 +200,7 @@ export default function AcquisitionSection({
 
       {loading ? (
         <div className={s.skeleton} aria-busy="true" role="status">
-          <span className="sr-only">Loading acquisition reportâ€¦</span>
+          <span className="sr-only">Loading acquisition report…</span>
           {[0, 1, 2, 3, 4].map((item) => (
             <i key={item} />
           ))}
@@ -219,7 +219,7 @@ export default function AcquisitionSection({
           evidence.
         </div>
       ) : !filtered.length ? (
-        <div className={s.empty}>No source groups match â€œ{query}â€. Clear the search to see every group.</div>
+        <div className={s.empty}>No source groups match “{query}”. Clear the search to see every group.</div>
       ) : (
         <>
           <div className={s.scroll}>
@@ -230,7 +230,7 @@ export default function AcquisitionSection({
                     <th key={column.key} className={column.numeric ? s.num : undefined} aria-sort={sort.key === column.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
                       <button type="button" onClick={() => toggleSort(column.key)}>
                         {column.label}
-                        {sort.key === column.key ? (sort.dir === 'asc' ? ' â†‘' : ' â†“') : ''}
+                        {sort.key === column.key ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
                       </button>
                     </th>
                   ))}
@@ -255,10 +255,10 @@ export default function AcquisitionSection({
                       {compare && (
                         <td className={s.num}>
                           {previousReport.loading ? (
-                            <span className={s.muted}>â€¦</span>
+                            <span className={s.muted}>…</span>
                           ) : (
                             <span className={`${s.deltaCell} ${deltaClass(tag)}`} title={tag ? `${compareLabel(row.visitors, previous?.visitors ?? null)}` : undefined}>
-                              {tag ?? 'â€”'}
+                              {tag ?? '—'}
                             </span>
                           )}
                         </td>
@@ -271,7 +271,7 @@ export default function AcquisitionSection({
           </div>
           <div className={s.footerRow}>
             <span>
-              Page {page + 1} of {pages} Â· {filtered.length} source groups
+              Page {page + 1} of {pages} · {filtered.length} source groups
             </span>
             <span className={s.pager}>
               <button type="button" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>
