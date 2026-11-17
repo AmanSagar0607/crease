@@ -11,8 +11,23 @@ import ProjectOnboarding from './ProjectOnboarding';
 import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import LivingCat from '../mascot/living-cat';
-import AnalyticsCharts from './AnalyticsCharts';
 import OverviewV1 from './OverviewV1';
+import ReportToolbar from './ReportToolbar';
+import AcquisitionSection from './AcquisitionSection';
+import CampaignsSection from './CampaignsSection';
+import PagesSection from './PagesSection';
+import UnavailableSection from './UnavailableSection';
+import LiveActivity from './LiveActivity';
+import useOverviewReport from './useOverviewReport';
+import {
+  LEGACY_HASHES,
+  NAV_SECTIONS,
+  PROJECT_NAV,
+  isAnalyticsSection,
+  type AnalyticsSection,
+  type Tab,
+} from './navigation';
+import { dateRange, type AttributionModel, type Preset, type Range } from './reporting';
 import { dispatchMascotEvent } from '../mascot/mascot-events';
 import s from './dashboard.module.css';
 
@@ -100,10 +115,7 @@ type Funnel = {
   conversion: number;
   days: number;
 };
-type Delta = { label: string; dir: 'up' | 'down' | 'flat' };
-
 const firstPageviewSeen = new Set<string>();
-
 function writeKeyStorage(projectId: string) {
   return `crease-write-key:${projectId}`;
 }
@@ -146,10 +158,6 @@ function celebrateFirstPageview(projectId: string, summary: Summary, project?: P
 
 const SESSION_DEFINITION = 'Sessions end after 30 min idle or at UTC midnight';
 const NO_BREAKDOWNS: Breakdown[] = [];
-const TABS = ['analytics', 'installation', 'integrations', 'settings'] as const;
-type Tab = (typeof TABS)[number];
-const ANALYTICS_SECTIONS = ['overview', 'visitors', 'pages', 'referrers', 'countries', 'funnel', 'events'] as const;
-type AnalyticsSection = (typeof ANALYTICS_SECTIONS)[number];
 
 class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -193,28 +201,6 @@ function Svg({ children, className }: { children: ReactNode; className?: string 
     </svg>
   );
 }
-
-const UsersIcon = ({ className }: { className?: string }) => (
-  <Svg className={className}>
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-    <circle cx="9" cy="7" r="4" />
-    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-  </Svg>
-);
-
-const EyeIcon = ({ className }: { className?: string }) => (
-  <Svg className={className}>
-    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
-    <circle cx="12" cy="12" r="3" />
-  </Svg>
-);
-
-const ActivityIcon = ({ className }: { className?: string }) => (
-  <Svg className={className}>
-    <path d="M22 12h-4l-3 8-6-16-3 8H2" />
-  </Svg>
-);
 
 const ZapIcon = ({ className }: { className?: string }) => (
   <Svg className={className}>
@@ -268,13 +254,6 @@ const AlertIcon = ({ className }: { className?: string }) => (
   <Svg className={className}>
     <circle cx="12" cy="12" r="9" />
     <path d="M12 8v5M12 16h.01" />
-  </Svg>
-);
-
-const RefreshIcon = ({ className }: { className?: string }) => (
-  <Svg className={className}>
-    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-    <path d="M21 3v6h-6" />
   </Svg>
 );
 
@@ -339,50 +318,6 @@ function relativeWhen(iso?: string | null) {
   const days = Math.round(hours / 24);
   if (days < 30) return `${days}d ago`;
   return `${Math.round(days / 30)}mo ago`;
-}
-
-function getDelta(current?: number, previous?: number): Delta | null {
-  if (current === undefined || previous === undefined) return null;
-  if (previous === 0) return current === 0 ? { label: '0%', dir: 'flat' } : { label: 'New', dir: 'up' };
-  const pct = ((current - previous) / previous) * 100;
-  const dir: Delta['dir'] = pct > 0.05 ? 'up' : pct < -0.05 ? 'down' : 'flat';
-  return { label: `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`, dir };
-}
-
-function deltaClass(dir: Delta['dir']) {
-  return dir === 'up' ? s.deltaUp : dir === 'down' ? s.deltaDown : s.deltaFlat;
-}
-
-/* ---------- Chart geometry ---------- */
-
-function pointsFor(values: number[], width: number, height: number, padTop: number, padBottom: number) {
-  const max = Math.max(1, ...values);
-  const inner = height - padTop - padBottom;
-  return values.map((value, index) => {
-    const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width;
-    return [x, padTop + inner - (value / max) * inner] as const;
-  });
-}
-
-function linePath(points: ReadonlyArray<readonly [number, number]>) {
-  return points.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
-}
-
-function areaPath(points: ReadonlyArray<readonly [number, number]>, height: number) {
-  if (!points.length) return '';
-  const last = points[points.length - 1];
-  const first = points[0];
-  return `${linePath(points)} L${last[0].toFixed(1)} ${height} L${first[0].toFixed(1)} ${height} Z`;
-}
-
-function Sparkline({ values }: { values: number[] }) {
-  const points = pointsFor(values.length ? values : [0, 0], 120, 36, 3, 3);
-  return (
-    <svg className={s.spark} viewBox="0 0 120 36" preserveAspectRatio="none" aria-hidden="true">
-      <path d={areaPath(points, 36)} fill="rgba(17,17,17,.05)" />
-      <path d={linePath(points)} fill="none" stroke="currentColor" strokeWidth="1.4" vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
 }
 
 /* ---------- Small building blocks ---------- */
@@ -451,37 +386,6 @@ function BreakdownCard({
   );
 }
 
-function Kpi({
-  id,
-  label,
-  icon,
-  value,
-  delta,
-  hint,
-  series,
-}: {
-  id?: string;
-  label: string;
-  icon: ReactNode;
-  value?: number;
-  delta: Delta | null;
-  hint: string;
-  series: number[];
-}) {
-  return (
-    <article className={s.kpi} id={id}>
-      <div className={s.kpiTop}>
-        <span className={s.kpiIcon}>{icon}</span>
-        <span>{label}</span>
-        {delta && <span className={`${s.kpiDelta} ${deltaClass(delta.dir)}`}>{delta.label}</span>}
-      </div>
-      <strong className={s.kpiValue}>{value === undefined ? '—' : compact(value)}</strong>
-      <span className={s.kpiHint}>{hint}</span>
-      <Sparkline values={series} />
-    </article>
-  );
-}
-
 /* ---------- Main component ---------- */
 
 export default function DashboardView({ projectId }: { projectId?: string }) {
@@ -501,7 +405,12 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [domain, setDomain] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [reportRange, setReportRange] = useState<{ start: string; end: string } | null>(null);
+  const [reportRange, setReportRange] = useState<Range>(() => dateRange('30'));
+  const [preset, setPreset] = useState<Preset>('30');
+  const [draftRange, setDraftRange] = useState<Range>(() => dateRange('30'));
+  const [model, setModel] = useState<AttributionModel>('first_touch');
+  const [conversionEvent, setConversionEvent] = useState('');
+  const [acquisitionQuery, setAcquisitionQuery] = useState('');
   const days = reportRange ? Math.round((Date.parse(reportRange.end) - Date.parse(reportRange.start)) / 86400000) + 1 : 30;
   const rangeQuery = reportRange ? `&start=${reportRange.start}&end=${reportRange.end}` : '';
   const [retention, setRetention] = useState(30);
@@ -538,6 +447,14 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     ? `&property=${encodeURIComponent(activeFilter.property)}&value=${encodeURIComponent(activeFilter.value)}`
     : '';
   const eventNames = summary?.event_names ?? NO_BREAKDOWNS;
+
+  const overviewReport = useOverviewReport({
+    projectId: selected,
+    range: reportRange,
+    model,
+    conversionEvent,
+    refresh: acquisitionRefresh,
+  });
 
   const load = useCallback(async () => {
     try {
@@ -742,10 +659,11 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setOnboarding(new URLSearchParams(window.location.search).get('onboarding') === '1');
     const read = () => {
       const candidate = window.location.hash.slice(1);
-      if (ANALYTICS_SECTIONS.includes(candidate as AnalyticsSection)) {
+      const mapped = LEGACY_HASHES[candidate] ?? candidate;
+      if (isAnalyticsSection(mapped)) {
         setTab('analytics');
-        setActiveSection(candidate as AnalyticsSection);
-      } else if (TABS.includes(candidate as Tab)) {
+        setActiveSection(mapped);
+      } else if ((PROJECT_NAV as readonly string[]).includes(candidate)) {
         setTab(candidate as Tab);
       } else {
         setTab('analytics');
@@ -955,20 +873,27 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     window.history.replaceState(null, '', `#${next}`);
   }
 
+  function changePreset(next: Preset) {
+    setPreset(next);
+    if (next !== 'custom') {
+      const value = dateRange(next);
+      setDraftRange(value);
+      setReportRange(value);
+    }
+  }
+
   function selectAnalyticsSection(section: AnalyticsSection) {
     setTab('analytics');
     setActiveSection(section);
     window.history.replaceState(null, '', `#${section}`);
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
       const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
-      document.getElementById(section)?.scrollIntoView({ behavior, block: 'start' });
+      document.getElementById('main')?.scrollIntoView({ behavior, block: 'start' });
     }));
   }
 
   const series = summary?.series ?? [];
-  const totalEvents = summary?.metrics.events ?? 0;
-  const hasEvents = totalEvents > 0;
-  const showCharts = !summary || hasEvents;
+  const hasEvents = (summary?.metrics.events ?? 0) > 0;
   const rangeLabel = reportRange ? `${reportRange.start} ? ${reportRange.end} UTC` : 'Last 30 days';
   const isLive = Boolean(project?.last_event_at) && Date.now() - new Date(project?.last_event_at ?? 0).getTime() < 7 * 864e5;
 
@@ -1020,15 +945,29 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           </label>
           <Link className={s.sidebarAllProjects} href="/dashboard?view=projects" onClick={() => { setShowProjects(true); setSelected(''); }}><ArrowLeftIcon className={s.iconSm} /> All projects</Link>
           <nav className={s.sidebarNav} aria-label="Analytics sections">
-            {ANALYTICS_SECTIONS.map((section) => (
-              <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-current={tab === 'analytics' && activeSection === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectAnalyticsSection(section); }}>
-                {section[0].toUpperCase() + section.slice(1)}
+            {NAV_SECTIONS.map((item) => (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                className={s.sidebarNavItem}
+                aria-current={tab === 'analytics' && activeSection === item.id ? 'page' : undefined}
+                onClick={(event) => {
+                  event.preventDefault();
+                  selectAnalyticsSection(item.id);
+                }}
+              >
+                <span>{item.label}</span>
+                {item.unavailable && (
+                  <small className={s.navSoon} title="No backend API yet — the section explains exactly what is missing">
+                    Soon
+                  </small>
+                )}
               </a>
             ))}
           </nav>
           <span className={s.sidebarCaption}>PROJECT</span>
           <nav className={s.sidebarNav} aria-label="Project settings">
-            {(['installation', 'integrations', 'settings'] as const).map((section) => (
+            {PROJECT_NAV.map((section) => (
               <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-current={tab === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectTab(section); }}>
                 {section[0].toUpperCase() + section.slice(1)}
               </a>
@@ -1181,48 +1120,24 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                   </div>
                 </section>
 
-                <nav className={s.tabs} aria-label="Project sections">
-                  {TABS.map((item) => (
-                    <a
-                      key={item}
-                      className={s.tab}
-                      href={`#${item}`}
-                      aria-current={tab === item ? 'page' : undefined}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        selectTab(item);
-                      }}
-                    >
-                      {item === 'analytics' ? 'Analytics' : item === 'installation' ? 'Installation' : item[0].toUpperCase() + item.slice(1)}
-                    </a>
-                  ))}
-                </nav>
-
-                <div className={s.tabPanel} key={tab}>
+                <div className={s.tabPanel} key={`${tab}-${tab === 'analytics' ? activeSection : ''}`}>
                   {tab === 'analytics' && (
                     <>
-                      <OverviewV1 key={selected} projectId={selected} refresh={acquisitionRefresh} filtered={Boolean(activeFilter)} onRangeChange={setReportRange} />
-                      <div className={s.analyticsBar} tabIndex={-1}>
-                        <div>
-                          <h2>Detailed analytics</h2>
-                          <p>
-                            {rangeLabel} · {project.domain} · {SESSION_DEFINITION}
-                            {activeFilter ? ` · ${activeFilter.property} = ${activeFilter.value}` : ''}
-                          </p>
-                        </div>
-                        <div className={s.controls}>
-                          <button
-                            className={s.refresh}
-                            type="button"
-                            onClick={refreshAnalytics}
-                            disabled={summaryBusy}
-                            aria-label="Refresh analytics"
-                          >
-                            <RefreshIcon className={`${s.icon} ${summaryBusy ? s.spinning : ''}`} />
-                          </button>
-                          <span className={s.updated}>Updated {relativeWhen(project.last_event_at)}</span>
-                        </div>
-                      </div>
+                      <ReportToolbar
+                        preset={preset}
+                        range={reportRange}
+                        draft={draftRange}
+                        model={model}
+                        conversionEvent={conversionEvent}
+                        onPresetChange={changePreset}
+                        onDraftChange={setDraftRange}
+                        onApplyRange={() => setReportRange(draftRange)}
+                        onModelChange={setModel}
+                        onConversionEventChange={setConversionEvent}
+                        onRefresh={refreshAnalytics}
+                        refreshing={summaryBusy}
+                        updatedLabel={`Updated ${relativeWhen(project.last_event_at)} · ${SESSION_DEFINITION.toLowerCase()}`}
+                      />
 
                       {project.verified === false && (
                         <div className={s.statePanel} data-tone="warn" role="status">
@@ -1261,7 +1176,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         </div>
                       )}
 
-                      {!summaryError && !summaryBusy && summary && !hasEvents && (
+                      {!summaryError && !summaryBusy && summary && !hasEvents && activeSection !== 'journeys' && activeSection !== 'revenue' && activeSection !== 'customers' && (
                         <div className={s.statePanel} data-tone="empty" role="status">
                           <ZapIcon className={s.icon} />
                           <div className={s.statePanelBody}>
@@ -1282,128 +1197,108 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         </div>
                       )}
 
-                      <div className={s.filterBar} role="group" aria-label="Custom property filter">
-                        <span className={s.filterLabel}>Filter events</span>
-                        <label className={s.filterField}>
-                          <span className={s.srOnly}>Property key</span>
-                          <select value={propertyKey} onChange={(event) => chooseProperty(event.target.value)}>
-                            <option value="">Any property</option>
-                            {properties.map((item) => (
-                              <option key={item.name} value={item.name}>
-                                {item.name} · {item.value_type}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronIcon />
-                        </label>
-                        <label className={s.filterField}>
-                          <span className={s.srOnly}>Property value</span>
-                          <select
-                            value={propertyValue}
-                            onChange={(event) => setPropertyValue(event.target.value)}
-                            disabled={!propertyKey}
-                          >
-                            {!propertyKey && <option value="">Choose a property first</option>}
-                            {activeProperty?.values.map((item) => (
-                              <option key={item.value} value={item.value}>
-                                {item.value} ({item.count})
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronIcon />
-                        </label>
-                        {activeFilter && (
-                          <button className={s.filterClear} type="button" onClick={clearPropertyFilter}>
-                            Clear filter
-                          </button>
-                        )}
-                        <span className={s.filterHint}>
-                          {properties.length
-                            ? activeFilter
-                              ? `Showing ${activeFilter.property} = ${activeFilter.value}`
-                              : 'Filter metrics and events by an observed property.'
-                            : 'Property filters appear after events with properties arrive.'}
-                        </span>
-                      </div>
+                      {activeSection === 'overview' && (
+                        <>
+                          <OverviewV1
+                            key={selected}
+                            report={overviewReport.report}
+                            loading={overviewReport.loading}
+                            error={overviewReport.error}
+                            onRetry={overviewReport.retry}
+                            model={model}
+                            conversionEvent={conversionEvent}
+                            filtered={Boolean(activeFilter)}
+                            onNavigate={selectAnalyticsSection}
+                          />
+                          <div className={s.breakdownGrid} aria-label="Audience breakdowns">
+                            <BreakdownCard
+                              title="Devices"
+                              icon={<MonitorIcon />}
+                              rows={summary?.devices ?? []}
+                              total={summary?.metrics.pageviews ?? 0}
+                              empty="No device data yet."
+                            />
+                            <BreakdownCard
+                              title="Countries"
+                              icon={<GlobeIcon />}
+                              rows={summary?.countries ?? []}
+                              total={summary?.metrics.pageviews ?? 0}
+                              empty="No country data yet."
+                            />
+                          </div>
+                        </>
+                      )}
 
-                      <div className={s.kpiGrid} id="visitors">
-                        <Kpi
-                          id="visitor-metric"
-                          label="Visitors"
-                          icon={<UsersIcon />}
-                          value={summary?.metrics.visitors}
-                          delta={getDelta(summary?.metrics.visitors, summary?.previous?.visitors)}
-                          hint={`Unique visitors · vs previous ${days} days`}
-                          series={series.map((point) => point.visitors)}
-                        />
-                        <Kpi
-                          label="Page views"
-                          icon={<EyeIcon />}
-                          value={summary?.metrics.pageviews}
-                          delta={getDelta(summary?.metrics.pageviews, summary?.previous?.pageviews)}
-                          hint={`Pageview events · vs previous ${days} days`}
-                          series={series.map((point) => point.pageviews)}
-                        />
-                        <Kpi
-                          label="Sessions"
-                          icon={<ActivityIcon />}
-                          value={summary?.metrics.sessions}
-                          delta={getDelta(summary?.metrics.sessions, summary?.previous?.sessions)}
-                          hint={`Server-assigned · 30 min idle or UTC day · vs previous ${days} days`}
-                          series={series.map((point) => point.sessions)}
-                        />
-                        <Kpi
-                          label="Events"
-                          icon={<ZapIcon />}
-                          value={summary?.metrics.events}
-                          delta={getDelta(summary?.metrics.events, summary?.previous?.events)}
-                          hint={`All tracked events · vs previous ${days} days`}
-                          series={series.map((point) => point.events)}
-                        />
-                      </div>
+                      {activeSection === 'acquisition' && (
+                        <>
+                          <AcquisitionSection
+                            projectId={selected}
+                            range={reportRange}
+                            model={model}
+                            conversionEvent={conversionEvent}
+                            refresh={acquisitionRefresh}
+                            report={overviewReport.report}
+                            loading={overviewReport.loading}
+                            error={overviewReport.error}
+                            onRetry={overviewReport.retry}
+                            query={acquisitionQuery}
+                            onQueryChange={setAcquisitionQuery}
+                          />
+                          <BreakdownCard
+                            id="referrers"
+                            title="Referrers"
+                            icon={<LinkIcon />}
+                            rows={summary?.referrers ?? []}
+                            total={summary?.metrics.pageviews ?? 0}
+                            empty="No referrer data yet."
+                          />
+                        </>
+                      )}
 
-                      {showCharts && (
-                        <AnalyticsCharts
-                          series={series}
-                          metrics={summary?.metrics ?? { events: 0, pageviews: 0, visitors: 0, sessions: 0 }}
+                      {activeSection === 'campaigns' && (
+                        <CampaignsSection
+                          range={reportRange}
+                          report={overviewReport.report}
+                          loading={overviewReport.loading}
+                          error={overviewReport.error}
+                          onRetry={overviewReport.retry}
+                          onInspect={(campaign) => {
+                            setAcquisitionQuery(campaign);
+                            selectAnalyticsSection('acquisition');
+                          }}
                         />
                       )}
 
-                      <div className={s.breakdownGrid}>
-                        <BreakdownCard
-                          id="pages"
-                          title="Top pages"
-                          icon={<FileIcon />}
-                          rows={summary?.pages ?? []}
-                          total={summary?.metrics.pageviews ?? 0}
-                          empty="Pages will appear once events arrive."
-                        />
-                        <BreakdownCard
-                          id="referrers"
-                          title="Referrers"
-                          icon={<LinkIcon />}
-                          rows={summary?.referrers ?? []}
-                          total={summary?.metrics.pageviews ?? 0}
-                          empty="No referrer data yet."
-                        />
-                        <BreakdownCard
-                          title="Devices"
-                          icon={<MonitorIcon />}
-                          rows={summary?.devices ?? []}
-                          total={summary?.metrics.pageviews ?? 0}
-                          empty="No device data yet."
-                        />
-                        <BreakdownCard
-                          id="countries"
-                          title="Countries"
-                          icon={<GlobeIcon />}
-                          rows={summary?.countries ?? []}
-                          total={summary?.metrics.pageviews ?? 0}
-                          empty="No country data yet."
-                        />
-                      </div>
+                      {activeSection === 'journeys' && (
+                        <UnavailableSection variant="journeys" onNavigate={selectAnalyticsSection} />
+                      )}
 
-                      <section className={s.funnelSection} id="funnel">
+                      {activeSection === 'pages' && (
+                        <PagesSection
+                          range={reportRange}
+                          report={overviewReport.report}
+                          loading={overviewReport.loading}
+                          error={overviewReport.error}
+                          onRetry={overviewReport.retry}
+                          pageRows={summary?.pages ?? []}
+                          series={series}
+                          metrics={summary?.metrics ?? { events: 0, pageviews: 0, visitors: 0, sessions: 0 }}
+                          hasEvents={hasEvents}
+                        />
+                      )}
+
+                      {activeSection === 'live' && <LiveActivity projectId={selected} range={reportRange} />}
+
+                      {activeSection === 'revenue' && (
+                        <UnavailableSection variant="revenue" onNavigate={selectAnalyticsSection} />
+                      )}
+
+                      {activeSection === 'customers' && (
+                        <UnavailableSection variant="customers" onNavigate={selectAnalyticsSection} />
+                      )}
+
+                      {activeSection === 'funnels' && (
+                        <section className={s.funnelSection} id="funnel">
                         <div className={s.sectionHead}>
                           <div>
                             <h2>Funnel</h2>
@@ -1413,6 +1308,11 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             {funnel ? `${Math.round(funnel.conversion * 100)}% conversion` : 'Two steps'}
                           </span>
                         </div>
+                        <p className={s.funnelLimit}>
+                          Two ordered steps only for now: sessions where step 1 happens before step 2. Multi-step
+                          funnels, per-step property filters and saved funnels need backend support that does not exist
+                          yet, so they are not offered here.
+                        </p>
                         <div className={s.funnelControls}>
                           <label className={s.filterField}>
                             <span className={s.srOnly}>First step</span>
@@ -1484,6 +1384,53 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           </div>
                         )}
                       </section>
+                      )}
+
+                      {activeSection === 'events' && (
+                        <>
+                      <div className={s.filterBar} role="group" aria-label="Custom property filter">
+                        <span className={s.filterLabel}>Filter events</span>
+                        <label className={s.filterField}>
+                          <span className={s.srOnly}>Property key</span>
+                          <select value={propertyKey} onChange={(event) => chooseProperty(event.target.value)}>
+                            <option value="">Any property</option>
+                            {properties.map((item) => (
+                              <option key={item.name} value={item.name}>
+                                {item.name} · {item.value_type}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronIcon />
+                        </label>
+                        <label className={s.filterField}>
+                          <span className={s.srOnly}>Property value</span>
+                          <select
+                            value={propertyValue}
+                            onChange={(event) => setPropertyValue(event.target.value)}
+                            disabled={!propertyKey}
+                          >
+                            {!propertyKey && <option value="">Choose a property first</option>}
+                            {activeProperty?.values.map((item) => (
+                              <option key={item.value} value={item.value}>
+                                {item.value} ({item.count})
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronIcon />
+                        </label>
+                        {activeFilter && (
+                          <button className={s.filterClear} type="button" onClick={clearPropertyFilter}>
+                            Clear filter
+                          </button>
+                        )}
+                        <span className={s.filterHint}>
+                          {properties.length
+                            ? activeFilter
+                              ? `Filters this list, top pages and audience breakdowns by ${activeFilter.property} = ${activeFilter.value}.`
+                              : 'Filter this list, top pages and audience breakdowns by an observed property.'
+                            : 'Property filters appear after events with properties arrive.'}
+                        </span>
+                      </div>
 
                       <section className={s.eventsSection} id="events">
                         <div className={s.sectionHead}>
@@ -1535,6 +1482,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           </div>
                         )}
                       </section>
+                        </>
+                      )}
                     </>
                   )}
 
