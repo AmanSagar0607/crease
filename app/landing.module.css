@@ -658,15 +658,17 @@
 }
 
 .bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  height: 96px;
+  display: grid;
+  place-content: center;
+  min-height: 96px;
   margin-top: 14px;
-  padding-top: 8px;
-  border-bottom: 1px solid var(--line);
-  background-image: linear-gradient(to bottom, var(--line) 1px, transparent 1px);
-  background-size: 100% 28px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .bar {

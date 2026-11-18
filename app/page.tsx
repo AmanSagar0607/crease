@@ -6,19 +6,7 @@ import s from './landing.module.css';
 
 const repo = 'https://github.com/AmanSagar0607/crease';
 
-const bars = [38, 50, 42, 58, 47, 68, 55, 63, 78, 67, 85, 76, 92, 100];
-
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-const weekDays = [
-  { value: 18, spark: [34, 58, 46, 82] },
-  { value: 24, spark: [46, 72, 58, 94] },
-  { value: 15, spark: [28, 50, 40, 70] },
-  { value: 31, spark: [62, 88, 74, 100] },
-  { value: 22, spark: [42, 68, 54, 86] },
-  { value: 12, spark: [22, 40, 32, 56] },
-  { value: 0, spark: [] },
-];
 
 const principles = [
   {
@@ -113,6 +101,7 @@ export default function Home() {
             <a href="#how">How it works</a>
             <Link href="/pricing">Pricing</Link>
             <Link href="/docs">Docs</Link>
+            <Link href="/waitlist">Early access</Link>
           </div>
           <div className={s.navEnd}>
             <ThemeToggle />
@@ -136,8 +125,8 @@ export default function Home() {
             connect a site, and see what people actually do — nothing more.
           </p>
           <div className={s.heroActions}>
-            <Link className={`${s.btn} ${s.btnPrimary}`} href="/dashboard">
-              Open dashboard <span aria-hidden="true">↗</span>
+            <Link className={`${s.btn} ${s.btnPrimary}`} href="/waitlist">
+              Join the waitlist <span aria-hidden="true">↗</span>
             </Link>
             <a className={`${s.btn} ${s.btnSecondary}`} href="#how">
               <span aria-hidden="true">+</span> See how it works
@@ -168,15 +157,15 @@ export default function Home() {
                   <span />
                   <span />
                 </div>
-                <span className={s.windowUrl}>amansagar.in / overview</span>
+                <span className={s.windowUrl}>your-site.com / overview</span>
               </div>
               <div className={s.mockBody}>
                 <aside className={s.sidebar} aria-hidden="true">
                   <div className={s.workspace}>
                     <span>✳</span>
                     <div>
-                      amansagar.in
-                      <em>personal workspace</em>
+                      your-site.com
+                      <em>project preview</em>
                     </div>
                   </div>
                   <ul className={s.sideNav}>
@@ -200,7 +189,7 @@ export default function Home() {
                   <div className={s.mockHead}>
                     <div>
                       <h3>Overview</h3>
-                      <small>Last 30 days · amansagar.in</small>
+                      <small>Project overview</small>
                     </div>
                     <span className={s.previewChip}>
                       PREVIEW <strong>02</strong>
@@ -208,19 +197,11 @@ export default function Home() {
                   </div>
 
                   <div className={s.metrics}>
-                    {[
-                      ['Visitors', '1,284', '+18%'],
-                      ['Page views', '3,410', '+22%'],
-                      ['Sessions', '1,902', '+11%'],
-                      ['Events', '5,876', '+31%'],
-                    ].map(([label, value, delta], index) => (
+                    {['Visitors', 'Page views', 'Sessions', 'Events'].map((label, index) => (
                       <div className={s.metric} key={label}>
-                        <span>
-                          {label}
-                          <em>0{index + 1}</em>
-                        </span>
-                        <strong>{value}</strong>
-                        <small>{delta} vs last period</small>
+                        <span>{label}<em>0{index + 1}</em></span>
+                        <strong aria-label="Project data appears after setup">—</strong>
+                        <small>From your project</small>
                       </div>
                     ))}
                   </div>
@@ -228,60 +209,14 @@ export default function Home() {
                   <div className={s.chartCard}>
                     <div className={s.chartHead}>
                       <b>Visitors over time</b>
-                      <span>1,284 total</span>
+                      <span>Project data only</span>
                     </div>
-                    <div className={s.bars}>
-                      {bars.map((height, index) => (
-                        <span
-                          className={`${s.bar} ${index === bars.length - 1 ? s.barLast : ''}`.trim()}
-                          key={index}
-                          style={{ height: `${height}%` }}
-                        />
-                      ))}
-                    </div>
-                    <div className={s.barLabels}>
-                      <span>Oct 14</span>
-                      <span>Oct 21</span>
-                      <span>Oct 28</span>
-                      <span>Nov 12</span>
-                    </div>
+                    <div className={s.bars}>Real activity appears here after tracking is verified.</div>
                   </div>
 
                   <div className={s.mockLower}>
-                    <div className={s.listCard}>
-                      <h4>Top pages</h4>
-                      <ul>
-                        <li>
-                          <span>/</span>
-                          <strong>612</strong>
-                        </li>
-                        <li>
-                          <span>/writing/quiet-software</span>
-                          <strong>214</strong>
-                        </li>
-                        <li>
-                          <span>/docs</span>
-                          <strong>96</strong>
-                        </li>
-                      </ul>
-                    </div>
-                    <div className={s.listCard}>
-                      <h4>Referrers</h4>
-                      <ul>
-                        <li>
-                          <span>github.com</span>
-                          <strong>402</strong>
-                        </li>
-                        <li>
-                          <span>x.com</span>
-                          <strong>188</strong>
-                        </li>
-                        <li>
-                          <span>google.com</span>
-                          <strong>121</strong>
-                        </li>
-                      </ul>
-                    </div>
+                    <div className={s.listCard}><h4>Top pages</h4><p>Real pages from your project appear here.</p></div>
+                    <div className={s.listCard}><h4>Referrers</h4><p>Observed sources appear here after tracking starts.</p></div>
                   </div>
                 </div>
               </div>
@@ -289,7 +224,7 @@ export default function Home() {
           </div>
           <div className={s.toast}>
             <i aria-hidden="true" />
-            Tracker installed
+            Setup preview
             <Link href="/docs">View docs</Link>
           </div>
         </section>
@@ -335,31 +270,11 @@ export default function Home() {
               </div>
 
               <div className={s.weekRow}>
-                <p className={s.weekRowLabel}>The week after</p>
-                <div className={s.week}>
-                  {weekDays.map((day, index) => (
-                    <div className={s.weekCard} key={days[index]}>
-                      {day.value ? (
-                        <>
-                          <b>{day.value}</b>
-                          <span>visitors</span>
-                          <div className={s.miniBars} aria-hidden="true">
-                            {day.spark.map((height, barIndex) => (
-                              <i key={barIndex} style={{ height: `${height}%` }} />
-                            ))}
-                          </div>
-                        </>
-                      ) : (
-                        <b aria-hidden="true">—</b>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <p className={s.weekRowLabel}>After tracking starts</p>
+                <div className={s.emptyBrowser}>Real visitor activity appears here once your project is verified.</div>
               </div>
 
-              <p className={s.sectionCaption}>
-                One deploy. A week of quiet questions. Crease answers them.
-              </p>
+              <p className={s.sectionCaption}>Your dashboard uses observed project data—not sample metrics.</p>
             </div>
           </div>
         </section>
@@ -397,22 +312,12 @@ export default function Home() {
               <div className={s.comparePanel}>
                 <div className={s.feedCard}>
                   <span className={s.feedBanner}>
-                    <i aria-hidden="true" />8 new answers today
+                    <i aria-hidden="true" />Live activity preview
                   </span>
-                  {[
-                    ['GH', 'github.com → /writing/quiet-software', '42 visitors · India · 4m ago', '38%'],
-                    ['HN', 'news.ycombinator.com → /', '31 visitors · United States · 12m ago', '27%'],
-                    ['X', 'x.com → /docs', '18 visitors · Germany · 26m ago', '16%'],
-                  ].map(([avatar, title, meta, score]) => (
-                    <div className={s.feedRow} key={title}>
-                      <span className={s.feedAvatar}>{avatar}</span>
-                      <div className={s.feedBody}>
-                        <b>{title}</b>
-                        <span>{meta}</span>
-                      </div>
-                      <span className={s.feedScore}>{score}</span>
-                    </div>
-                  ))}
+                  <div className={s.emptyBrowser}>
+                    <b>Live activity</b>
+                    <span>See visits as they arrive in your verified project.</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -509,24 +414,8 @@ export default function Home() {
             <div>
               <div className={s.stepPanel}>
                 <div className={s.miniCard}>
-                  <span className={s.miniLabel}>First 30 days</span>
-                  <div className={s.miniMetrics}>
-                    {[
-                      ['Visitors', '1,284', 92],
-                      ['Page views', '3,410', 100],
-                      ['Countries', '14', 42],
-                    ].map(([label, value, width]) => (
-                      <div className={s.miniMetric} key={label as string}>
-                        <div>
-                          <span>{label}</span>
-                          <strong>{value}</strong>
-                        </div>
-                        <div className={s.track}>
-                          <i style={{ width: `${width}%` }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <span className={s.miniLabel}>Your project dashboard</span>
+                  <p className={s.note}>Real visitors, pages and sources appear after tracking is verified.</p>
                 </div>
               </div>
               <div className={s.stepMeta}>

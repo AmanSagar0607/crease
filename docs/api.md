@@ -22,7 +22,7 @@ Requests whose `User-Agent` matches a known crawler, uptime monitor, or automati
 
 ## Project APIs
 
-Authenticated project routes require the Crease session cookie and check project ownership server-side. The current routes include project CRUD, `/api/projects/{id}/summary?days=7|30|90`, `/api/projects/{id}/properties`, `/api/projects/{id}/events`, `/api/projects/{id}/funnel?first=&second=&days=7|30|90`, write-key rotation, retention configuration, domain verification, GitHub repository installation, and Vercel integration settings. See the OpenAPI schema for request and response details from the running version.
+Authenticated project routes require the Crease session cookie and check project ownership server-side. The current routes include project CRUD, `/api/projects/{id}/summary?days=7|30|90`, `/api/projects/{id}/properties`, `/api/projects/{id}/events`, `/api/projects/{id}/funnel`, `/api/projects/{id}/funnel/multi`, project-scoped goals, write-key rotation, retention configuration, domain verification, GitHub repository installation, and Vercel integration settings. See the OpenAPI schema for request and response details from the running version.
 
 ## Property filters
 
@@ -32,7 +32,15 @@ Ingested numeric and boolean properties are indexed in `event_properties` and ea
 
 ## Funnels
 
-`GET /api/projects/{id}/funnel?first=<event>&second=<event>&days=7|30|90` counts sessions that contain the first event and then the second event at the same or a later timestamp within the range. Both event names are required. The response includes `first_count`, `second_count`, `conversion` (second divided by first, rounded to four decimals), and the selected names and range. A session that performs the second event before the first does not count toward the second step. Summary responses also include `event_names`, a bounded list of event names and counts used to populate the dashboard funnel selectors.
+`GET /api/projects/{id}/funnel?first=<event>&second=<event>&days=7|30|90` remains available for two-step clients. It counts sessions that contain the first event and then the second at the same or a later timestamp within the range. The response includes `first_count`, `second_count`, `conversion` (second divided by first, rounded to four decimals), and the selected names and range.
+
+`GET /api/projects/{id}/funnel/multi?steps=<event>&steps=<event>[&steps=<event>...]` powers the dashboard and accepts 2–5 repeated `steps` parameters, plus either `days=7|30|90` or both `start` and `end` dates. Each step counts distinct sessions that completed the preceding sequence in timestamp order; counts cannot exceed the prior step. The response includes `steps` entries with `event_name`, `count`, and `conversion_from_previous`, as well as the resolved date range. Event names are parameterized and limited to 64 characters. The session must belong to the requested project. Summary responses also include a bounded `event_names` list for funnel selectors.
+
+## Event goals
+
+`GET /api/projects/{id}/goal-events` lists up to 100 event names already observed for the owned project. Goal definitions use `GET` and `POST /api/projects/{id}/goals`; `PATCH` and `DELETE /api/projects/{id}/goals/{goal_id}` update or remove one definition. Create/update bodies contain `name` (1–80 characters), `event_name` (an event already observed for this project), and positive integer `target_count` (maximum 1,000,000,000). Names are unique per project. Unobserved events and invalid targets return 422; duplicate names return 409.
+
+Goal progress is the raw occurrence count of that event within the selected reporting window—not unique visitors or inferred conversions. The goal list accepts `days=7|30|90` or both `start` and `end` dates, returns each goal with its current count and capped progress ratio, and applies the selected dates in UTC. All goal reads and writes are scoped to the project owner.
 
 ## Session interpretation
 

@@ -27,21 +27,9 @@ function Ghost() {
   );
 }
 
-const navItems = ['Overview', 'Visitors', 'Pages', 'Referrers', 'Countries', 'Events'];
+const navItems = ['Overview', 'Visitors', 'Pages', 'Referrers', 'Countries', 'Events', 'Goals'];
 const projectItems = ['Installation', 'Integrations', 'Settings'];
-const bars = [34, 48, 40, 62, 52, 70, 58, 76, 66, 84, 72, 90, 78, 96];
-const metrics = [
-  ['Visitors', '1,284', '+18%'],
-  ['Page views', '3,410', '+22%'],
-  ['Sessions', '1,902', '+11%'],
-  ['Events', '5,876', '+31%'],
-];
-const topPages = [
-  ['/', '612'],
-  ['/writing/quiet-software', '388'],
-  ['/docs', '241'],
-  ['/pricing', '187'],
-];
+const metrics = ['Visitors', 'Page views', 'Sessions', 'Events'];
 
 export default function LoginView() {
   const router = useRouter();
@@ -118,7 +106,7 @@ export default function LoginView() {
               <i />
               <i />
             </span>
-            <span className={s.mockUrl}>amsagar.in / overview</span>
+            <span className={s.mockUrl}>your-site.com / overview</span>
           </div>
 
           <div className={s.mockBody}>
@@ -146,17 +134,17 @@ export default function LoginView() {
               <div className={s.mockHead}>
                 <div>
                   <h3>Overview</h3>
-                  <p>Last 30 days · amsagar.in</p>
+                  <p>Your project data</p>
                 </div>
                 <span className={s.mockBadge}>PREVIEW</span>
               </div>
 
               <div className={s.mockMetrics}>
-                {metrics.map(([label, value, delta]) => (
+                {metrics.map((label) => (
                   <div className={s.mockMetric} key={label}>
                     <span>{label}</span>
-                    <strong>{value}</strong>
-                    <em>{delta} vs last period</em>
+                    <strong>—</strong>
+                    <em>Loaded from your project</em>
                   </div>
                 ))}
               </div>
@@ -164,22 +152,13 @@ export default function LoginView() {
               <div className={s.mockChart}>
                 <div className={s.mockChartTop}>
                   <span>Visitors over time</span>
-                  <span>1,284 total</span>
+                  <span>Verified activity only</span>
                 </div>
-                <div className={s.mockBars}>
-                  {bars.map((height, index) => (
-                    <i key={index} style={{ height: `${height}%` }} />
-                  ))}
-                </div>
+                <div className={s.mockBars}>Connect and verify a project to see real activity.</div>
               </div>
 
               <div className={s.mockRows}>
-                {topPages.map(([path, count]) => (
-                  <div className={s.mockRow} key={path}>
-                    <span>{path}</span>
-                    <strong>{count}</strong>
-                  </div>
-                ))}
+                <div className={s.mockRow}><span>Pages and sources appear after tracking starts.</span></div>
               </div>
             </div>
           </div>

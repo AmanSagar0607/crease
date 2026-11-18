@@ -50,7 +50,7 @@ class ApiTest(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(main.app)
         with main.engine.begin() as db:
-            for table in ('rate_limits', 'event_properties', 'project_property_keys', 'analytics_sessions', 'events', 'project_repositories', 'project_vercel', 'vercel_connections', 'github_connections', 'projects', 'sessions', 'users'): db.execute(text('DELETE FROM '+table))
+            for table in ('waitlist_signups', 'rate_limits', 'project_goals', 'event_properties', 'project_property_keys', 'analytics_sessions', 'events', 'project_repositories', 'project_vercel', 'vercel_connections', 'github_connections', 'projects', 'sessions', 'users'): db.execute(text('DELETE FROM '+table))
             db.execute(text("INSERT INTO users VALUES ('u1','g1','first'),('u2','g2','second')"))
             for user in ('u1','u2'):
                 db.execute(text('INSERT INTO sessions VALUES (:token,:user,:expiry)'), {'token':main.digest(user),'user':user,'expiry':main.stamp(main.now()+timedelta(days=1))})
@@ -58,6 +58,53 @@ class ApiTest(unittest.TestCase):
     def verify_project(self, project_id):
         with main.engine.begin() as db:
             db.execute(text('UPDATE projects SET verified_at=:at WHERE id=:id'), {'at':main.stamp(main.now()),'id':project_id})
+
+    def test_waitlist_requires_valid_email_and_consent_and_deduplicates(self):
+        first = self.client.post('/api/waitlist', json={'email':'  Maker@Example.com ', 'consent':True})
+        duplicate = self.client.post('/api/waitlist', json={'email':'maker@example.com', 'consent':True})
+        self.assertEqual((first.status_code, duplicate.status_code), (202, 202))
+        self.assertEqual(first.json(), duplicate.json())
+        with main.engine.connect() as db:
+            rows = db.execute(text('SELECT email,consented_at FROM waitlist_signups')).mappings().all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['email'], 'maker@example.com')
+        self.assertIsNotNone(rows[0]['consented_at'])
+        self.assertEqual(self.client.post('/api/waitlist', json={'email':'not-an-email', 'consent':True}).status_code, 422)
+        self.assertEqual(self.client.post('/api/waitlist', json={'email':'maker2@example.com', 'consent':False}).status_code, 422)
+        self.assertEqual(self.client.post('/api/waitlist', json={'email':'', 'consent':True}).status_code, 422)
+
+    def test_project_goals_count_observed_events_and_enforce_ownership(self):
+        self.client.cookies.set('crease_session', 'u1')
+        headers = {'origin':main.FRONTEND_URL}
+        project = self.client.post('/api/projects', json={'name':'Goal site','domain':'example.com'}, headers=headers).json()
+        self.verify_project(project['id'])
+        event_headers = {'origin':'https://example.com','x-crease-key':project['write_key']}
+        now = main.now()
+        events = [
+            {'id':'goal-one','name':'signup','timestamp':main.stamp(now-timedelta(minutes=2)),'path':'/signup','visitorId':'v1'},
+            {'id':'goal-two','name':'signup','timestamp':main.stamp(now-timedelta(minutes=1)),'path':'/signup','visitorId':'v2'},
+            {'id':'other-event','name':'pageview','timestamp':main.stamp(now),'path':'/','visitorId':'v1'},
+        ]
+        self.assertEqual(self.client.post('/api/events', json={'projectId':project['id'],'events':events}, headers=event_headers).json()['accepted'], 3)
+        created = self.client.post(f'/api/projects/{project["id"]}/goals', json={'name':'Signups','event_name':'signup','target_count':5}).json()
+        self.assertEqual(created['target_count'], 5)
+        result = self.client.get(f'/api/projects/{project["id"]}/goals?start={now.date()}&end={now.date()}').json()
+        self.assertEqual(len(result), 1)
+        self.assertEqual((result[0]['current_count'], result[0]['progress']), (2, 0.4))
+        self.assertEqual(self.client.post(f'/api/projects/{project["id"]}/goals', json={'name':'Missing','event_name':'not_seen','target_count':1}).status_code, 422)
+        self.assertEqual(self.client.post(f'/api/projects/{project["id"]}/goals', json={'name':'Invalid','event_name':'signup','target_count':0}).status_code, 422)
+        self.assertEqual(self.client.post(f'/api/projects/{project["id"]}/goals', json={'name':'Signups','event_name':'signup','target_count':1}).status_code, 409)
+        goal_id = created['id']
+        self.client.cookies.set('crease_session', 'u2')
+        self.assertEqual(self.client.get(f'/api/projects/{project["id"]}/goals').status_code, 404)
+        self.assertEqual(self.client.get(f'/api/projects/{project["id"]}/goal-events').status_code, 404)
+        self.assertEqual(self.client.patch(f'/api/projects/{project["id"]}/goals/{goal_id}', json={'name':'stolen','event_name':'signup','target_count':1}).status_code, 404)
+        self.assertEqual(self.client.delete(f'/api/projects/{project["id"]}/goals/{goal_id}').status_code, 404)
+        self.client.cookies.set('crease_session', 'u1')
+        updated = self.client.patch(f'/api/projects/{project["id"]}/goals/{goal_id}', json={'name':'New signups','event_name':'signup','target_count':10})
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(self.client.delete(f'/api/projects/{project["id"]}/goals/{goal_id}').status_code, 204)
+        self.assertEqual(self.client.get(f'/api/projects/{project["id"]}/goals').json(), [])
 
     def test_attribution_persists_evidence_deduplicates_and_is_tenant_scoped(self):
         self.client.cookies.set('crease_session', 'u1')
@@ -440,18 +487,25 @@ class ApiTest(unittest.TestCase):
             {'id':'f3','name':'signup','timestamp':main.stamp(base),'path':'/signup','visitorId':'v2'},
             {'id':'f4','name':'view_pricing','timestamp':main.stamp(base+timedelta(minutes=5)),'path':'/pricing','visitorId':'v2'},
             {'id':'f5','name':'view_pricing','timestamp':main.stamp(base),'path':'/pricing','visitorId':'v3'},
+            {'id':'f6','name':'purchase','timestamp':main.stamp(base+timedelta(minutes=10)),'path':'/thanks','visitorId':'v1'},
         ]
-        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':events}, headers=event_headers).json()['accepted'], 5)
+        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':events}, headers=event_headers).json()['accepted'], 6)
         result = self.client.get('/api/projects/'+p['id']+'/funnel?first=view_pricing&second=signup&days=7').json()
         self.assertEqual(result['first_count'], 3)
         self.assertEqual(result['second_count'], 1)
         self.assertEqual(result['conversion'], 0.3333)
         names = {item['label']: item['count'] for item in self.client.get('/api/projects/'+p['id']+'/summary?days=7').json()['event_names']}
-        self.assertEqual(names, {'view_pricing':3,'signup':2})
+        self.assertEqual(names, {'view_pricing':3,'signup':2,'purchase':1})
+        multi = self.client.get('/api/projects/'+p['id']+'/funnel/multi?steps=view_pricing&steps=signup&steps=purchase&days=7').json()
+        self.assertEqual([step['count'] for step in multi['steps']], [3,1,1])
+        self.assertEqual([step['conversion_from_previous'] for step in multi['steps']], [None,0.3333,1.0])
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel/multi?steps=signup').status_code, 422)
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel/multi?steps=a&steps=b&steps=c&steps=d&steps=e&steps=f').status_code, 422)
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel?first=missing&second=signup&days=7').json()['first_count'], 0)
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel?first=view_pricing&second=signup&days=1').status_code, 422)
         self.client.cookies.set('crease_session','u2')
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel?first=view_pricing&second=signup').status_code, 404)
+        self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel/multi?steps=view_pricing&steps=signup').status_code, 404)
 
     def test_authenticated_country_forwarding_and_direct_spoofing(self):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
