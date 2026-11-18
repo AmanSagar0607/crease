@@ -103,7 +103,12 @@ async def health():
         'status': 'ok',
         'database': 'connected',
         'ingestion': {'bot_filter': FILTER_BOTS, 'geo_forwarding': bool(GEO_FORWARD_SECRET) and TRUST_VERCEL_GEO},
-        'retention': {'scheduled_hours': RETENTION_INTERVAL_HOURS, 'external_trigger': bool(RETENTION_SECRET)},
+        'retention': {
+            'scheduled_hours': RETENTION_INTERVAL_HOURS,
+            'external_trigger': bool(RETENTION_SECRET),
+            'last_run_at': getattr(app.state, 'retention_last_run', None),
+            'last_totals': getattr(app.state, 'retention_last_totals', None),
+        },
     }
 
 
@@ -121,7 +126,10 @@ async def retention_once():
     # Imported lazily: expire imports this module for the engine and clock.
     from expire import enforce_retention
 
-    return await asyncio.to_thread(enforce_retention)
+    totals = await asyncio.to_thread(enforce_retention)
+    app.state.retention_last_run = stamp(now())
+    app.state.retention_last_totals = totals
+    return totals
 
 
 async def retention_loop():
