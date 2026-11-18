@@ -3679,3 +3679,221 @@
   .sidebar16[data-collapsible='icon'] .sidebarAccount { display: block !important; width: 52px; margin-inline: auto; padding: 8px 4px; }
   .sidebar16[data-collapsible='icon'] .sidebarAccountSummary { justify-content: center; padding: 0; }
 }
+
+
+/* Desktop shell correction: target the shadcn sidebar root (the grid item),
+   while keeping its inner rail fixed to the viewport. */
+@media (min-width: 1024px) {
+  .analyticsDashboard.dashboard {
+    grid-template-columns: 248px minmax(0, 1fr);
+    grid-template-rows: 64px minmax(0, 1fr) auto;
+    min-height: 100dvh;
+    transition: grid-template-columns 220ms cubic-bezier(.22, 1, .36, 1);
+  }
+
+  .analyticsDashboard.dashboard:has(> [data-slot='sidebar'][data-state='collapsed']) {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .analyticsDashboard > [data-slot='sidebar'] {
+    grid-column: 1;
+    grid-row: 1 / 4;
+    display: block;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    width: 100%;
+    height: 100dvh;
+  }
+
+  .analyticsDashboard .sidebar16 {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: 248px;
+    height: 100dvh;
+  }
+
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebar16 {
+    width: 64px;
+  }
+
+  .analyticsDashboard .analyticsHeader {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    align-self: start;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    height: 64px;
+    margin: 0;
+    padding: 0 32px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(21, 20, 18, .94);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+  }
+
+  .analyticsDashboard .analyticsHeader .headerInner {
+    display: flex;
+    gap: 20px;
+    width: min(1440px, 100%);
+    height: 64px;
+    margin-inline: auto;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .analyticsDashboard .analyticsHeader .headerIdentity {
+    flex: none;
+  }
+
+  .analyticsDashboard .analyticsHeader .breadcrumb {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 10px;
+    margin-left: 8px;
+  }
+
+  .analyticsDashboard .analyticsHeader .account {
+    flex: none;
+    margin-left: auto;
+  }
+
+  .analyticsDashboard .main {
+    grid-column: 2;
+    grid-row: 2;
+    width: min(1440px, calc(100% - 64px));
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 32px 0 80px;
+  }
+
+  .analyticsDashboard .footer {
+    grid-column: 2;
+    grid-row: 3;
+    width: min(1440px, calc(100% - 64px));
+    margin: 0 auto;
+  }
+
+  .analyticsDashboard [data-slot='sidebar-container'] {
+    top: 0;
+    height: 100dvh;
+  }
+
+  .analyticsDashboard .sidebarBrandRow {
+    justify-content: flex-end;
+  }
+
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarBrandRow {
+    justify-content: center;
+  }
+
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarProjectText,
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarSwitcher > svg,
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarCaption,
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarNavItem > span,
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarUserName,
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarAccountSummary > svg {
+    display: none;
+  }
+
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarSwitcher {
+    width: 44px;
+    height: 44px;
+    margin: 6px auto;
+    padding: 0;
+    justify-content: center;
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarSwitcherMark {
+    width: 34px;
+    height: 34px;
+    margin: 0;
+  }
+
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarSwitcher select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarNav {
+    margin-top: 8px;
+  }
+
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarNavItem {
+    position: relative;
+    width: 46px;
+    justify-content: center;
+    margin-inline: auto;
+    padding: 0;
+  }
+
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarNavItem::after {
+    position: absolute;
+    z-index: 60;
+    top: 50%;
+    left: calc(100% + 10px);
+    width: max-content;
+    max-width: 220px;
+    padding: 7px 10px;
+    border: 1px solid #49433a;
+    border-radius: 7px;
+    background: #1d1b18;
+    color: #f2efe8;
+    content: attr(title);
+    font-size: .8125rem;
+    font-weight: 500;
+    line-height: 1.2;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-50%) translateX(-3px);
+    transition: opacity 120ms ease, transform 120ms ease;
+  }
+
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarNavItem:hover::after,
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarNavItem:focus-visible::after {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarAccount {
+    display: block;
+    width: 52px;
+    margin-inline: auto;
+    padding: 8px 4px;
+  }
+
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarAccountSummary {
+    width: 44px;
+    justify-content: center;
+    margin-inline: auto;
+    padding: 0;
+  }
+
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarAccountMenu {
+    right: auto;
+    bottom: 0;
+    left: calc(100% + 8px);
+    width: 210px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analyticsDashboard [data-slot='sidebar'][data-collapsible='icon'] .sidebarNavItem::after {
+    transition: none;
+  }
+}
