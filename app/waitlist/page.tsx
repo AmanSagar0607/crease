@@ -5,8 +5,8 @@ import WaitlistForm from './WaitlistForm';
 import s from './waitlist.module.css';
 
 export const metadata: Metadata = {
-  title: 'Join the Crease waitlist',
-  description: 'Get an invitation to Crease, calm, privacy-conscious analytics for independent developers.',
+  title: 'Join the Zappa waitlist',
+  description: 'Get an invitation to Zappa, calm, privacy-conscious analytics for independent developers.',
 };
 
 const steps = [
@@ -20,12 +20,12 @@ export default function WaitlistPage() {
     <main className={s.page}>
       <a className={s.skip} href="#main">Skip to content</a>
       <header className={s.header}>
-        <Link className={s.brand} href="/" aria-label="Crease home">
+        <Link className={s.brand} href="/" aria-label="Zappa home">
           <span className={s.brandMark} aria-hidden="true"><i /><i /><i /></span>
-          crease<span className={s.brandDot}>.</span>
+          Zappa<span className={s.brandDot}>.</span>
         </Link>
         <Link className={s.backLink} href="/">
-          <ArrowLeft aria-hidden="true" /> Back to Crease
+          <ArrowLeft aria-hidden="true" /> Back to Zappa
         </Link>
       </header>
 
@@ -34,13 +34,13 @@ export default function WaitlistPage() {
           <p className={s.eyebrow}><CircleDot aria-hidden="true" /> EARLY ACCESS</p>
           <h1 id="waitlist-title">Good analytics.<br /><span>Less noise.</span></h1>
           <p className={s.lede}>
-            Crease helps independent developers understand what people do on their sites—without turning every visit into a profile.
+            Zappa helps independent developers understand what people do on their sites—without turning every visit into a profile.
           </p>
           <div className={s.formWrap}>
             <p className={s.formHeading}>Get an early-access invite</p>
             <WaitlistForm />
           </div>
-          <p className={s.finePrint}>No weekly noise. Your email is used only for Crease updates.</p>
+          <p className={s.finePrint}>No weekly noise. Your email is used only for Zappa updates.</p>
         </div>
 
         <aside className={s.preview} aria-label="What to expect">

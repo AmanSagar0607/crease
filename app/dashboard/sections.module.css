@@ -790,3 +790,57 @@
 .eventMeta {
   font-size: 12px;
 }
+
+
+/* Zappa reporting controls: tactile, high-contrast actions with compact grouping. */
+.toolbar {
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.018);
+}
+
+.field select,
+.field input,
+.inlineForm input,
+.inlineForm button,
+.applyButton {
+  min-height: 40px;
+}
+
+.applyButton {
+  border-color: transparent;
+  background: var(--accent, #e5816a);
+  color: #211411;
+  font-weight: 600;
+  transition: background 150ms ease, transform 150ms ease;
+}
+
+.applyButton:hover:not(:disabled) {
+  background: var(--accent-hover, #f09680);
+  color: #211411;
+}
+
+.applyButton:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+@media (max-width: 600px) {
+  .toolbar {
+    padding: 13px;
+  }
+
+  .toolbarRow {
+    gap: 10px;
+  }
+
+  .field > select,
+  .field > input {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .applyButton {
+    transition: none;
+  }
+}

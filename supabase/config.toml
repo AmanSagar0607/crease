@@ -1,0 +1,34 @@
+# Supabase CLI local development configuration for Zappa.
+# Clerk is the only identity provider; do not enable Supabase Auth users or passwords.
+project_id = "zappa"
+
+[api]
+enabled = true
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+# Supabase Auth is not an application identity provider here. This config section
+# is needed by Supabase CLI infrastructure; native Clerk third-party JWT
+# validation is configured below. Disable local signup/password pathways.
+site_url = "http://127.0.0.1:3000"
+enable_signup = false
+enable_anonymous_sign_ins = false
+
+[auth.third_party.clerk]
+enabled = true
+# Placeholder only; replace with the Clerk instance domain in local configuration.
+domain = "your-instance.clerk.accounts.dev"
+
+[db.seed]
+enabled = false

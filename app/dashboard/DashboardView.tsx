@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useClerk } from '@clerk/nextjs';
 import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
@@ -390,6 +391,7 @@ function BreakdownCard({
 
 export default function DashboardView({ projectId }: { projectId?: string }) {
   const router = useRouter();
+  const { signOut } = useClerk();
   const [user, setUser] = useState<User | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState('');
@@ -466,7 +468,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setSelected(projectId ? (list.some((project) => project.id === projectId) ? projectId : '') : !viewingProjects && list.length === 1 ? list[0].id : '');
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        router.replace('/sign-in');
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load your workspace.');
@@ -504,7 +506,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       celebrateFirstPageview(selected, result, projectRef.current);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        router.replace('/sign-in');
         return;
       }
       setSummaryError(e instanceof Error ? e.message : 'Could not load analytics.');
@@ -533,7 +535,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        router.replace('/sign-in');
         return;
       }
       setSetupNotice(e instanceof Error ? e.message : 'Could not check for events.');
@@ -560,7 +562,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setProperties(await api<PropertyKey[]>(`/api/projects/${encodeURIComponent(selected)}/properties`));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        router.replace('/sign-in');
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load custom properties.');
@@ -586,7 +588,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setEvents(await api<EventRow[]>(`/api/projects/${encodeURIComponent(selected)}/events?${params.toString()}`));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        router.replace('/sign-in');
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load events.');
@@ -626,7 +628,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setFunnel(await api<Funnel>(`/api/projects/${encodeURIComponent(selected)}/funnel/multi?${params.toString()}`));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        router.replace('/sign-in');
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load the funnel.');
@@ -714,7 +716,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       );
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        router.replace('/sign-in');
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load domain verification status.');
@@ -801,12 +803,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   }
 
   async function logout() {
-    try {
-      await api('/api/logout', { method: 'POST' });
-      router.replace('/login');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not sign out.');
-    }
+    await signOut({ redirectUrl: '/sign-in' });
   }
 
   async function updateRetention(event: FormEvent<HTMLFormElement>) {
@@ -852,7 +849,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const snippet = `<script src="${origin}/crease.js" defer></script>
 <script>
   window.addEventListener('load', function () {
-    crease.init({ projectId: '${project?.id || ''}', writeKey: '${writeKey}', endpoint: '${collector}' });
+    Zappa.init({ projectId: '${project?.id || ''}', writeKey: '${writeKey}', endpoint: '${collector}' });
   });
 </script>`;
 
@@ -977,6 +974,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           </nav>
           <div className={s.sidebarAccount}>
             {user && <span className={s.sidebarUser}><span className={s.avatar} aria-hidden="true">{user.login.slice(0, 1).toUpperCase()}</span><span>{user.login}</span></span>}
+            <Link className={s.sidebarAccountLink} href="/account">Account</Link>
             <button className={s.signOut} type="button" onClick={logout}>Sign out</button>
           </div>
         </ProjectNavigation>
@@ -987,10 +985,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         <div className={s.headerInner}>
           <div className={s.headerIdentity}>
             {project && <SidebarTrigger aria-label="Toggle project navigation" />}
-            <Link className={s.brand} href="/">
-              <span className={s.brandMark}>✳</span>
-              crease.
-            </Link>
+            <Link className={s.brand} href="/">Zappa.</Link>
             <span className={s.headerDivider} aria-hidden="true" />
             {!project && user && (
               <span className={s.userChip}>
@@ -1024,6 +1019,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
             <Link className={s.headerLink} href="/docs">
               Docs
             </Link>
+            <Link className={s.headerLink} href="/account">
+              Account
+            </Link>
             {!project && user && (
               <button className={s.signOut} type="button" onClick={logout}>
                 Sign out
@@ -1056,7 +1054,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
             <p className={s.eyebrow}>SIGNED OUT</p>
             <h1>Taking you to sign in…</h1>
             <p>
-              If nothing happens, <Link href="/login">open the sign-in page</Link>.
+              If nothing happens, <Link href="/sign-in">open the sign-in page</Link>.
             </p>
           </div>
         ) : (
@@ -1150,7 +1148,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           <div className={s.statePanelBody}>
                             <strong>Domain not verified</strong>
                             <p>
-                              Crease rejects events until {project.domain} proves ownership. Finish verification to
+                              Zappa rejects events until {project.domain} proves ownership. Finish verification to
                               start collecting.
                             </p>
                           </div>
@@ -1513,7 +1511,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           <div className={s.keyNotice} role="status">
                             <strong>Generate a write key</strong>
                             <p>
-                              Crease rejects events without a valid per-project write key. Generate one before copying
+                              Zappa rejects events without a valid per-project write key. Generate one before copying
                               the installation code.
                             </p>
                             <button className={`${s.btn} ${s.btnSecondary}`} type="button" onClick={generateWriteKey}>
@@ -1540,7 +1538,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             <p>
                               {project.last_event_at
                                 ? `Events are arriving. Last event ${relativeWhen(project.last_event_at)}.`
-                                : 'Keep this tab open. Crease checks for events every 10 seconds.'}
+                                : 'Keep this tab open. Zappa checks for events every 10 seconds.'}
                             </p>
                             {setupCheckAt && <small>Last checked {relativeWhen(setupCheckAt)}</small>}
                             {!project.last_event_at && setupNotice && <small>{setupNotice}</small>}
@@ -1587,8 +1585,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           </div>
                           <p className={s.verifyCopy}>
                             {verification?.verified
-                              ? 'Crease accepts events for this domain. Keep your verification record in place.'
-                              : 'Crease rejects events until the domain proves ownership. Add the TXT record at your DNS provider, then check again.'}
+                              ? 'Zappa accepts events for this domain. Keep your verification record in place.'
+                              : 'Zappa rejects events until the domain proves ownership. Add the TXT record at your DNS provider, then check again.'}
                           </p>
                           {!verification?.verified && verification && (
                             <div className={s.verifyRows}>
@@ -1834,7 +1832,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
       <footer className={s.footer}>
         <div className={s.footerInner}>
-          <span>CREASE / YOUR WORK, UNDERSTOOD</span>
+          <span>ZAPPA / YOUR WORK, UNDERSTOOD</span>
           <div className={s.footerLinks}>
             <Link href="/docs">DOCS</Link>
             <a href="https://github.com/AmanSagar0607/crease">OPEN SOURCE</a>

@@ -10,6 +10,7 @@ import hmac
 import json
 import time as wall_time
 import httpx
+import jwt
 from cryptography.fernet import Fernet
 from urllib.parse import parse_qs, urlsplit
 from datetime import datetime, time, timedelta, timezone
@@ -49,11 +50,15 @@ def tearDownModule():
 class ApiTest(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(main.app)
+        self._verified_claims = {'token': {'sub':'u1','name':'First User'}, 'token-u2': {'sub':'u2','name':'Second User'}}
+        self._verifier_patch = patch.object(main, 'verify_clerk_token', side_effect=lambda token: self._verified_claims[token] if token in self._verified_claims else (_ for _ in ()).throw(__import__('fastapi').HTTPException(401, 'Invalid test token')))
+        self._verifier_patch.start()
         with main.engine.begin() as db:
-            for table in ('waitlist_signups', 'rate_limits', 'project_goals', 'event_properties', 'project_property_keys', 'analytics_sessions', 'events', 'project_repositories', 'project_vercel', 'vercel_connections', 'github_connections', 'projects', 'sessions', 'users'): db.execute(text('DELETE FROM '+table))
-            db.execute(text("INSERT INTO users VALUES ('u1','g1','first'),('u2','g2','second')"))
-            for user in ('u1','u2'):
-                db.execute(text('INSERT INTO sessions VALUES (:token,:user,:expiry)'), {'token':main.digest(user),'user':user,'expiry':main.stamp(main.now()+timedelta(days=1))})
+            for table in ('waitlist_signups', 'rate_limits', 'project_goals', 'event_properties', 'project_property_keys', 'analytics_sessions', 'events', 'project_repositories', 'project_vercel', 'vercel_connections', 'github_connections', 'projects', 'clerk_profiles'): db.execute(text('DELETE FROM '+table))
+
+    def tearDown(self):
+        self._verifier_patch.stop()
+        self.client.close()
 
     def verify_project(self, project_id):
         with main.engine.begin() as db:
@@ -74,7 +79,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.post('/api/waitlist', json={'email':'', 'consent':True}).status_code, 422)
 
     def test_project_goals_count_observed_events_and_enforce_ownership(self):
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('__session', 'token')
         headers = {'origin':main.FRONTEND_URL}
         project = self.client.post('/api/projects', json={'name':'Goal site','domain':'example.com'}, headers=headers).json()
         self.verify_project(project['id'])
@@ -95,19 +100,19 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.post(f'/api/projects/{project["id"]}/goals', json={'name':'Invalid','event_name':'signup','target_count':0}).status_code, 422)
         self.assertEqual(self.client.post(f'/api/projects/{project["id"]}/goals', json={'name':'Signups','event_name':'signup','target_count':1}).status_code, 409)
         goal_id = created['id']
-        self.client.cookies.set('crease_session', 'u2')
+        self.client.cookies.set('__session', 'token-u2')
         self.assertEqual(self.client.get(f'/api/projects/{project["id"]}/goals').status_code, 404)
         self.assertEqual(self.client.get(f'/api/projects/{project["id"]}/goal-events').status_code, 404)
         self.assertEqual(self.client.patch(f'/api/projects/{project["id"]}/goals/{goal_id}', json={'name':'stolen','event_name':'signup','target_count':1}).status_code, 404)
         self.assertEqual(self.client.delete(f'/api/projects/{project["id"]}/goals/{goal_id}').status_code, 404)
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('__session', 'token')
         updated = self.client.patch(f'/api/projects/{project["id"]}/goals/{goal_id}', json={'name':'New signups','event_name':'signup','target_count':10})
         self.assertEqual(updated.status_code, 200)
         self.assertEqual(self.client.delete(f'/api/projects/{project["id"]}/goals/{goal_id}').status_code, 204)
         self.assertEqual(self.client.get(f'/api/projects/{project["id"]}/goals').json(), [])
 
     def test_attribution_persists_evidence_deduplicates_and_is_tenant_scoped(self):
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('__session', 'token')
         headers = {'origin':main.FRONTEND_URL}
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
@@ -131,15 +136,15 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(rows[0]['visitor_id'],rows[2]['visitor_id'])
         bad = dict(base,id='bad',attribution={'utm_source':'person@example.com'})
         self.assertEqual(self.client.post('/api/events',json={'projectId':p['id'],'events':[bad]},headers=event_headers).status_code,422)
-        self.client.cookies.set('crease_session','u2')
+        self.client.cookies.set('__session','token-u2')
         self.assertEqual(self.client.delete('/api/projects/'+p['id'],headers=headers).status_code,404)
-        self.client.cookies.set('crease_session','u1')
+        self.client.cookies.set('__session','token')
         self.assertEqual(self.client.delete('/api/projects/'+p['id'],headers=headers).status_code,200)
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT count(*) FROM attribution_touchpoints WHERE project_id=:id'), {'id':p['id']}).scalar_one(),0)
 
     def test_overview_utc_ranges_attribution_and_isolation(self):
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('__session', 'token')
         p = self.client.post('/api/projects', json={'name':'Overview','domain':'example.com'}, headers={'origin':main.FRONTEND_URL}).json()
         self.verify_project(p['id'])
         day = main.now().date()-timedelta(days=2)
@@ -191,13 +196,13 @@ class ApiTest(unittest.TestCase):
         empty=self.client.get(f'/api/projects/{p["id"]}/overview?start={day-timedelta(days=5)}&end={day-timedelta(days=5)}').json()
         self.assertEqual(empty['metrics']['visitors'],0)
         self.assertEqual(empty['acquisition'],[])
-        self.client.cookies.set('crease_session','u2')
+        self.client.cookies.set('__session','token-u2')
         self.assertEqual(self.client.get(url).status_code,404)
         self.client.cookies.clear()
         self.assertEqual(self.client.get(url).status_code,401)
 
     def test_acquisition_models_preserve_first_and_last_non_direct_across_sessions(self):
-        self.client.cookies.set('crease_session','u1')
+        self.client.cookies.set('__session','token')
         headers={'origin':main.FRONTEND_URL}
         p=self.client.post('/api/projects',json={'name':'Acquisition','domain':'example.com'},headers=headers).json()
         self.verify_project(p['id'])
@@ -223,7 +228,7 @@ class ApiTest(unittest.TestCase):
         self.assertIn({'type':'referral','source':'social.example','visitors':1},non_direct['sources'])
         self.assertIn({'type':'direct_or_unknown','source':'Direct or unknown','visitors':1},non_direct['sources'])
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/acquisition?model=invalid').status_code,422)
-        self.client.cookies.set('crease_session','u2')
+        self.client.cookies.set('__session','token-u2')
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/acquisition').status_code,404)
 
     def test_ingestion_rejects_large_streams_and_overlong_project_ids(self):
@@ -233,7 +238,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
 
     def test_stripe_webhooks_verify_deduplicate_and_reconcile_refunds(self):
-        self.client.cookies.set('crease_session','u1')
+        self.client.cookies.set('__session','token')
         headers = {'origin':main.FRONTEND_URL}
         p = self.client.post('/api/projects', json={'name':'Pay','domain':'example.com'}, headers=headers).json()
         key, secret = Fernet.generate_key().decode(), 'whsec_12345678901234567890'
@@ -260,10 +265,10 @@ class ApiTest(unittest.TestCase):
                 payment = db.execute(text('SELECT amount_minor,refunded_minor,currency FROM payments WHERE project_id=:id'), {'id':p['id']}).mappings().one()
                 self.assertEqual((payment['amount_minor'],payment['refunded_minor'],payment['currency']),(1000,400,'USD'))
                 self.assertEqual(db.execute(text('SELECT count(*) FROM payment_webhook_events WHERE integration_id=:id'), {'id':integration}).scalar_one(),2)
-            self.client.cookies.set('crease_session','u2')
+            self.client.cookies.set('__session','token-u2')
             self.assertEqual(self.client.get('/api/projects/'+p['id']+'/payment-integrations/stripe').status_code,404)
             self.assertEqual(self.client.delete('/api/projects/'+p['id']+'/payment-integrations/stripe',headers=headers).status_code,404)
-            self.client.cookies.set('crease_session','u1')
+            self.client.cookies.set('__session','token')
             self.assertEqual(self.client.delete('/api/projects/'+p['id']+'/payment-integrations/stripe',headers=headers).status_code,200)
             self.assertEqual(send('evt_after','charge.succeeded').status_code,404)
             with main.engine.connect() as db:
@@ -288,7 +293,7 @@ class ApiTest(unittest.TestCase):
 
     def test_event_rate_limits_are_durable_per_ip_and_project(self):
         headers = {'origin':main.FRONTEND_URL}
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('__session', 'token')
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
         event = {'name':'pageview','timestamp':main.stamp(main.now()),'path':'/hello','visitorId':'v','sessionId':'s'}
@@ -319,7 +324,7 @@ class ApiTest(unittest.TestCase):
 
     def test_project_isolation_dedup_and_deletion(self):
         headers = {'origin':main.FRONTEND_URL}
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('__session', 'token')
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
         self.assertRegex(p['write_key'], r'^crease_[A-Za-z0-9_-]{16,}$')
@@ -341,16 +346,16 @@ class ApiTest(unittest.TestCase):
         alternate = dict(event, id='event2')
         self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[alternate]}, headers={'origin':'https://www.example.com', 'x-crease-key':p['write_key']}).json()['accepted'],1)
         self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[dict(event, id='event3')]}, headers={'origin':'https://other.example.com', 'x-crease-key':p['write_key']}).status_code,403)
-        self.client.cookies.set('crease_session', 'u2')
+        self.client.cookies.set('__session', 'token-u2')
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/summary').status_code,404)
         self.assertEqual(self.client.delete('/api/projects/'+p['id'], headers=headers).status_code,404)
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('__session', 'token')
         self.assertEqual(self.client.delete('/api/projects/'+p['id'], headers=headers).status_code,200)
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM analytics_sessions WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
 
     def test_property_registry_and_filters(self):
-        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Props','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
         event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
@@ -391,17 +396,17 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/summary?property=missing&value=1').status_code, 422)
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/summary?property=seats').status_code, 422)
 
-        self.client.cookies.set('crease_session', 'u2')
+        self.client.cookies.set('__session', 'token-u2')
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/properties').status_code, 404)
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/events').status_code, 404)
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('__session', 'token')
         self.assertEqual(self.client.delete('/api/projects/'+p['id'], headers=headers).status_code, 200)
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM event_properties WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM project_property_keys WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
 
     def test_event_sessions_aggregate_pageviews_and_follow_retention(self):
-        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
         event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
@@ -421,7 +426,7 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM analytics_sessions WHERE project_id=:id'), {'id':p['id']}).scalar_one(),1)
 
     def test_sessions_use_server_side_inactivity_window(self):
-        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Sessions','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
         event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
@@ -448,7 +453,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual({row[0]: row[1] for row in sessions}, {'v29':1, 'v31':2, 'vday':2})
 
     def test_retention_job_deletes_old_events_and_keeps_recent(self):
-        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
         old = main.stamp(main.now() - timedelta(days=10))
@@ -476,7 +481,7 @@ class ApiTest(unittest.TestCase):
         self.assertTrue(any(p['id'] in line for line in logs.output))
 
     def test_funnel_counts_ordered_sessions_and_lists_event_names(self):
-        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Funnel','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
         event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
@@ -503,12 +508,12 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel/multi?steps=a&steps=b&steps=c&steps=d&steps=e&steps=f').status_code, 422)
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel?first=missing&second=signup&days=7').json()['first_count'], 0)
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel?first=view_pricing&second=signup&days=1').status_code, 422)
-        self.client.cookies.set('crease_session','u2')
+        self.client.cookies.set('__session','token-u2')
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel?first=view_pricing&second=signup').status_code, 404)
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel/multi?steps=view_pricing&steps=signup').status_code, 404)
 
     def test_authenticated_country_forwarding_and_direct_spoofing(self):
-        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Geo','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
         base = {'origin':'https://example.com','x-crease-key':p['write_key']}
@@ -530,7 +535,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(rows, {'direct':None, 'missing':None, 'valid':'US', 'disabled':None})
 
     def test_bot_user_agents_are_acknowledged_but_not_stored(self):
-        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Bots','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
         base = {'origin':'https://example.com','x-crease-key':p['write_key']}
@@ -549,7 +554,7 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 1)
 
     def test_forwarded_country_is_trusted_when_the_secret_is_configured(self):
-        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Geo default','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
         base = {'origin':'https://example.com','x-crease-key':p['write_key']}
@@ -561,7 +566,7 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(db.execute(text('SELECT country FROM events WHERE id=:id'), {'id':'geo-1'}).scalar_one(), 'DE')
 
     def test_retention_endpoint_requires_secret_and_deletes_expired_rows(self):
-        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Cron','domain':'example.com'}, headers=headers).json()
         self.assertEqual(self.client.patch('/api/projects/'+p['id']+'/retention', json={'retention_days':7}, headers=headers).status_code, 200)
         with main.engine.begin() as db:
@@ -576,7 +581,7 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
 
     def test_scheduled_retention_helper_runs_without_an_external_cron(self):
-        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Scheduled','domain':'example.com'}, headers=headers).json()
         self.assertEqual(self.client.patch('/api/projects/'+p['id']+'/retention', json={'retention_days':7}, headers=headers).status_code, 200)
         with main.engine.begin() as db:
@@ -589,7 +594,7 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
 
     def test_retention_tolerates_absent_payment_tables(self):
-        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'No payments','domain':'example.com'}, headers=headers).json()
         self.assertEqual(self.client.patch('/api/projects/'+p['id']+'/retention', json={'retention_days':7}, headers=headers).status_code, 200)
         old = main.stamp(main.now() - timedelta(days=30))
@@ -614,7 +619,7 @@ class ApiTest(unittest.TestCase):
 
     def test_events_require_project_write_key(self):
         headers = {'origin':main.FRONTEND_URL}
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('__session', 'token')
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         other = self.client.post('/api/projects', json={'name':'Other','domain':'other.com'}, headers=headers).json()
         self.verify_project(p['id'])
@@ -638,7 +643,7 @@ class ApiTest(unittest.TestCase):
 
     def test_domain_verification_pending_failed_and_passed(self):
         headers = {'origin':main.FRONTEND_URL}
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('__session', 'token')
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         self.assertFalse(p['verified'])
         self.assertTrue(p['verification_token'])
@@ -661,7 +666,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(passed['method'], 'dns')
         self.assertTrue(self.client.get('/api/projects/'+p['id']+'/verification').json()['verified'])
         self.assertEqual(self.client.post('/api/events', json=payload, headers=event_headers).json()['accepted'],1)
-        self.client.cookies.set('crease_session', 'u2')
+        self.client.cookies.set('__session', 'token-u2')
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/verification').status_code,404)
         self.assertEqual(self.client.post('/api/projects/'+p['id']+'/verification/check', headers=headers).status_code,404)
 
@@ -685,7 +690,7 @@ class ApiTest(unittest.TestCase):
 
     def test_verification_checks_are_rate_limited(self):
         headers = {'origin':main.FRONTEND_URL}
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('__session', 'token')
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         with patch.object(main, 'VERIFY_LIMIT_PER_MINUTE', 1), patch.object(main, 'dns_has_token', new=AsyncMock(return_value=False)):
             self.assertEqual(self.client.post('/api/projects/'+p['id']+'/verification/check', headers=headers).status_code, 200)
@@ -693,17 +698,17 @@ class ApiTest(unittest.TestCase):
 
     def test_mutation_requires_origin_and_auth(self):
         self.assertEqual(self.client.get('/api/projects').status_code,401)
-        self.client.cookies.set('crease_session','u1')
+        self.client.cookies.set('__session','token')
         self.assertEqual(self.client.post('/api/projects',json={'name':'x','domain':'x.com'}).status_code,403)
 
     def test_github_install_checks_ownership_and_public_url(self):
         headers = {'origin':main.FRONTEND_URL}
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('__session', 'token')
         project = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         payload = {'repository':'owner/site','path':'index.html','installation_id':1,'write_key':'crease_0123456789abcdef'}
         with patch.object(main, 'GITHUB_APP_SLUG', ''):
             self.assertEqual(self.client.post('/api/projects/'+project['id']+'/github-install', json=payload, headers=headers).status_code,503)
-        self.client.cookies.set('crease_session', 'u2')
+        self.client.cookies.set('__session', 'token-u2')
         self.assertEqual(self.client.post('/api/projects/'+project['id']+'/github-install', json=payload, headers=headers).status_code,404)
 
     def test_github_app_token_is_bound_to_signed_in_user(self):
@@ -774,22 +779,22 @@ class ApiTest(unittest.TestCase):
 
     def test_project_git_connection_is_owner_scoped(self):
         headers = {'origin':main.FRONTEND_URL}
-        self.client.cookies.set('crease_session','u1')
+        self.client.cookies.set('__session','token')
         project = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()['id']
         payload = {'repository':'Owner/Site','installation_id':42}
         responses = [([{'id':42,'app_slug':'crease'}], False), ([{'full_name':'Owner/Site'}], False)]
         with patch.object(main, 'GITHUB_APP_SLUG', 'crease'), patch.object(main, 'app_user_token', return_value='test'), patch.object(main, 'github_app_pages', new=AsyncMock(side_effect=responses)):
             self.assertEqual(self.client.put('/api/projects/'+project+'/git', json=payload, headers=headers).status_code, 200)
         self.assertEqual(self.client.get('/api/projects/'+project+'/git').json()['repository']['full_name'], 'Owner/Site')
-        self.client.cookies.set('crease_session','u2')
+        self.client.cookies.set('__session','token-u2')
         self.assertEqual(self.client.get('/api/projects/'+project+'/git').status_code,404)
         self.assertEqual(self.client.delete('/api/projects/'+project+'/git', headers=headers).status_code,404)
-        self.client.cookies.set('crease_session','u1')
+        self.client.cookies.set('__session','token')
         self.assertEqual(self.client.delete('/api/projects/'+project+'/git', headers=headers).status_code,200)
         self.assertIsNone(self.client.get('/api/projects/'+project+'/git').json()['repository'])
 
     def test_vercel_settings_scoped_and_preserve_other_settings(self):
-        headers = {'origin': main.FRONTEND_URL}; self.client.cookies.set('crease_session', 'u1')
+        headers = {'origin': main.FRONTEND_URL}; self.client.cookies.set('__session', 'token')
         project = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()['id']
         provider = {'id':'prj_123','name':'example','gitComments':{'onCommit':False,'onPullRequest':True},'gitLFS':False,'gitProviderOptions':{'requireVerifiedCommits':True,'disableRepositoryDispatchEvents':False}}
         async def fake_api(token, team, method, path, body=None):
@@ -803,12 +808,12 @@ class ApiTest(unittest.TestCase):
             result = self.client.patch('/api/projects/'+project+'/vercel/git', json={'on_commit':True}, headers=headers)
             self.assertEqual(result.status_code,200)
             self.assertTrue(result.json()['settings']['on_commit'])
-            self.client.cookies.set('crease_session','u2')
+            self.client.cookies.set('__session','token-u2')
             self.assertEqual(self.client.get('/api/projects/'+project+'/vercel/git').status_code,404)
             self.assertEqual(self.client.patch('/api/projects/'+project+'/vercel/git', json={'git_lfs':True}, headers=headers).status_code,404)
 
     def test_vercel_authorization_state_is_bound_and_single_use(self):
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('__session', 'token')
         class Response:
             status_code = 200
             def json(self): return {'access_token':'vercel-secret','team_id':'team_123'}
@@ -845,7 +850,7 @@ class ApiTest(unittest.TestCase):
         self.assertIsNone(settings['require_verified_commits'])
 
     def test_vercel_inherited_settings_accept_explicit_overrides(self):
-        headers={'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers={'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         project = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()['id']
         with main.engine.begin() as db:
             db.execute(text('INSERT INTO project_vercel VALUES (:id,:user,:vercel)'), {'id':project,'user':'u1','vercel':'prj_123'})
@@ -860,7 +865,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(response.status_code,200)
 
     def test_git_disconnect_preserves_vercel_but_project_delete_cleans_it(self):
-        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         project = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()['id']
         with main.engine.begin() as db:
             db.execute(text('INSERT INTO project_vercel VALUES (:id,:user,:vercel)'), {'id':project,'user':'u1','vercel':'prj_123'})
@@ -871,7 +876,7 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM project_vercel WHERE project_id=:id'), {'id':project}).scalar_one(),0)
 
     def test_vercel_hooks_hide_existing_urls_and_require_project_owner(self):
-        headers={'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        headers={'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         project = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()['id']
         with main.engine.begin() as db:
             db.execute(text('INSERT INTO project_vercel VALUES (:id,:user,:vercel)'), {'id':project,'user':'u1','vercel':'prj_123'})
@@ -884,31 +889,56 @@ class ApiTest(unittest.TestCase):
             created = self.client.post('/api/projects/'+project+'/vercel/hooks', json={'name':'CMS','ref':'main'}, headers=headers)
             self.assertEqual(created.status_code,200)
             self.assertEqual(created.headers['cache-control'],'no-store')
-            self.client.cookies.set('crease_session','u2')
+            self.client.cookies.set('__session','token-u2')
             self.assertEqual(self.client.get('/api/projects/'+project+'/vercel/hooks').status_code,404)
             self.assertEqual(self.client.delete('/api/projects/'+project+'/vercel/hooks/hook_1', headers=headers).status_code,404)
 
-    def test_github_oauth_creates_session_and_rejects_reused_state(self):
-        class FakeResponse:
-            status_code = 200
-            def __init__(self, payload): self.payload = payload
-            def json(self): return self.payload
-        class GitHubClient:
-            def __init__(self, **kwargs): pass
-            async def __aenter__(self): return self
-            async def __aexit__(self, *args): pass
-            async def post(self, *args, **kwargs): return FakeResponse({'access_token':'test-token'})
-            async def get(self, *args, **kwargs): return FakeResponse({'id':12345, 'login':'octocat'})
-        with patch.object(main, 'CLIENT_ID', 'test-id'), patch.object(main, 'CLIENT_SECRET', 'test-secret'), patch.object(main, 'PUBLIC_API_URL', 'http://localhost:3000'), patch.object(main, 'FRONTEND_URL', 'http://localhost:3000'), patch.object(main.httpx, 'AsyncClient', GitHubClient):
-            start = self.client.get('/api/auth/github', follow_redirects=False)
-            self.assertEqual(start.status_code, 302)
-            params = parse_qs(urlsplit(start.headers['location']).query)
-            self.assertEqual(params['redirect_uri'][0], 'http://localhost:3000/api/auth/callback')
-            state = params['state'][0]
-            callback = self.client.get('/api/auth/callback', params={'code':'code','state':state}, follow_redirects=False)
-            self.assertEqual(callback.status_code,302)
-            self.assertEqual(self.client.get('/api/me').json()['login'],'octocat')
-            self.client.cookies.set('crease_oauth', state)
-            self.assertEqual(self.client.get('/api/auth/callback', params={'code':'code','state':state}, follow_redirects=False).status_code,400)
+    def test_clerk_auth_rejects_missing_and_invalid_tokens_and_ignores_legacy_cookie(self):
+        self.client.cookies.clear()
+        self.assertEqual(self.client.get('/api/me').status_code, 401)
+        self.client.cookies.set('crease_session', 'u1')
+        self.assertEqual(self.client.get('/api/me').status_code, 401)
+        self.client.cookies.set('__session', 'bad-token')
+        self.assertEqual(self.client.get('/api/me').status_code, 401)
+        self.client.cookies.set('__session', 'token')
+        me = self.client.get('/api/me')
+        self.assertEqual(me.status_code, 200)
+        self.assertEqual(me.json(), {'id':'u1','clerk_id':'u1','login':'First User'})
+        self.assertEqual(self.client.get('/api/auth/github').status_code, 404)
+        self.assertEqual(self.client.get('/api/auth/callback').status_code, 404)
+        self.assertEqual(self.client.post('/api/logout').status_code, 404)
+
+    def test_clerk_webhook_route_is_public_but_requires_signature_configuration(self):
+        self.assertEqual(self.client.post('/api/clerk-webhook', content=b'{}').status_code, 503)
+        with patch.object(main, 'CLERK_WEBHOOK_SECRET', 'whsec_test'):
+            invalid = self.client.post('/api/clerk-webhook', content=b'{"type":"user.deleted","data":{"id":"u1"}}')
+        self.assertEqual(invalid.status_code, 400)
+
+    def test_clerk_jwt_requires_signature_issuer_time_and_authorized_party(self):
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.hazmat.primitives import serialization
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        public_key = key.public_key()
+        class Key:
+            def __init__(self, value): self.key = value
+        class Jwks:
+            def get_signing_key_from_jwt(self, token): return Key(public_key)
+        now = int(wall_time.time())
+        claims = {'sub':'user_clerk_12345678901234567890', 'iss':'https://issuer.example', 'iat':now,
+                  'nbf':now-1, 'exp':now+60, 'azp':'https://app.example'}
+        pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+        def token(values, signing_key=pem): return jwt.encode(values, signing_key, algorithm='RS256')
+        with patch.object(main, 'CLERK_ISSUER', 'https://issuer.example'), \
+             patch.object(main, 'CLERK_JWKS_URL', 'https://issuer.example/keys'), \
+             patch.object(main, 'CLERK_AUTHORIZED_PARTIES', ('https://app.example',)), \
+             patch.object(main, 'PyJWKClient', return_value=Jwks()), \
+             patch.object(main, '_jwks_client', None), patch.object(main, '_jwks_url_cached', None):
+            self.assertEqual(main.verify_clerk_token(token(claims))['sub'], claims['sub'])
+            for bad in ({**claims,'exp':now-1}, {**claims,'nbf':now+30}, {**claims,'iss':'https://wrong.example'},
+                        {**claims,'azp':'https://attacker.example'}):
+                with self.assertRaises(__import__('fastapi').HTTPException): main.verify_clerk_token(token(bad))
+            other = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            wrong_pem = other.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+            with self.assertRaises(__import__('fastapi').HTTPException): main.verify_clerk_token(token(claims, wrong_pem))
 
 if __name__ == '__main__': unittest.main()

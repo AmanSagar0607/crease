@@ -1,15 +1,18 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { clerkMiddleware } from '@clerk/nextjs/server';
 
-export function proxy(request: NextRequest) {
-  if (!request.cookies.get('crease_session')?.value) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.search = '';
-    return NextResponse.redirect(url);
-  }
-  return NextResponse.next();
+const publicApiPaths = new Set(['/api/events', '/api/waitlist', '/api/clerk-webhook']);
+
+function isPublicApiPath(pathname: string) {
+  return publicApiPaths.has(pathname) || pathname.startsWith('/api/payment-webhooks/');
 }
 
+export default clerkMiddleware(async (auth, request) => {
+  const pathname = request.nextUrl.pathname;
+  const isProtectedPage = pathname === '/dashboard' || pathname.startsWith('/dashboard/') || pathname === '/account' || pathname.startsWith('/account/');
+  const isProtectedApi = pathname.startsWith('/api/') && !isPublicApiPath(pathname);
+  if (isProtectedPage || isProtectedApi) await auth.protect();
+});
+
 export const config = {
-  matcher: ['/dashboard', '/dashboard/:path*'],
+  matcher: ['/dashboard(.*)', '/account(.*)', '/api(.*)'],
 };

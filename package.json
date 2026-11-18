@@ -1,5 +1,5 @@
 {
-  "name": "crease",
+  "name": "zappa",
   "private": true,
   "version": "0.1.0",
   "scripts": {
@@ -8,6 +8,8 @@
     "start": "next start"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.10.2",
+    "@supabase/supabase-js": "^2.119.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
     "lucide-react": "^1.73.0",

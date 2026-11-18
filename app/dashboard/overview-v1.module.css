@@ -87,3 +87,56 @@
 @media (max-width: 600px) {
   .kpi strong { font-size: 26px; }
 }
+
+
+/* Zappa overview refresh: data-first cards with quieter, clearer grouping. */
+.kpis {
+  gap: 10px;
+  border: 0;
+}
+
+.kpi {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(150deg, #141413, #111110 72%);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.018);
+}
+
+.kpi strong {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.chart,
+.panel {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.018);
+}
+
+.twoCol {
+  gap: 12px;
+}
+
+@media (max-width: 600px) {
+  .kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kpi {
+    padding: 14px 12px;
+  }
+
+  .chart,
+  .panel {
+    padding: 16px 14px;
+  }
+}
+
+@media (max-width: 360px) {
+  .kpis {
+    grid-template-columns: 1fr;
+  }
+}

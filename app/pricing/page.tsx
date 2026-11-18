@@ -5,9 +5,9 @@ import p from './pricing.module.css';
 import s from '../landing.module.css';
 
 export const metadata: Metadata = {
-  title: 'Pricing — Crease',
+  title: 'Pricing — Zappa',
   description:
-    'Unlimited projects and all analytics, free while Crease is in early access. Self-host the whole thing with Apache-2.0 source.',
+    'Unlimited projects and all analytics, free while Zappa is in early access. Self-host the whole thing with Apache-2.0 source.',
 };
 
 const repo = 'https://github.com/AmanSagar0607/crease';
@@ -69,19 +69,19 @@ const comparison = [
 
 const faqs = [
   {
-    q: 'Is Crease really free?',
-    a: 'Yes. Hosted Crease is free for unlimited projects while it is in early access. If paid plans arrive later, existing projects will hear about it well before anything changes.',
+    q: 'Is Zappa really free?',
+    a: 'Yes. Hosted Zappa is free for unlimited projects while it is in early access. If paid plans arrive later, existing projects will hear about it well before anything changes.',
   },
   {
     q: 'Do I need a credit card?',
-    a: 'No. There is no card field, no trial timer, and no automatic upgrade. You can use Crease for as long as it is useful to you.',
+    a: 'No. There is no card field, no trial timer, and no automatic upgrade. You can use Zappa for as long as it is useful to you.',
   },
   {
     q: 'What happens when early access ends?',
     a: 'Existing projects will be told exactly what changes before it happens. Nothing switches to a paid plan silently.',
   },
   {
-    q: 'Can I self-host Crease?',
+    q: 'Can I self-host Zappa?',
     a: 'Yes. The source is Apache-2.0 and runs on FastAPI and Postgres. The repository includes setup notes for running the collector, dashboard, and database yourself.',
   },
   {
@@ -117,12 +117,7 @@ export default function Pricing() {
 
       <div className={s.navWrap}>
         <nav className={s.nav} aria-label="Main navigation">
-          <Link className={s.brand} href="/">
-            <span className={s.brandMark} aria-hidden="true">
-              ✳
-            </span>
-            crease
-          </Link>
+          <Link className={s.brand} href="/">Zappa</Link>
           <div className={s.navLinks}>
             <Link href="/#how">How it works</Link>
             <Link className={p.navActive} href="/pricing" aria-current="page">
@@ -148,7 +143,7 @@ export default function Pricing() {
             Free for every project, today.
           </h1>
           <p className={p.heroLead}>
-            Hosted Crease is free for unlimited projects while it is in early access. Self-host
+            Hosted Zappa is free for unlimited projects while it is in early access. Self-host
             the same stack whenever you like. When paid plans arrive, existing projects will hear
             about it well before anything changes.
           </p>
@@ -329,13 +324,13 @@ export default function Pricing() {
           </div>
           <div>
             <p className={s.footerLegal}>
-              Crease is an independent project. Your data belongs to you, and you can delete it
+              Zappa is an independent project. Your data belongs to you, and you can delete it
               whenever you like. Built in the open, without a growth team.
             </p>
           </div>
         </div>
         <div className={s.footerBottom}>
-          <span>© 2026 Crease</span>
+          <span>© 2026 Zappa</span>
           <span>Made for the things you make.</span>
         </div>
       </footer>
