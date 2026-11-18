@@ -61,7 +61,7 @@ export default function WaitlistForm() {
           <input className={s.checkbox} id="waitlist-consent" name="consent" type="checkbox" required disabled={state === 'submitting'} />
           <div className={s.consentCopy}>
             <FieldLabel htmlFor="waitlist-consent">Email me occasional early-access updates.</FieldLabel>
-            <FieldDescription className={s.consentDescription}>We use your email only for Crease updates. No tracking pixels or list sharing.</FieldDescription>
+            <FieldDescription className={s.consentDescription}>We use your email only for Zappa updates. No tracking pixels or list sharing.</FieldDescription>
           </div>
         </Field>
       </FieldGroup>

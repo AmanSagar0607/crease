@@ -1,4 +1,4 @@
-"""Crease API. Configure GitHub OAuth and a PostgreSQL URL before deployment."""
+"""Zappa analytics API. Configure Clerk and a PostgreSQL URL before deployment."""
 import asyncio
 import hashlib
 import ipaddress
@@ -15,6 +15,9 @@ from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
+import jwt
+from jwt import PyJWKClient
+from svix.webhooks import Webhook, WebhookVerificationError
 from dotenv import load_dotenv
 from pathlib import Path
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Response
@@ -42,8 +45,10 @@ else:
     engine = create_engine(DATABASE_URL, connect_args={'check_same_thread': False} if DATABASE_URL.startswith('sqlite') else {}, pool_pre_ping=True)
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000').rstrip('/')
 PUBLIC_API_URL = os.getenv('PUBLIC_API_URL', 'http://localhost:3000').rstrip('/')
-CLIENT_ID = os.getenv('GITHUB_CLIENT_ID', '')
-CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET', '')
+CLERK_ISSUER = os.getenv('CLERK_ISSUER', '').rstrip('/')
+CLERK_JWKS_URL = os.getenv('CLERK_JWKS_URL', '')
+CLERK_AUTHORIZED_PARTIES = tuple(x.strip() for x in os.getenv('CLERK_AUTHORIZED_PARTIES', '').split(',') if x.strip())
+CLERK_WEBHOOK_SECRET = os.getenv('CLERK_WEBHOOK_SECRET', '')
 SECURE = os.getenv('COOKIE_SECURE', 'false').lower() == 'true'
 # Country data is accepted only on the authenticated internal ingestion route. That route
 # validates GEO_FORWARD_SECRET first, so a forwarded country is trusted by default. Set
@@ -89,7 +94,7 @@ VERCEL_INTEGRATION_SLUG = os.getenv('VERCEL_INTEGRATION_SLUG', '')
 VERCEL_INTEGRATION_CLIENT_ID = os.getenv('VERCEL_INTEGRATION_CLIENT_ID', '')
 VERCEL_INTEGRATION_CLIENT_SECRET = os.getenv('VERCEL_INTEGRATION_CLIENT_SECRET', '')
 VERCEL_TOKEN_KEY = os.getenv('VERCEL_TOKEN_KEY', '')
-app = FastAPI(title='Crease API')
+app = FastAPI(title='Zappa API')
 
 @app.get('/health')
 async def health():
@@ -251,61 +256,84 @@ class RateLimiter:
         return hits <= limit
 
 limiter = RateLimiter(engine)
-async def session_user(crease_session: str | None = Cookie(default=None)):
-    if not crease_session: raise HTTPException(401, 'Sign in required')
-    with engine.connect() as db:
-        row = db.execute(text('SELECT users.id, users.login, users.github_id FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=:token AND expires_at>:now'), {'token': digest(crease_session), 'now': stamp(now())}).mappings().first()
-    if not row: raise HTTPException(401, 'Session expired')
-    return dict(row)
+def clerk_jwks_url():
+    if CLERK_JWKS_URL:
+        return CLERK_JWKS_URL
+    if CLERK_ISSUER.startswith('https://'):
+        # Clerk's issuer host exposes the standard JWKS endpoint.
+        return CLERK_ISSUER + '/.well-known/jwks.json'
+    return ''
+
+_jwks_client = None
+_jwks_url_cached = None
+
+def verify_clerk_token(token):
+    """Verify a Clerk session JWT; never accept decoded, unsigned claims."""
+    global _jwks_client, _jwks_url_cached
+    if not CLERK_ISSUER or not CLERK_AUTHORIZED_PARTIES:
+        raise HTTPException(503, 'Clerk authentication is not configured')
+    url = clerk_jwks_url()
+    if not url.startswith('https://'):
+        raise HTTPException(503, 'Clerk JWKS is not configured securely')
+    try:
+        if _jwks_client is None or _jwks_url_cached != url:
+            _jwks_client = PyJWKClient(url, timeout=5, cache_jwk_set=True)
+            _jwks_url_cached = url
+        signing_key = _jwks_client.get_signing_key_from_jwt(token)
+        claims = jwt.decode(token, signing_key.key, algorithms=['RS256'], issuer=CLERK_ISSUER,
+                            options={'require': ['sub', 'iss', 'exp', 'nbf', 'azp']})
+        if claims.get('azp') not in CLERK_AUTHORIZED_PARTIES:
+            raise jwt.InvalidTokenError('Unauthorized party')
+        if not isinstance(claims.get('sub'), str) or not claims['sub']:
+            raise jwt.InvalidTokenError('Missing subject')
+        return claims
+    except Exception:
+        # JWKS/network/config failures fail closed and never reveal token or provider details.
+        raise HTTPException(401, 'Invalid or unverifiable Clerk session') from None
+
+async def session_user(request: Request, __session: str | None = Cookie(default=None)):
+    authorization = request.headers.get('authorization', '')
+    token = authorization[7:].strip() if authorization.lower().startswith('bearer ') else __session
+    if not token:
+        raise HTTPException(401, 'Sign in required')
+    claims = verify_clerk_token(token)
+    subject = claims['sub']
+    handle = next((claims.get(k) for k in ('username', 'preferred_username', 'name') if isinstance(claims.get(k), str) and claims[k].strip()), subject)
+    handle = re.sub(r'[^A-Za-z0-9_.@ -]', '', handle).strip()[:255] or subject
+    with engine.begin() as db:
+        db.execute(text('INSERT INTO clerk_profiles (clerk_id, display_handle) VALUES (:id,:handle) ON CONFLICT (clerk_id) DO UPDATE SET display_handle=excluded.display_handle WHERE clerk_profiles.deleted_at IS NULL'), {'id':subject,'handle':handle})
+        profile = db.execute(text('SELECT clerk_id, display_handle, deleted_at FROM clerk_profiles WHERE clerk_id=:id'), {'id':subject}).mappings().first()
+    if not profile or profile['deleted_at'] is not None:
+        raise HTTPException(401, 'Account is unavailable')
+    return {'id': subject, 'clerk_id': subject, 'login': profile['display_handle']}
 
 def owned(db, project_id, user_id):
     row = db.execute(text('SELECT * FROM projects WHERE id=:id AND user_id=:user'), {'id': project_id, 'user': user_id}).mappings().first()
     if not row: raise HTTPException(404, 'Project not found')
     return row
 
-@app.get('/api/auth/github')
-async def github_auth():
-    if not CLIENT_ID or not CLIENT_SECRET: raise HTTPException(503, 'GitHub sign-in is not configured')
-    state = secrets.token_urlsafe(32)
-    with engine.begin() as db: db.execute(text('INSERT INTO oauth_states VALUES (:state,:expires)'), {'state': digest(state), 'expires': stamp(now()+timedelta(minutes=10))})
-    params = urlencode({'client_id': CLIENT_ID, 'redirect_uri': PUBLIC_API_URL + '/api/auth/callback', 'scope': 'read:user', 'state': state})
-    response = RedirectResponse('https://github.com/login/oauth/authorize?' + params, status_code=302)
-    response.set_cookie('crease_oauth', state, httponly=True, secure=SECURE, samesite='lax', max_age=600, path='/')
-    return response
-
-@app.get('/api/auth/callback')
-async def github_callback(code: str, state: str, crease_oauth: str | None = Cookie(default=None)):
-    if not crease_oauth or not secrets.compare_digest(state, crease_oauth): raise HTTPException(400, 'Invalid OAuth state')
-    with engine.begin() as db:
-        result = db.execute(text('DELETE FROM oauth_states WHERE state_hash=:state AND expires_at>:now'), {'state': digest(state), 'now': stamp(now())})
-        if result.rowcount != 1: raise HTTPException(400, 'Expired OAuth state')
+@app.post('/api/clerk-webhook')
+async def clerk_webhook(request: Request):
+    """Verify Clerk/Svix delivery; tombstone deleted identities without deleting data."""
+    if not CLERK_WEBHOOK_SECRET:
+        raise HTTPException(503, 'Clerk webhook is not configured')
+    body = await request.body()
+    headers = {key: request.headers.get(key, '') for key in ('svix-id', 'svix-timestamp', 'svix-signature')}
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            token_response = await client.post('https://github.com/login/oauth/access_token', data={'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET, 'code': code, 'redirect_uri': PUBLIC_API_URL+'/api/auth/callback'}, headers={'Accept': 'application/json'})
-            token = token_response.json().get('access_token')
-            if not token: raise HTTPException(400, 'GitHub authorization failed. Start sign-in again and check the OAuth app configuration.')
-            user_response = await client.get('https://api.github.com/user', headers={'Authorization': 'Bearer '+token, 'Accept': 'application/vnd.github+json'})
-            if user_response.status_code != 200: raise HTTPException(400, 'GitHub user lookup failed')
-            profile = user_response.json()
-    except httpx.RequestError as exc:
-        raise HTTPException(503, 'Could not connect to GitHub. Check the API server network connection, then start sign-in again.') from exc
-    github_id = str(profile['id']); login = profile['login']; new_id = str(uuid4()); session = secrets.token_urlsafe(32)
-    with engine.begin() as db:
-        db.execute(text('INSERT INTO users (id,github_id,login) VALUES (:id,:github,:login) ON CONFLICT (github_id) DO UPDATE SET login=:login'), {'id':new_id,'github':github_id,'login':login})
-        user_id = db.execute(text('SELECT id FROM users WHERE github_id=:github'), {'github': github_id}).scalar_one()
-        db.execute(text('INSERT INTO sessions VALUES (:token,:user,:expires)'), {'token':digest(session), 'user':user_id, 'expires':stamp(now()+timedelta(days=7))})
-    response = RedirectResponse(FRONTEND_URL+'/dashboard', status_code=302)
-    response.set_cookie('crease_session', session, httponly=True, secure=SECURE, samesite='lax', max_age=604800, path='/')
-    response.delete_cookie('crease_oauth', path='/')
-    return response
+        event = Webhook(CLERK_WEBHOOK_SECRET).verify(body, headers)
+    except (WebhookVerificationError, ValueError, TypeError):
+        raise HTTPException(400, 'Invalid Clerk webhook') from None
+    if event.get('type') == 'user.deleted':
+        clerk_id = (event.get('data') or {}).get('id')
+        if not isinstance(clerk_id, str) or not clerk_id:
+            raise HTTPException(400, 'Invalid Clerk deletion event')
+        with engine.begin() as db:
+            db.execute(text('UPDATE clerk_profiles SET deleted_at=:at WHERE clerk_id=:id'), {'at':stamp(now()), 'id':clerk_id})
+    return {'received': True}
 
 @app.get('/api/me')
 async def me(user=Depends(session_user)): return user
 
-@app.post('/api/logout')
-async def logout(response: Response, crease_session: str | None = Cookie(default=None), user=Depends(session_user)):
-    with engine.begin() as db: db.execute(text('DELETE FROM sessions WHERE token_hash=:token'), {'token':digest(crease_session)})
-    response.delete_cookie('crease_session', path='/'); response.delete_cookie('crease_app_token', path='/'); return {'ok':True}
 
 class ProjectInput(BaseModel):
     name: str = Field(min_length=1,max_length=100)
@@ -348,7 +376,7 @@ class GitRepositoryInput(BaseModel):
 
 def app_cipher():
     if not all((GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET, GITHUB_APP_TOKEN_KEY)):
-        raise HTTPException(503, 'GitHub App is not configured by the Crease administrator')
+        raise HTTPException(503, 'GitHub App is not configured by the Zappa administrator')
     try: return Fernet(GITHUB_APP_TOKEN_KEY.encode())
     except ValueError: raise HTTPException(503, 'GitHub App token key is invalid')
 
@@ -410,7 +438,7 @@ async def github_app_callback(code: str, state: str, crease_app_state: str | Non
         token = result.json().get('access_token')
         if not token: raise HTTPException(400, 'GitHub connection failed; try again')
         profile = await github_app_request(token, '/user')
-        if str(profile['id']) != user['github_id']: raise HTTPException(403, 'Connect the same GitHub account used to sign in')
+        # GitHub repository authorization is independent from Zappa account identity. Project ownership was checked above.
     except httpx.RequestError as exc: raise HTTPException(503, 'Could not connect to GitHub') from exc
     with engine.begin() as db:
         db.execute(text('INSERT INTO github_connections (user_id,encrypted_token) VALUES (:user,:token) ON CONFLICT (user_id) DO UPDATE SET encrypted_token=:token'), {'user':user['id'], 'token':cipher.encrypt(token.encode()).decode()})
@@ -624,11 +652,12 @@ class Batch(BaseModel):
 async def limits(request: Request, call_next):
     origin = request.headers.get('origin')
     payment_webhook = bool(re.fullmatch(r'/api/payment-webhooks/stripe/[0-9a-f-]{36}', request.url.path))
+    clerk_webhook_request = request.url.path == '/api/clerk-webhook'
     if request.url.path == '/api/events' and request.method == 'OPTIONS':
         return Response(status_code=204, headers={'Access-Control-Allow-Origin': origin or 'null', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Crease-Key', 'Vary': 'Origin'})
-    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events', '/internal/retention') and not payment_webhook and origin != FRONTEND_URL:
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events', '/internal/retention', '/api/clerk-webhook') and not payment_webhook and origin != FRONTEND_URL:
         return Response(status_code=403)
-    if payment_webhook:
+    if payment_webhook or clerk_webhook_request:
         peer = request.client.host if request.client else 'unknown'
         if not limiter.consume('webhook-ip:' + peer, RATE_LIMIT_PROJECT_PER_MINUTE):
             return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
@@ -675,6 +704,8 @@ async def limits(request: Request, call_next):
         if isinstance(project_id, str) and 0 < len(project_id) <= 36 and not limiter.consume('project:' + project_id, RATE_LIMIT_PROJECT_PER_MINUTE):
             return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
     response = await call_next(request)
+    if request.url.path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'no-store'
     if request.url.path == '/api/events' and origin:
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Vary'] = 'Origin'
@@ -1149,7 +1180,7 @@ async def delete_project_goal(project_id: str, goal_id: str, user=Depends(sessio
     return Response(status_code=204)
 
 
-# Vercel access is per Crease account, encrypted at rest, and never sent to the browser.
+# Vercel access is per Zappa account, encrypted at rest, and never sent to the browser.
 def vercel_cipher():
     if not all((VERCEL_INTEGRATION_SLUG, VERCEL_INTEGRATION_CLIENT_ID, VERCEL_INTEGRATION_CLIENT_SECRET, VERCEL_TOKEN_KEY)):
         raise HTTPException(503, 'Vercel integration is not configured')

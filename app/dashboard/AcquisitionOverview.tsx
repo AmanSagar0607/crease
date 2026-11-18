@@ -48,7 +48,7 @@ export default function AcquisitionOverview({ projectId, days, filtered, refresh
         <h3 id="revenue-overview-title">Revenue reporting</h3>
         <div className={s.revenueDivider} aria-hidden="true" />
         <p>Revenue reporting is not available yet.</p>
-        <small>Crease will show recorded revenue here when a verified revenue reporting workflow is available.</small>
+        <small>Zappa will show recorded revenue here when a verified revenue reporting workflow is available.</small>
       </section>
     </div>
   );

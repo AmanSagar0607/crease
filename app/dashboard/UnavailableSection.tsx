@@ -35,7 +35,7 @@ const CONTENT: Record<Variant, Content> = {
     eyebrow: 'NO VERIFIED REVENUE',
     title: 'Revenue reporting',
     intro:
-      'Crease never infers revenue from browser events. No verified revenue records exist for this project, and the server-to-server revenue ingestion API is not built yet — so every revenue figure here would be invented. Nothing is shown instead of a fake total.',
+      'Zappa never infers revenue from browser events. No verified revenue records exist for this project, and the server-to-server revenue ingestion API is not built yet — so every revenue figure here would be invented. Nothing is shown instead of a fake total.',
     missing: [
       'A server-to-server ingestion endpoint for verified revenue records',
       'Manual revenue entry with source and verification status',

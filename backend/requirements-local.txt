@@ -7,3 +7,5 @@ psycopg[binary]==3.2.9
 python-dotenv==1.2.2
 cryptography==49.0.0
 stripe==17.0.0
+PyJWT[crypto]==2.10.1
+svix==1.81.0

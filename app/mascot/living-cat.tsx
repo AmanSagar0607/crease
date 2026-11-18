@@ -418,7 +418,7 @@ export default function LivingCat({
     <button
       type="button"
       className={`${s.cat} ${s[variant]} ${className}`.trim()}
-      aria-label="Wake the Crease cat"
+      aria-label="Wake the Zappa cat"
       onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
       onFocus={handleEnter}

@@ -25,18 +25,18 @@ const principles = [
     label: 'PR',
     category: 'Install',
     title: 'Install by pull request.',
-    body: 'Connect a repository and Crease opens a small, reviewable pull request. Nothing merges until you merge it.',
+    body: 'Connect a repository and Zappa opens a small, reviewable pull request. Nothing merges until you merge it.',
   },
 ];
 
 const faqs = [
   {
-    q: 'Is Crease really free?',
-    a: 'Yes. Hosted Crease is free for unlimited projects while it is in early access. If paid plans arrive later, existing projects will hear about it well before anything changes.',
+    q: 'Is Zappa really free?',
+    a: 'Yes. Hosted Zappa is free for unlimited projects while it is in early access. If paid plans arrive later, existing projects will hear about it well before anything changes.',
   },
   {
     q: 'Do I have to change my site’s code?',
-    a: 'You add one script tag, or connect your GitHub repository and Crease opens a small, reviewable pull request. Nothing is merged automatically — you review and merge it yourself.',
+    a: 'You add one script tag, or connect your GitHub repository and Zappa opens a small, reviewable pull request. Nothing is merged automatically — you review and merge it yourself.',
   },
   {
     q: 'Does it work with Next.js?',
@@ -48,15 +48,15 @@ const faqs = [
   },
   {
     q: 'Do I need a cookie banner?',
-    a: 'Crease is built to collect as little as possible, but compliance depends on where you and your visitors are. The tracker waits for a crease:consent event if you need one, and the docs explain the trade-offs honestly.',
+    a: 'Zappa is built to collect as little as possible, but compliance depends on where you and your visitors are. The tracker waits for a crease:consent event if you need one, and the docs explain the trade-offs honestly.',
   },
   {
     q: 'Can I use my own domain?',
-    a: 'Yes. Crease checks the hostname configured for your project and accepts its www counterpart. Your site keeps its own domain; the tracker simply sends events to the collector.',
+    a: 'Yes. Zappa checks the hostname configured for your project and accepts its www counterpart. Your site keeps its own domain; the tracker simply sends events to the collector.',
   },
   {
-    q: 'Who is building Crease?',
-    a: 'Aman, an independent developer. Crease is open source on GitHub, and the roadmap is shaped by the people using it.',
+    q: 'Who is building Zappa?',
+    a: 'Aman, an independent developer. Zappa is open source on GitHub, and the roadmap is shaped by the people using it.',
   },
 ];
 
@@ -91,12 +91,7 @@ export default function Home() {
 
       <div className={s.navWrap}>
         <nav className={s.nav} aria-label="Main navigation">
-          <Link className={s.brand} href="/">
-            <span className={s.brandMark} aria-hidden="true">
-              ✳
-            </span>
-            crease
-          </Link>
+          <Link className={s.brand} href="/">Zappa</Link>
           <div className={s.navLinks}>
             <a href="#how">How it works</a>
             <Link href="/pricing">Pricing</Link>
@@ -121,12 +116,12 @@ export default function Home() {
             things you make.
           </h1>
           <p className={s.heroLead}>
-            A quiet analytics workspace for independent developers. Sign in with GitHub,
+            A quiet analytics workspace for independent developers. Create an account,
             connect a site, and see what people actually do — nothing more.
           </p>
           <div className={s.heroActions}>
-            <Link className={`${s.btn} ${s.btnPrimary}`} href="/waitlist">
-              Join the waitlist <span aria-hidden="true">↗</span>
+            <Link className={`${s.btn} ${s.btnPrimary}`} href="/sign-up">
+              Create your account <span aria-hidden="true">↗</span>
             </Link>
             <a className={`${s.btn} ${s.btnSecondary}`} href="#how">
               <span aria-hidden="true">+</span> See how it works
@@ -144,7 +139,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className={s.mockWrap} aria-label="Crease analytics dashboard preview">
+        <section className={s.mockWrap} aria-label="Zappa analytics dashboard preview">
           <Ghost className={s.ghostMock} />
           <div className={s.catPerch}>
             <LivingCat variant="hero" listen />
@@ -308,7 +303,7 @@ export default function Home() {
             </div>
 
             <div className={s.compareCol}>
-              <p>With Crease</p>
+              <p>With Zappa</p>
               <div className={s.comparePanel}>
                 <div className={s.feedCard}>
                   <span className={s.feedBanner}>
@@ -378,7 +373,7 @@ export default function Home() {
                 <h3>
                   <span>2.</span> Connect your repo
                 </h3>
-                <p>Crease inspects the default branch and prepares the change.</p>
+                <p>Zappa inspects the default branch and prepares the change.</p>
               </div>
             </div>
 
@@ -386,7 +381,7 @@ export default function Home() {
               <div className={s.stepPanel}>
                 <div className={s.miniCard}>
                   <div className={s.prHead}>
-                    Add Crease tracking
+                    Add Zappa tracking
                     <span className={s.prDiff}>
                       <span>+2</span>−0
                     </span>
@@ -503,7 +498,7 @@ export default function Home() {
               <h2 className={s.h2}>Built in the open.</h2>
               <p className={s.lead}>
                 A small, honest product: no growth team, no dark patterns, no borrowed logos.
-                Here is what Crease actually does.
+                Here is what Zappa actually does.
               </p>
               <span className={s.badge}>
                 <i aria-hidden="true" />
@@ -556,7 +551,7 @@ export default function Home() {
           <Ghost className={s.ghostCta} />
           <div className={s.ctaInner}>
             <p className={s.founderNote}>
-              I built Crease because I wanted a quieter way to know if the things I ship are
+              I built Zappa because I wanted a quieter way to know if the things I ship are
               working. No dashboards to configure, no numbers to perform for. Just a clear look
               at what people do when they arrive.
               <span className={s.signature}>— Aman</span>
@@ -620,13 +615,13 @@ export default function Home() {
           </div>
           <div>
             <p className={s.footerLegal}>
-              Crease is an independent project. Your data belongs to you, and you can delete it
+              Zappa is an independent project. Your data belongs to you, and you can delete it
               whenever you like. Built in the open, without a growth team.
             </p>
           </div>
         </div>
         <div className={s.footerBottom}>
-          <span>© 2026 Crease</span>
+          <span>© 2026 Zappa</span>
           <span>Made for the things you make.</span>
         </div>
       </footer>

@@ -164,7 +164,7 @@ export default function GoalsSection({ projectId, range }: Props) {
         </div>
       ) : <div className={s.panel}>
         <h3>No goals yet</h3>
-        <p className={s.note}>{events.length ? 'Create a goal using an event that Crease has already observed. Its progress will reflect real event counts in the selected date range.' : 'Once this project receives events, you can set a target for one of them. No sample metrics are shown.'}</p>
+        <p className={s.note}>{events.length ? 'Create a goal using an event that Zappa has already observed. Its progress will reflect real event counts in the selected date range.' : 'Once this project receives events, you can set a target for one of them. No sample metrics are shown.'}</p>
       </div>}
     </section>
   );
