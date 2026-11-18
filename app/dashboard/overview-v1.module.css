@@ -140,3 +140,92 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Overview redesign: strict 4+3 KPI hierarchy, a centered editorial report, and readable chart labels. */
+.overview { margin: 0 0 32px; }
+.header { align-items: end; padding: 4px 0 18px; }
+.header h2 { margin: 7px 0 5px; font-family: var(--font-display, Georgia, serif); font-size: clamp(1.75rem, 2.5vw, 2rem); font-weight: 500; letter-spacing: -.02em; line-height: 1.15; }
+.header p { margin: 0; color: var(--muted); font-size: 1.0625rem; line-height: 1.5; }
+.eyebrow { color: var(--muted); font-size: .8125rem; font-weight: 650; letter-spacing: .08em; }
+.definitions { margin: 0 0 16px; color: var(--muted); font-size: .8125rem; }
+.definitions summary { width: fit-content; cursor: pointer; text-underline-offset: 3px; }
+.definitions summary:hover { color: var(--ink); }
+.definitions p { max-width: 80ch; margin: 8px 0 0; font-size: .8125rem; line-height: 1.55; }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; border: 0; }
+.kpi { min-width: 0; padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); box-shadow: none; transition: border-color 150ms ease; }
+.kpi:hover { border-color: var(--lineStrong); }
+.kpi > span { display: block; color: var(--muted); font-size: .875rem; }
+.info { color: var(--muted); font-size: .8125rem; }
+.kpi strong { display: block; margin: 12px 0 8px; color: var(--ink); font-family: var(--font-mono, ui-monospace, monospace); font-size: 2rem; font-weight: 500; letter-spacing: -.04em; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.kpi small { color: var(--muted); font-size: .8125rem; }
+.unconfigured { display: grid; gap: 8px; margin-top: 14px; }
+.unconfigured strong { margin: 0; font-family: inherit; font-size: .875rem; font-weight: 500; letter-spacing: 0; }
+.unconfigured button { width: fit-content; min-height: 36px; padding: 0 10px; border: 1px solid var(--lineStrong); border-radius: 7px; background: transparent; color: var(--blue); font: inherit; font-size: .8125rem; cursor: pointer; }
+.unconfigured button:hover { background: var(--soft); }
+.secondaryStats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin-top: 12px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.secondaryStat { display: grid; align-content: center; gap: 5px; min-width: 0; padding: 12px 16px; }
+.secondaryStat + .secondaryStat { border-left: 1px solid var(--line); }
+.secondaryStat > span { color: var(--muted); font-size: .8125rem; }
+.secondaryStat > strong { color: var(--ink); font-family: var(--font-mono, ui-monospace, monospace); font-size: 1.125rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.secondaryStat .unconfigured { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; }
+.secondaryStat .unconfigured button { min-height: 32px; }
+.chart, .panel { min-width: 0; padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); box-shadow: none; }
+.chart { margin-top: 16px; }
+.chart .sectionHead { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.sectionHead h3, .revenue h3 { margin: 5px 0 0; color: var(--ink); font-size: 1.125rem; font-weight: 550; letter-spacing: -.02em; }
+.sectionHead p { margin: 4px 0 0; color: var(--muted); font-size: .875rem; line-height: 1.5; }
+.sectionHead a { color: var(--ink); font-size: .8125rem; text-underline-offset: 3px; }
+.legend { order: -1; display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: .875rem; }
+.legend span:first-child { color: var(--ink); }
+.legend span:nth-child(2) { color: var(--blue); }
+.sparseNote { margin: 12px 0 0; color: var(--muted); font-size: .8125rem; line-height: 1.45; }
+.chartArea { height: 320px; margin-top: 14px; }
+.twoCol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.scroll { overflow-x: auto; }
+.scroll table { width: 100%; margin-top: 14px; font-size: .8125rem; }
+.scroll th { color: var(--muted); font-size: .8125rem; font-weight: 600; text-align: left; }
+.scroll th, .scroll td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); }
+.empty { min-height: 100px; color: var(--muted); font-size: .875rem; line-height: 1.5; }
+.activity li { font-size: .8125rem; }
+.activity time { font-size: .8125rem; }
+.revenue { padding: 20px 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.revenue p { color: var(--muted); font-size: .875rem; line-height: 1.5; }
+.revenueActions a { font-size: .8125rem; }
+.sourceTools label, .sourceNote { font-size: .8125rem; }
+.sourceTools input, .sourceTools button { min-height: 40px; font-size: .875rem; }
+.skeletonGrid span { font-size: .875rem; }
+.error { border-radius: 12px; font-size: .875rem; }
+.error p { font-size: .875rem; }
+.overview :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+@media (max-width: 900px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .header { align-items: flex-start; }
+  .twoCol { grid-template-columns: 1fr; gap: 12px; }
+}
+@media (max-width: 600px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .kpi { padding: 16px 14px; }
+  .kpi strong { font-size: 1.625rem; }
+  .secondaryStats { padding: 2px 4px; }
+  .secondaryStat { padding: 10px 8px; }
+  .secondaryStat > strong { font-size: 1rem; }
+  .chart, .panel { padding: 18px 14px; }
+  .chartArea { height: 280px; }
+  .legend { gap: 10px; font-size: .8125rem; }
+  .revenue { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 360px) {
+  .kpis { grid-template-columns: 1fr; }
+  .secondaryStats { grid-template-columns: 1fr; }
+  .secondaryStat + .secondaryStat { border-top: 1px solid var(--line); border-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kpi { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .kpi, .secondaryStats, .chart, .panel, .revenue { background: #1e1c1a; }
+}
+@media (prefers-contrast: more) {
+  .kpi, .secondaryStats, .chart, .panel, .revenue, .unconfigured button { border-color: #a29d91; }
+}

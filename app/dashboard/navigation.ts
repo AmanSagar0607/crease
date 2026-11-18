@@ -50,6 +50,16 @@ export const NAV_SECTIONS: NavItem[] = [
   { id: 'live', label: 'Live activity', icon: Activity },
 ];
 
+export type NavGroup = { label: string; items: NavItem[] };
+
+// Grouping changes presentation only; every existing analytics destination remains intact.
+export const NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'Analytics',
+    items: NAV_SECTIONS,
+  },
+];
+
 export const PROJECT_NAV: ProjectSection[] = ['installation', 'integrations', 'settings'];
 
 export const PROJECT_ICONS: Record<ProjectSection, LucideIcon> = {

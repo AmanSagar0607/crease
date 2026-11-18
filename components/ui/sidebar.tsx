@@ -26,10 +26,11 @@ import { PanelLeftIcon } from "lucide-react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16rem"
-const SIDEBAR_WIDTH_MOBILE = "18rem"
-const SIDEBAR_WIDTH_ICON = "3rem"
-const SIDEBAR_KEYBOARD_SHORTCUT = "b"
+const SIDEBAR_STORAGE_KEY = "zappa.sidebar_state"
+const SIDEBAR_WIDTH = "15.5rem"
+const SIDEBAR_WIDTH_MOBILE = "100vw"
+const SIDEBAR_WIDTH_ICON = "4rem"
+const SIDEBAR_KEYBOARD_SHORTCUT = "["
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -71,6 +72,17 @@ function SidebarProvider({
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
   const [_open, _setOpen] = React.useState(defaultOpen)
+  React.useEffect(() => {
+    if (openProp !== undefined) return
+    try {
+      const stored = window.localStorage.getItem(SIDEBAR_STORAGE_KEY)
+      const saved = stored ?? document.cookie.match(/(?:^|;\s*)sidebar_state=(true|false)/)?.[1]
+      if (saved === "true" || saved === "false") _setOpen(saved === "true")
+    } catch {
+      const saved = document.cookie.match(/(?:^|;\s*)sidebar_state=(true|false)/)?.[1]
+      if (saved) _setOpen(saved === "true")
+    }
+  }, [openProp])
   const open = openProp ?? _open
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
@@ -82,7 +94,12 @@ function SidebarProvider({
       }
 
       // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+      try {
+        window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(openState))
+      } catch {
+        // The cookie below remains a safe fallback when storage is unavailable.
+      }
+      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}; SameSite=Lax${window.location.protocol === "https:" ? "; Secure" : ""}`
     },
     [setOpenProp, open]
   )
@@ -95,10 +112,14 @@ function SidebarProvider({
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
-        (event.metaKey || event.ctrlKey)
-      ) {
+      const target = event.target
+      const isEditing = target instanceof HTMLElement && (
+        target.isContentEditable ||
+        target.closest("input, textarea, select, [contenteditable='true']") !== null
+      )
+      const bracketsShortcut = event.key === SIDEBAR_KEYBOARD_SHORTCUT && !event.metaKey && !event.ctrlKey && !event.altKey && !isEditing
+      const legacyShortcut = event.key.toLowerCase() === "b" && (event.metaKey || event.ctrlKey)
+      if (bracketsShortcut || legacyShortcut) {
         event.preventDefault()
         toggleSidebar()
       }
@@ -186,7 +207,7 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:!top-2 [&>button]:!right-2 [&>button]:!size-11"
+          className="w-(--sidebar-width) max-w-none rounded-none bg-sidebar p-0 text-sidebar-foreground [&>button]:!top-2 [&>button]:!right-2 [&>button]:!size-11"
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,

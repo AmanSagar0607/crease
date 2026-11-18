@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { invalidCustomRange, PRESET_LABELS, type AttributionModel, type Preset, type Range } from './reporting';
+import { useEffect, useRef, useState } from 'react';
+import { CalendarDays, ChevronDown, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { invalidCustomRange, type AttributionModel, type Preset, type Range } from './reporting';
 import s from './sections.module.css';
 
 type Props = {
@@ -20,11 +21,22 @@ type Props = {
   updatedLabel?: string;
 };
 
-/**
- * Shared reporting controls: date presets, custom UTC range, attribution model
- * and the selected conversion event. Rendered once above analytics sections so
- * every section reads the same reporting window.
- */
+const RANGE_BUTTONS: { key: Preset; label: string }[] = [
+  { key: 'today', label: 'Today' },
+  { key: '7', label: '7d' },
+  { key: '30', label: '30d' },
+  { key: 'custom', label: 'Custom' },
+];
+const MORE_RANGES: { key: Preset; label: string }[] = [
+  { key: 'yesterday', label: 'Yesterday' },
+  { key: '90', label: '90 days' },
+];
+const ATTRIBUTION_OPTIONS: { key: AttributionModel; label: string }[] = [
+  { key: 'first_touch', label: 'First touch' },
+  { key: 'last_touch', label: 'Last touch' },
+  { key: 'last_non_direct', label: 'Last non-direct' },
+];
+
 export default function ReportToolbar({
   preset,
   range,
@@ -41,117 +53,118 @@ export default function ReportToolbar({
   updatedLabel,
 }: Props) {
   const [conversionDraft, setConversionDraft] = useState(conversionEvent);
+  const filtersRef = useRef<HTMLDetailsElement>(null);
   useEffect(() => setConversionDraft(conversionEvent), [conversionEvent]);
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      if (filtersRef.current?.open && !filtersRef.current.contains(event.target as Node)) {
+        filtersRef.current.open = false;
+      }
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, []);
   const invalid = invalidCustomRange(draft);
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className={s.toolbar} role="group" aria-label="Reporting controls">
+    <section className={s.toolbar} aria-label="Report controls">
       <div className={s.toolbarRow}>
-        <label className={s.field}>
-          <span>Reporting period</span>
-          <select
-            value={preset}
-            onChange={(event) => {
-              const next = event.target.value as Preset;
-              onPresetChange(next);
-            }}
-          >
-            {(Object.keys(PRESET_LABELS) as Preset[]).map((key) => (
-              <option key={key} value={key}>
-                {PRESET_LABELS[key]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className={s.rangeGroup} role="group" aria-label="Reporting period">
+          {RANGE_BUTTONS.map(({ key, label }) => (
+            <button
+              className={s.rangeButton}
+              key={key}
+              type="button"
+              aria-pressed={preset === key}
+              onClick={() => onPresetChange(key)}
+            >
+              {key === 'custom' && <CalendarDays aria-hidden="true" />}
+              {label}
+            </button>
+          ))}
+          <details className={s.moreRanges}>
+            <summary aria-label="More reporting periods"><span>More</span><ChevronDown aria-hidden="true" /></summary>
+            <div className={s.moreRangesMenu}>
+              {MORE_RANGES.map(({ key, label }) => (
+                <button key={key} type="button" aria-pressed={preset === key} onClick={() => onPresetChange(key)}>{label}</button>
+              ))}
+            </div>
+          </details>
+        </div>
 
-        <label className={s.field}>
-          <span>Attribution</span>
-          <select value={model} onChange={(event) => onModelChange(event.target.value as AttributionModel)}>
-            <option value="first_touch">First touch</option>
-            <option value="last_touch">Last touch</option>
-            <option value="last_non_direct">Last non-direct</option>
-          </select>
-        </label>
-
-        <form
-          className={s.field}
-          onSubmit={(event) => {
-            event.preventDefault();
-            onConversionEventChange(conversionDraft.trim());
+        <details
+          className={s.filtersPopover}
+          ref={filtersRef}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && filtersRef.current) {
+              filtersRef.current.open = false;
+              filtersRef.current.querySelector('summary')?.focus();
+            }
           }}
         >
-          <span>Conversion event</span>
-          <div className={s.inlineForm}>
-            <input
-              type="text"
-              maxLength={64}
-              value={conversionDraft}
-              onChange={(event) => setConversionDraft(event.target.value)}
-              placeholder="e.g. signup"
-              aria-label="Conversion event name"
-            />
-            <button type="submit">Apply</button>
-            {conversionEvent && (
-              <button
-                type="button"
-                onClick={() => {
-                  setConversionDraft('');
-                  onConversionEventChange('');
-                }}
-              >
-                Clear
-              </button>
-            )}
+          <summary><SlidersHorizontal aria-hidden="true" /> Filters <ChevronDown aria-hidden="true" /></summary>
+          <div className={s.filterPanel}>
+            <fieldset className={s.attributionGroup}>
+              <legend>Attribution model</legend>
+              <div role="radiogroup" aria-label="Attribution model">
+                {ATTRIBUTION_OPTIONS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="radio"
+                    aria-checked={model === key}
+                    onClick={() => onModelChange(key)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <form
+              className={s.conversionForm}
+              onSubmit={(event) => {
+                event.preventDefault();
+                onConversionEventChange(conversionDraft.trim());
+              }}
+            >
+              <label htmlFor="conversion-event">Conversion event</label>
+              <div className={s.conversionActions}>
+                <input
+                  id="conversion-event"
+                  type="text"
+                  maxLength={64}
+                  value={conversionDraft}
+                  onChange={(event) => setConversionDraft(event.target.value)}
+                  placeholder="e.g. signup"
+                />
+                <button type="submit">Apply</button>
+                {conversionEvent && (
+                  <button type="button" onClick={() => { setConversionDraft(''); onConversionEventChange(''); }}>Clear</button>
+                )}
+              </div>
+            </form>
+            <p className={s.timezone}>Timezone: UTC calendar days</p>
           </div>
-        </form>
+        </details>
 
-        <span className={s.timezone} title="All reporting dates use UTC calendar days">
-          Timezone: UTC
-        </span>
-
-        <div className={s.refreshGroup}>
-          {onRefresh && (
-            <button className={s.applyButton} type="button" onClick={onRefresh} disabled={refreshing}>
-              {refreshing ? 'Refreshing…' : 'Refresh data'}
-            </button>
-          )}
-          {updatedLabel && <span className={s.timezone}>{updatedLabel}</span>}
-        </div>
+        {onRefresh && (
+          <button className={s.refreshIconButton} type="button" onClick={onRefresh} disabled={refreshing} aria-label="Refresh analytics" title="Refresh analytics">
+            <RefreshCw aria-hidden="true" className={refreshing ? s.spinning : undefined} />
+          </button>
+        )}
+        {updatedLabel && <span className={s.updatedStatus}>{updatedLabel}</span>}
+        <span className={s.rangeStatus} aria-live="polite">{range.start} – {range.end} UTC</span>
       </div>
 
       {preset === 'custom' && (
-        <div className={s.customRow}>
-          <label className={s.field}>
-            <span>From</span>
-            <input
-              type="date"
-              value={draft.start}
-              max={draft.end || today}
-              onChange={(event) => onDraftChange({ ...draft, start: event.target.value })}
-            />
-          </label>
-          <label className={s.field}>
-            <span>To</span>
-            <input
-              type="date"
-              value={draft.end}
-              max={today}
-              onChange={(event) => onDraftChange({ ...draft, end: event.target.value })}
-            />
-          </label>
-          <button className={s.applyButton} type="button" disabled={invalid} onClick={onApplyRange}>
-            Apply dates
-          </button>
-          {invalid && <span className={s.fieldHint}>Choose up to 90 days ending no later than today.</span>}
+        <div className={s.customRange}>
+          <label><span>From</span><input type="date" value={draft.start} max={draft.end || today} onChange={(event) => onDraftChange({ ...draft, start: event.target.value })} /></label>
+          <label><span>To</span><input type="date" value={draft.end} max={today} onChange={(event) => onDraftChange({ ...draft, end: event.target.value })} /></label>
+          <button type="button" disabled={invalid} onClick={onApplyRange}>Apply dates</button>
+          {invalid && <span className={s.rangeError}>Choose up to 90 UTC calendar days ending no later than today.</span>}
         </div>
       )}
-
-      <p className={s.toolbarNote}>
-        {range.start} – {range.end} UTC · every section on this page uses this window
-        {conversionEvent ? ` · conversions count visitors who triggered “${conversionEvent}”` : ' · no conversion event selected yet'}
-        .
-      </p>
-    </div>
+    </section>
   );
 }

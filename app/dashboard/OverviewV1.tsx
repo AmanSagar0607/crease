@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { AnalyticsSection } from './navigation';
 import { compareLabel, display, eventLabel, type AttributionModel, type Metrics, type Report } from './reporting';
 import s from './overview-v1.module.css';
@@ -17,14 +17,17 @@ type Props = {
   onNavigate: (section: AnalyticsSection) => void;
 };
 
-const METRICS: { key: keyof Metrics; label: string; description: string; rate?: boolean }[] = [
+const PRIMARY_METRICS: { key: keyof Metrics; label: string; description: string; rate?: boolean }[] = [
   { key: 'visitors', label: 'Unique visitors', description: 'Distinct visitor IDs with events in this period.' },
   { key: 'sessions', label: 'Sessions', description: 'Server-assigned sessions starting in this period.' },
   { key: 'pageviews', label: 'Page views', description: 'Pageview events in this period.' },
+  { key: 'conversion_rate', label: 'Conversion rate', description: 'Converted visitors divided by unique visitors.', rate: true },
+];
+
+const SECONDARY_METRICS: { key: keyof Metrics; label: string; description: string }[] = [
   { key: 'new_visitors', label: 'New visitors', description: 'First observed in retained project history during this period.' },
   { key: 'returning_visitors', label: 'Returning visitors', description: 'Observed before this period in retained project history.' },
   { key: 'conversions', label: 'Converted visitors', description: 'Distinct visitors who triggered the selected conversion event.' },
-  { key: 'conversion_rate', label: 'Conversion rate', description: 'Converted visitors divided by unique visitors.', rate: true },
 ];
 
 export default function OverviewV1({ report, loading, error, onRetry, model, conversionEvent, filtered, onNavigate }: Props) {
@@ -36,6 +39,10 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
       ? rows.filter((row) => [row.source, row.medium, row.campaign].some((value) => value?.toLocaleLowerCase().includes(needle)))
       : rows;
   }, [report, sourceSearch]);
+  const sparse = useMemo(
+    () => (report?.series.filter((point) => point.visitors || point.sessions).length ?? 0) <= 2,
+    [report],
+  );
 
   return (
     <section className={s.overview} id="overview" tabIndex={-1} aria-label="Business overview">
@@ -43,16 +50,19 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
         <div>
           <div className={s.eyebrow}>BUSINESS OVERVIEW</div>
           <h2>Understand what brings people in.</h2>
-          <p>Traffic, acquisition and conversions from observed activity. All dates are UTC.</p>
+          <p>Observed traffic and conversion activity for this project.</p>
         </div>
       </div>
-      <p className={s.scope}>
-        {report ? `${report.start} – ${report.end} UTC · ${model.replaceAll('_', ' ')} attribution` : 'Loading reporting window…'}
-        {filtered ? ' · the detailed event property filter does not apply to these figures' : ''}
-        {conversionEvent
-          ? ` · conversions count visitors who triggered “${conversionEvent}”; attribution can include touchpoints after the conversion.`
-          : ' · choose a conversion event in the controls above to add conversion metrics.'}
-      </p>
+      <details className={s.definitions}>
+        <summary>How these metrics are defined</summary>
+        <p>
+          Dates use UTC calendar days. Attribution: {model.replaceAll('_', ' ')}.
+          {filtered ? ' The detailed event property filter does not apply to these overview figures.' : ''}
+          {conversionEvent
+            ? ` Conversions count visitors who triggered “${conversionEvent}”; attribution can include touchpoints after conversion.`
+            : ' Select a conversion event in Filters or add a goal to configure conversion metrics.'}
+        </p>
+      </details>
 
       {loading ? (
         <div className={s.skeletonGrid} aria-busy="true" role="status">
@@ -72,8 +82,8 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
       ) : (
         report && (
           <>
-            <div className={s.kpis}>
-              {METRICS.map((metric) => (
+            <div className={s.kpis} aria-label="Primary metrics">
+              {PRIMARY_METRICS.map((metric) => (
                 <div className={s.kpi} key={metric.key}>
                   <span title={metric.description}>
                     {metric.label}{' '}
@@ -81,8 +91,33 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                       ⓘ
                     </span>
                   </span>
-                  <strong>{display(report.metrics[metric.key], metric.rate)}</strong>
-                  <small>{compareLabel(report.metrics[metric.key], report.previous[metric.key])}</small>
+                  {metric.key === 'conversion_rate' && !conversionEvent ? (
+                    <div className={s.unconfigured}>
+                      <strong>Not configured</strong>
+                      <button type="button" onClick={() => onNavigate('goals')}>Add a goal</button>
+                    </div>
+                  ) : (
+                    <>
+                      <strong>{display(report.metrics[metric.key], metric.rate)}</strong>
+                      <small>{compareLabel(report.metrics[metric.key], report.previous[metric.key])}</small>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className={s.secondaryStats} aria-label="Audience metrics">
+              {SECONDARY_METRICS.map((metric) => (
+                <div className={s.secondaryStat} key={metric.key}>
+                  <span title={metric.description}>{metric.label}</span>
+                  {metric.key === 'conversions' && !conversionEvent ? (
+                    <div className={s.unconfigured}>
+                      <strong>Not configured</strong>
+                      <button type="button" onClick={() => onNavigate('goals')}>Add a goal</button>
+                    </div>
+                  ) : (
+                    <strong>{display(report.metrics[metric.key])}</strong>
+                  )}
                 </div>
               ))}
             </div>
@@ -105,24 +140,26 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
               ) ? (
                 <div className={s.empty}>No traffic in this period. A chart will appear when activity arrives.</div>
               ) : (
+                <>
+                {sparse && <p className={s.sparseNote}>Activity is sparse in this period; markers show observed days.</p>}
                 <div className={s.chartArea}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={report.series} margin={{ top: 12, right: 16, left: -20, bottom: 0 }}>
-                      <CartesianGrid vertical={false} stroke="var(--line)" />
                       <XAxis
                         dataKey="date"
-                        tick={{ fill: 'var(--muted)', fontSize: 10 }}
+                        interval={Math.max(0, Math.ceil(report.series.length / 6) - 1)}
+                        tick={{ fill: 'var(--muted)', fontSize: 13 }}
                         tickFormatter={(x: string) => x.slice(5)}
                         tickLine={false}
                         axisLine={false}
                       />
-                      <YAxis allowDecimals={false} tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} />
+                      <YAxis allowDecimals={false} tick={{ fill: 'var(--muted)', fontSize: 13 }} tickLine={false} axisLine={false} />
                       <Tooltip
                         contentStyle={{ background: 'var(--paper)', color: 'var(--ink)', border: '1px solid var(--line)' }}
                         labelFormatter={(label) => `${label} UTC`}
                       />
-                      <Line type="monotone" dataKey="visitors" name="Visitors" stroke="var(--ink)" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="sessions" name="Sessions" stroke="var(--chartThird)" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="visitors" name="Visitors" stroke="var(--ink)" strokeWidth={2} dot={sparse ? { r: 3 } : false} />
+                      <Line type="monotone" dataKey="sessions" name="Sessions" stroke="var(--blue)" strokeWidth={2} dot={sparse ? { r: 3 } : false} />
                       <Line
                         type="monotone"
                         dataKey="previous_visitors"
@@ -136,14 +173,15 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                         type="monotone"
                         dataKey="previous_sessions"
                         name="Previous sessions"
-                        stroke="var(--chartThird)"
+                        stroke="var(--blue)"
                         strokeDasharray="4 4"
-                        strokeOpacity={0.5}
+                        strokeOpacity={0.4}
                         dot={false}
                       />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
+                </>
               )}
             </section>
 
