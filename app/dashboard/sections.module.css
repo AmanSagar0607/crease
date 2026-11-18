@@ -844,3 +844,92 @@
     transition: none;
   }
 }
+
+
+/* Report toolbar refresh: compact one-line ranges, disclosure filters, and explicit refresh/status affordances. */
+.toolbar {
+  position: sticky;
+  top: 56px;
+  z-index: 30;
+  display: grid;
+  gap: 10px;
+  margin: 0 0 24px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--page);
+}
+.toolbarRow { display: flex; align-items: center; flex-wrap: nowrap; gap: 10px; min-width: 0; }
+.rangeGroup { display: flex; align-items: center; gap: 2px; flex: none; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); }
+.rangeButton { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--ink2); font: inherit; font-size: .875rem; white-space: nowrap; cursor: pointer; transition: background-color 140ms ease, color 140ms ease; }
+.rangeButton svg { width: 16px; height: 16px; }
+.rangeButton[aria-pressed='true'] { background: var(--soft2); color: var(--ink); }
+.rangeButton:hover { color: var(--ink); }
+.moreRanges { position: relative; }
+.moreRanges > summary { display: flex; align-items: center; gap: 5px; min-height: 38px; padding: 0 9px; border-radius: 6px; color: var(--muted); font-size: .8125rem; cursor: pointer; list-style: none; white-space: nowrap; }
+.moreRanges > summary::-webkit-details-marker { display: none; }
+.moreRanges > summary svg { width: 14px; height: 14px; }
+.moreRangesMenu { position: absolute; z-index: 50; top: calc(100% + 7px); right: 0; display: grid; min-width: 150px; padding: 5px; border: 1px solid var(--lineStrong); border-radius: 9px; background: var(--paper); box-shadow: 0 12px 24px rgba(0,0,0,.24); transform-origin: top right; }
+.moreRangesMenu button { min-height: 40px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink2); font: inherit; font-size: .875rem; text-align: left; cursor: pointer; }
+.moreRangesMenu button:hover, .moreRangesMenu button[aria-pressed='true'] { background: var(--soft); color: var(--ink); }
+.filtersPopover { position: relative; flex: none; }
+.filtersPopover > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid var(--lineStrong); border-radius: 8px; background: var(--paper); color: var(--ink2); font-size: .875rem; cursor: pointer; list-style: none; white-space: nowrap; }
+.filtersPopover > summary::-webkit-details-marker { display: none; }
+.filtersPopover > summary svg { width: 17px; height: 17px; }
+.filtersPopover[open] > summary { border-color: var(--blue); color: var(--ink); }
+.filterPanel { position: absolute; z-index: 60; top: calc(100% + 8px); left: 0; display: grid; gap: 16px; width: min(360px, calc(100vw - 32px)); padding: 18px; border: 1px solid var(--lineStrong); border-radius: 12px; background: var(--paper); box-shadow: 0 18px 40px rgba(0,0,0,.3); transform-origin: top left; }
+.attributionGroup { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+.attributionGroup legend, .conversionForm > label { margin-bottom: 8px; color: var(--ink2); font-size: .875rem; font-weight: 600; }
+.attributionGroup [role='radiogroup'] { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.attributionGroup [role='radio'] { min-height: 40px; padding: 0 10px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--ink2); font: inherit; font-size: .875rem; text-align: left; cursor: pointer; }
+.attributionGroup [role='radio']:hover { background: var(--soft); }
+.attributionGroup [role='radio'][aria-checked='true'] { border-color: var(--lineStrong); background: var(--soft2); color: var(--ink); }
+.conversionForm { display: grid; gap: 7px; }
+.conversionForm > label { margin: 0; }
+.conversionActions { display: flex; flex-wrap: wrap; gap: 7px; }
+.conversionActions input { min-width: 0; height: 42px; flex: 1; padding: 0 10px; border: 1px solid var(--lineStrong); border-radius: 7px; background: var(--page); color: var(--ink); font: inherit; font-size: .875rem; }
+.conversionActions button, .customRange > button { min-height: 42px; padding: 0 12px; border: 1px solid var(--lineStrong); border-radius: 7px; background: var(--soft); color: var(--ink); font: inherit; font-size: .8125rem; cursor: pointer; white-space: nowrap; }
+.conversionActions button[type='submit'], .customRange > button:not(:disabled) { border-color: var(--blue); background: var(--blue); color: #17110f; font-weight: 600; }
+.conversionActions button:hover, .customRange > button:hover:not(:disabled) { filter: brightness(1.08); }
+.timezone { margin: 0; color: var(--muted); font-size: .8125rem; }
+.refreshIconButton { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border: 1px solid var(--lineStrong); border-radius: 8px; background: var(--paper); color: var(--ink2); cursor: pointer; }
+.refreshIconButton:hover:not(:disabled) { background: var(--soft); color: var(--ink); }
+.refreshIconButton:disabled { opacity: .6; cursor: wait; }
+.refreshIconButton svg { width: 18px; height: 18px; }
+.spinning { animation: report-spin 800ms linear infinite; }
+@keyframes report-spin { to { transform: rotate(360deg); } }
+.updatedStatus, .rangeStatus { overflow: hidden; color: var(--muted); font-size: .8125rem; text-overflow: ellipsis; white-space: nowrap; }
+.updatedStatus { flex: 1; min-width: 80px; }
+.rangeStatus { flex: none; font-variant-numeric: tabular-nums; }
+.customRange { display: flex; align-items: end; flex-wrap: wrap; gap: 9px; padding: 4px 0 2px; }
+.customRange label { display: grid; gap: 5px; color: var(--muted); font-size: .8125rem; }
+.customRange input { height: 42px; padding: 0 10px; border: 1px solid var(--lineStrong); border-radius: 7px; background: var(--paper); color: var(--ink); font: inherit; font-size: .875rem; }
+.customRange > button:disabled { opacity: .45; cursor: not-allowed; }
+.rangeError { flex-basis: 100%; color: var(--negative); font-size: .8125rem; }
+.toolbar :is(button, summary, input):focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.toolbar :is(button, summary):active { transform: scale(.98); }
+@media (max-width: 1120px) {
+  .toolbarRow { flex-wrap: wrap; }
+  .updatedStatus { flex: 1 1 150px; }
+}
+@media (max-width: 600px) {
+  .toolbar { top: 52px; gap: 8px; margin-bottom: 18px; }
+  .toolbarRow { gap: 7px; }
+  .rangeGroup { max-width: 100%; overflow-x: auto; }
+  .rangeButton { min-height: 40px; padding-inline: 10px; }
+  .filtersPopover { margin-left: auto; }
+  .updatedStatus { order: 5; flex: 1 1 120px; }
+  .rangeStatus { order: 6; flex: 1 1 100%; }
+  .customRange { align-items: stretch; }
+  .customRange label { min-width: 130px; flex: 1; }
+  .customRange input { width: 100%; }
+  .filterPanel { left: auto; right: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rangeButton, .refreshIconButton svg, .toolbar :is(button, summary):active { transition: none; animation: none; transform: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .toolbar, .filterPanel, .moreRangesMenu { background: #1e1c1a; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (prefers-contrast: more) {
+  .rangeGroup, .filtersPopover > summary, .filterPanel, .moreRangesMenu { border-color: #a29d91; }
+}

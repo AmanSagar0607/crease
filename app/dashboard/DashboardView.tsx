@@ -23,7 +23,7 @@ import LiveActivity from './LiveActivity';
 import useOverviewReport from './useOverviewReport';
 import {
   LEGACY_HASHES,
-  NAV_SECTIONS,
+  NAV_GROUPS,
   PROJECT_ICONS,
   PROJECT_NAV,
   isAnalyticsSection,
@@ -41,10 +41,19 @@ function ProjectNavigation({ children }: { children: ReactNode }) {
       className={s.projectSidebar}
       aria-label="Project navigation"
       onClick={(event) => {
-        if (isMobile && (event.target as Element).closest('a')) setOpenMobile(false);
+        if (isMobile && (event.target as Element).closest('a, button')) setOpenMobile(false);
       }}
       onChange={(event) => {
         if (isMobile && (event.target as Element).matches('select')) setOpenMobile(false);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        const items = Array.from(event.currentTarget.querySelectorAll<HTMLAnchorElement>('nav a[href]'));
+        const current = items.indexOf(document.activeElement as HTMLAnchorElement);
+        if (current < 0 || !items.length) return;
+        event.preventDefault();
+        const next = (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        items[next]?.focus();
       }}
     >
       {children}
@@ -434,6 +443,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [funnelSteps, setFunnelSteps] = useState<string[]>([]);
   const [funnel, setFunnel] = useState<Funnel | null>(null);
   const [funnelBusy, setFunnelBusy] = useState(false);
+  const [funnelError, setFunnelError] = useState('');
   const [origin, setOrigin] = useState('');
   const [tab, setTab] = useState<Tab>('analytics');
   const [activeSection, setActiveSection] = useState<AnalyticsSection>('overview');
@@ -611,31 +621,60 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       const next = current.length
         ? current.slice(0, 5).map((name, index) => (names.includes(name) ? name : names[Math.min(index, names.length - 1)]))
         : names.slice(0, 2);
-      while (next.length < 2) next.push(names[0]);
+      while (next.length < 2 && names.length >= 2) next.push(names[next.length] ?? names[0]);
       return next;
     });
   }, [eventNames]);
 
   const loadFunnel = useCallback(async () => {
-    if (!selected || funnelSteps.length < 2 || funnelSteps.some((step) => !step)) {
+    if (!selected) {
       setFunnel(null);
+      setFunnelError('');
+      return;
+    }
+    if (funnelSteps.length < 2 || funnelSteps.some((step) => !step)) {
+      setFunnel(null);
+      setFunnelError(eventNames.length < 2 ? 'Track at least two distinct events before building a funnel.' : 'Choose at least two funnel steps to continue.');
       return;
     }
     setFunnelBusy(true);
+    setFunnelError('');
     try {
-      const params = new URLSearchParams({ days: '30', ...(reportRange || {}) });
-      funnelSteps.forEach((step) => params.append('steps', step));
-      setFunnel(await api<Funnel>(`/api/projects/${encodeURIComponent(selected)}/funnel/multi?${params.toString()}`));
+      const range = { days: '30', ...(reportRange || {}) };
+      if (funnelSteps.length === 2) {
+        // The deployed API has a stable two-step route; reserve /multi for 3–5 steps.
+        const params = new URLSearchParams({ ...range, first: funnelSteps[0], second: funnelSteps[1] });
+        const result = await api<{ first: string; second: string; first_count: number; second_count: number; conversion: number; days: number }>(
+          `/api/projects/${encodeURIComponent(selected)}/funnel?${params.toString()}`,
+        );
+        setFunnel({
+          days: result.days,
+          start: reportRange?.start ?? '',
+          end: reportRange?.end ?? '',
+          steps: [
+            { event_name: result.first, count: result.first_count, conversion_from_previous: null },
+            { event_name: result.second, count: result.second_count, conversion_from_previous: result.conversion },
+          ],
+        });
+      } else {
+        const params = new URLSearchParams(range);
+        funnelSteps.forEach((step) => params.append('steps', step));
+        setFunnel(await api<Funnel>(`/api/projects/${encodeURIComponent(selected)}/funnel/multi?${params.toString()}`));
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         router.replace('/sign-in');
         return;
       }
-      setError(e instanceof Error ? e.message : 'Could not load the funnel.');
+      if (e instanceof ApiError && e.status === 404 && funnelSteps.length > 2) {
+        setFunnelError('This backend build supports two-step funnels. Redeploy the analytics API to enable 3–5 steps.');
+      } else {
+        setError(e instanceof Error ? e.message : 'Could not load the funnel.');
+      }
     } finally {
       setFunnelBusy(false);
     }
-  }, [selected, reportRange, funnelSteps, router]);
+  }, [selected, reportRange, funnelSteps, eventNames.length, router]);
 
   useEffect(() => {
     void loadFunnel();
@@ -700,6 +739,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setPropertyValue('');
     setFunnelSteps([]);
     setFunnel(null);
+    setFunnelError('');
     setSummaryError('');
   }, [selected]);
 
@@ -888,7 +928,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     window.history.replaceState(null, '', `#${section}`);
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
       const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
-      document.getElementById('main')?.scrollIntoView({ behavior, block: 'start' });
+      const main = document.getElementById('main');
+      if (main) window.scrollTo({ top: main.getBoundingClientRect().top + window.scrollY, behavior });
     }));
   }
 
@@ -920,63 +961,92 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   return (
     <TooltipProvider>
-    <SidebarProvider className={s.sidebarProvider} style={{ '--sidebar-width': '240px' } as CSSProperties}>
+    <SidebarProvider className={s.sidebarProvider} style={{ '--sidebar-width': '248px', '--sidebar-width-icon': '64px' } as CSSProperties}>
     <div className={`${s.dashboard} ${project ? s.analyticsDashboard : ''}`}>
       <a className={s.skip} href="#main">
         Skip to content
       </a>
 
       {project && (
-        <Sidebar className={s.sidebar16}>
+        <Sidebar collapsible="icon" className={s.sidebar16}>
         <ProjectNavigation>
-          <div className={s.sidebarProject}>
-            <span className={s.sidebarProjectMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
-            <span className={s.sidebarProjectText}><strong className={s.verifiedName}><span>{project.domain}</span>{project.verified === true && <VerifiedBadge />}</strong><small>personal workspace</small></span>
-          </div>
-          <label className={s.sidebarSwitcher}>
-            <span className={s.srOnly}>Switch project</span>
-            <select value={selected} onChange={(event) => router.push(`/dashboard/projects/${encodeURIComponent(event.target.value)}`)}>
-              {projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}
-            </select>
-            <ChevronIcon />
-          </label>
-          <Link className={s.sidebarAllProjects} href="/dashboard?view=projects" onClick={() => { setShowProjects(true); setSelected(''); }}><ArrowLeftIcon className={s.iconSm} /> All projects</Link>
-          <span className={s.sidebarCaption}>ANALYTICS</span>
-          <nav className={s.sidebarNav} aria-label="Analytics sections">
-            {NAV_SECTIONS.map((item) => (
-              <a
-                key={item.id}
-                href={`#${item.id}`}
-                className={s.sidebarNavItem}
-                aria-current={tab === 'analytics' && activeSection === item.id ? 'page' : undefined}
-                onClick={(event) => {
-                  event.preventDefault();
-                  selectAnalyticsSection(item.id);
+          <div className={s.sidebarTop}>
+            <div className={s.sidebarBrandRow}>
+              <Link className={s.sidebarBrand} href="/" aria-label="Zappa home">Zappa</Link>
+              <SidebarTrigger className={s.sidebarCollapse} aria-label="Collapse or expand sidebar" />
+            </div>
+            <label className={s.sidebarSwitcher}>
+              <span className={s.srOnly}>Switch website</span>
+              <span className={s.sidebarSwitcherMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
+              <select
+                value={selected}
+                onChange={(event) => {
+                  if (event.target.value === '__all__') {
+                    setShowProjects(true);
+                    setSelected('');
+                    router.push('/dashboard?view=projects');
+                  } else {
+                    router.push(`/dashboard/projects/${encodeURIComponent(event.target.value)}`);
+                  }
                 }}
               >
-                <item.icon className={s.navIcon} aria-hidden="true" />
-                <span>{item.label}</span>
-
-              </a>
-            ))}
-          </nav>
-          <span className={s.sidebarCaption}>PROJECT</span>
+                <option value="__all__">All websites…</option>
+                {projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}
+              </select>
+              <ChevronIcon />
+            </label>
+          </div>
+          <div className={s.sidebarNavScroll}>
+          {NAV_GROUPS.map((group) => (
+            <div className={s.sidebarGroup} key={group.label}>
+              <span className={s.sidebarCaption}>{group.label}</span>
+              <nav className={s.sidebarNav} aria-label={`${group.label} sections`}>
+                {group.items.map((item) => (
+                  <a
+                    key={item.id}
+                    href={`#${item.id}`}
+                    className={s.sidebarNavItem}
+                    aria-label={item.label}
+                    title={item.label}
+                    aria-current={tab === 'analytics' && activeSection === item.id ? 'page' : undefined}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      selectAnalyticsSection(item.id);
+                    }}
+                  >
+                    <item.icon className={s.navIcon} aria-hidden="true" />
+                    <span>{item.label}</span>
+                  </a>
+                ))}
+              </nav>
+            </div>
+          ))}
+          <div className={s.sidebarGroup}>
+          <span className={s.sidebarCaption}>Project</span>
           <nav className={s.sidebarNav} aria-label="Project settings">
             {PROJECT_NAV.map((section) => {
               const Icon = PROJECT_ICONS[section];
               return (
-                <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-current={tab === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectTab(section); }}>
+                <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-label={section[0].toUpperCase() + section.slice(1)} title={section[0].toUpperCase() + section.slice(1)} aria-current={tab === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectTab(section); }}>
                   <Icon className={s.navIcon} aria-hidden="true" />
                   <span>{section[0].toUpperCase() + section.slice(1)}</span>
                 </a>
               );
             })}
           </nav>
-          <div className={s.sidebarAccount}>
-            {user && <span className={s.sidebarUser}><span className={s.avatar} aria-hidden="true">{user.login.slice(0, 1).toUpperCase()}</span><span>{user.login}</span></span>}
-            <Link className={s.sidebarAccountLink} href="/account">Account</Link>
-            <button className={s.signOut} type="button" onClick={logout}>Sign out</button>
           </div>
+          </div>
+          <details className={s.sidebarAccount}>
+            <summary className={s.sidebarAccountSummary} aria-label="Open account menu">
+              <span className={s.avatar} aria-hidden="true">{user?.login.slice(0, 1).toUpperCase() ?? 'A'}</span>
+              <span className={s.sidebarUserName}>{user?.login ?? 'Account'}</span>
+              <ChevronIcon />
+            </summary>
+            <div className={s.sidebarAccountMenu}>
+              <Link href="/account">Account settings</Link>
+              <button className={s.signOut} type="button" onClick={logout}>Sign out</button>
+            </div>
+          </details>
         </ProjectNavigation>
         </Sidebar>
       )}
@@ -985,7 +1055,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         <div className={s.headerInner}>
           <div className={s.headerIdentity}>
             {project && <SidebarTrigger aria-label="Toggle project navigation" />}
-            <Link className={s.brand} href="/">Zappa.</Link>
+            <Link className={s.brand} href="/">Zappa</Link>
             <span className={s.headerDivider} aria-hidden="true" />
             {!project && user && (
               <span className={s.userChip}>
@@ -1019,6 +1089,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
             <Link className={s.headerLink} href="/docs">
               Docs
             </Link>
+            {user && <Link className={`${s.headerLink} ${s.headerPrimary}`} href="/dashboard?view=projects#add-website" onClick={() => { setShowProjects(true); setSelected(''); }}>+ Website</Link>}
             <Link className={s.headerLink} href="/account">
               Account
             </Link>
@@ -1139,7 +1210,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         onConversionEventChange={setConversionEvent}
                         onRefresh={refreshAnalytics}
                         refreshing={summaryBusy}
-                        updatedLabel={`Updated ${relativeWhen(project.last_event_at)} · ${SESSION_DEFINITION.toLowerCase()}`}
+                        updatedLabel={`Last event ${relativeWhen(project.last_event_at)}`}
                       />
 
                       {project.verified === false && (
@@ -1353,11 +1424,23 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                               className={s.filterClear}
                               type="button"
                               disabled={funnelSteps.length >= 5 || !eventNames.length}
-                              onClick={() => setFunnelSteps((current) => [...current, eventNames[0]?.label ?? ''])}
+                              onClick={() => setFunnelSteps((current) => {
+                                const available = eventNames.map((item) => item.label);
+                                return [...current, available.find((name) => !current.includes(name)) ?? available[0] ?? ''];
+                              })}
                             >
                               Add step
                             </button>
                           </div>
+                          {funnelError && (
+                            <div className={s.statePanel} data-tone="warn" role="status">
+                              <AlertIcon className={s.icon} />
+                              <div className={s.statePanelBody}>
+                                <strong>Extended funnel support is pending</strong>
+                                <p>{funnelError}</p>
+                              </div>
+                            </div>
+                          )}
                           {funnelBusy ? (
                             <div className={s.funnelSteps} aria-busy="true" role="status">
                               <span className={s.skeleton} style={{ height: 52 }} />
@@ -1802,7 +1885,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                       workspace.
                     </p>
                   </div>
-                  <form className={s.createForm} onSubmit={createProject}>
+                  <form className={s.createForm} id="add-website" onSubmit={createProject}>
                     <label>
                       Project name
                       <input required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="My website" />
