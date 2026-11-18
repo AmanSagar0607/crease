@@ -12,7 +12,13 @@ The collector responds with `{ "accepted": n }`, where `n` is the number of newl
 
 For cross-origin browser requests, the preflight allows `Content-Type` and `X-Crease-Key`. Origin checks reduce accidental cross-site use but do not authenticate a visitor and do not make public browser events unforgeable.
 
-Country is unknown by default. Public `/api/events` never trusts country headers. The Vercel server route forwards a country to `/internal/events` using `GEO_FORWARD_SECRET`; the backend authenticates it and checks ISO 3166-1 alpha-2. See the deployment instructions in the README before enabling `TRUST_VERCEL_GEO`.
+Country is accepted only on `/internal/events`, which authenticates `GEO_FORWARD_SECRET` first. Forwarded values must be ISO 3166-1 alpha-2 and are stored when `TRUST_VERCEL_GEO` is true (the default). Public `/api/events` never trusts country headers. Missing, disabled, or unrecognized country is stored as unknown; malformed values are rejected with 422.
+
+Requests whose `User-Agent` matches a known crawler, uptime monitor, or automation client are acknowledged with `{ "accepted": 0, "filtered": "bot" }` and are not stored. Set `FILTER_BOTS=false` only while debugging.
+
+## Retention job
+
+`POST /internal/retention` deletes events, session summaries, touchpoints, event properties, and (when those tables exist) expired payment rows for every project according to its `retention_days`. It requires `X-Crease-Retention-Secret` to match `RETENTION_SECRET`; when the secret is unset the route returns 401. The response reports `projects`, `events`, and `sessions` totals. The API also runs retention in-process 30 seconds after startup and every `RETENTION_INTERVAL_HOURS` (default 24), which covers hosts without a cron service. Set `RETENTION_INTERVAL_HOURS=0` to disable the loop and schedule `python backend/expire.py` yourself.
 
 ## Project APIs
 

@@ -8,43 +8,31 @@ const repo = 'https://github.com/AmanSagar0607/crease';
 
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-const quotes = [
+const principles = [
   {
-    text: 'I finally know which page people actually read. It took one pull request.',
-    name: 'Maya R.',
-    role: 'designer & developer',
-    initials: 'MR',
+    label: 'DB',
+    category: 'Storage',
+    title: 'Your data, your database.',
+    body: 'Every event is scoped to your project. You choose a 1–90 day retention window and can delete a project and its data at any time.',
   },
   {
-    text: 'It’s the first analytics tool I don’t feel guilty opening.',
-    name: 'Jonas K.',
-    role: 'solo founder',
-    initials: 'JK',
+    label: 'JS',
+    category: 'Tracker',
+    title: 'A tracker you can read.',
+    body: 'One small script with no cookies and no fingerprinting. Initialization waits for the consent event you control.',
   },
   {
-    text: 'The install PR is the nicest onboarding I’ve seen on a side project.',
-    name: 'Priya N.',
-    role: 'indie hacker',
-    initials: 'PN',
-  },
-  {
-    text: 'Quiet, fast, and it doesn’t want a cookie banner for breakfast.',
-    name: 'Sam O.',
-    role: 'frontend engineer',
-    initials: 'SO',
-  },
-  {
-    text: 'Set it up before my coffee went cold.',
-    name: 'Leo M.',
-    role: 'building in public',
-    initials: 'LM',
+    label: 'PR',
+    category: 'Install',
+    title: 'Install by pull request.',
+    body: 'Connect a repository and Crease opens a small, reviewable pull request. Nothing merges until you merge it.',
   },
 ];
 
 const faqs = [
   {
     q: 'Is Crease really free?',
-    a: 'Yes. One project is free, and everything is free while Crease is in early access. If paid plans arrive later, existing projects will hear about it well before anything changes.',
+    a: 'Yes. Hosted Crease is free for unlimited projects while it is in early access. If paid plans arrive later, existing projects will hear about it well before anything changes.',
   },
   {
     q: 'Do I have to change my site’s code?',
@@ -443,20 +431,20 @@ export default function Home() {
         <section className={`${s.section} ${s.shell} ${s.center}`} id="pricing">
           <Ghost className={s.ghostPricing} />
           <h2 className={s.h2}>
-            Free for one project.
+            Free while it’s early.
             <br />
-            See if it’s useful.
+            Every project, every feature.
           </h2>
           <div className={s.pricingGrid}>
             <article className={s.priceCard}>
               <span className={s.priceName}>Free</span>
               <div className={s.price}>
                 <strong>$0</strong>
-                <span>/ project</span>
+                <span>/ month</span>
               </div>
-              <p className={s.priceDesc}>For the first site, or the forty-first side project.</p>
+              <p className={s.priceDesc}>Hosted analytics for every project you ship.</p>
               <div className={s.priceFeatures}>
-                <span>1 project</span>
+                <span>Unlimited projects</span>
                 <span>All analytics</span>
                 <span>1–90 day retention</span>
                 <span>GitHub installation PR</span>
@@ -466,31 +454,13 @@ export default function Home() {
               </Link>
             </article>
 
-            <article className={`${s.priceCard} ${s.priceFeatured}`}>
-              <span className={s.priceName}>Early access</span>
-              <div className={s.price}>
-                <strong>$0</strong>
-                <span>/ month</span>
-              </div>
-              <p className={s.priceDesc}>Everything Crease can do, while it’s still young.</p>
-              <div className={s.priceFeatures}>
-                <span>Unlimited projects</span>
-                <span>All analytics</span>
-                <span>Vercel integration</span>
-                <span>A direct line to the founder</span>
-              </div>
-              <Link className={`${s.btn} ${s.btnPrimary}`} href="/dashboard">
-                Open dashboard
-              </Link>
-            </article>
-
             <article className={s.priceCard}>
-              <span className={s.priceName}>Self-host</span>
+              <span className={s.priceName}>Open source</span>
               <div className={s.price}>
                 <strong>$0</strong>
                 <span>/ forever</span>
               </div>
-              <p className={s.priceDesc}>Run the whole thing on your own Postgres.</p>
+              <p className={s.priceDesc}>Run the same stack on your own Postgres.</p>
               <div className={s.priceFeatures}>
                 <span>FastAPI + Postgres</span>
                 <span>Tracker and npm package</span>
@@ -500,6 +470,24 @@ export default function Home() {
               <a className={`${s.btn} ${s.btnSecondary}`} href={repo}>
                 Read the source
               </a>
+            </article>
+
+            <article className={`${s.priceCard} ${s.priceFeatured}`}>
+              <span className={s.priceName}>Early access</span>
+              <div className={s.price}>
+                <strong>$0</strong>
+                <span>/ month</span>
+              </div>
+              <p className={s.priceDesc}>Everything now, and a say in what ships next.</p>
+              <div className={s.priceFeatures}>
+                <span>Vercel integration</span>
+                <span>A direct line to the founder</span>
+                <span>Early access to new features</span>
+                <span>Input on the roadmap</span>
+              </div>
+              <Link className={`${s.btn} ${s.btnPrimary}`} href="/dashboard">
+                Open dashboard
+              </Link>
             </article>
           </div>
           <p className={s.footnote}>
@@ -512,33 +500,36 @@ export default function Home() {
           <div className={s.testimonialGrid}>
             <div className={s.testimonialIntro}>
               <Ghost className={s.ghostTestimonial} />
-              <h2 className={s.h2}>What makers are saying.</h2>
+              <h2 className={s.h2}>Built in the open.</h2>
               <p className={s.lead}>
-                Notes from people who connected a site during the first weeks of Crease.
+                A small, honest product: no growth team, no dark patterns, no borrowed logos.
+                Here is what Crease actually does.
               </p>
               <span className={s.badge}>
                 <i aria-hidden="true" />
-                Early feedback, openly shared
+                Apache-2.0 source
               </span>
               <div className={s.avatars}>
                 <span className={s.avatarStack} aria-hidden="true">
-                  {['MR', 'JK', 'PN', 'SO'].map((initials) => (
-                    <span key={initials}>{initials}</span>
+                  {['DB', 'JS', 'PR'].map((label) => (
+                    <span key={label}>{label}</span>
                   ))}
                 </span>
-                Built by independent developers
+                Independent and self-hostable
               </div>
             </div>
 
             <div className={s.quotes}>
-              {quotes.map((quote) => (
-                <blockquote className={s.quote} key={quote.name}>
-                  <p>“{quote.text}”</p>
+              {principles.map((item) => (
+                <article className={s.quote} key={item.title}>
+                  <p>
+                    <strong>{item.title}</strong> {item.body}
+                  </p>
                   <footer>
-                    <span aria-hidden="true">{quote.initials}</span>
-                    {quote.name} · {quote.role}
+                    <span aria-hidden="true">{item.label}</span>
+                    {item.category}
                   </footer>
-                </blockquote>
+                </article>
               ))}
             </div>
           </div>

@@ -7,7 +7,7 @@ import s from '../landing.module.css';
 export const metadata: Metadata = {
   title: 'Pricing — Crease',
   description:
-    'One project free forever. Unlimited projects during early access. Self-host the whole thing with Apache-2.0 source.',
+    'Unlimited projects and all analytics, free while Crease is in early access. Self-host the whole thing with Apache-2.0 source.',
 };
 
 const repo = 'https://github.com/AmanSagar0607/crease';
@@ -16,10 +16,10 @@ const plans = [
   {
     name: 'Free',
     price: '$0',
-    period: '/ project',
-    description: 'For the first site, or the forty-first side project.',
+    period: '/ month',
+    description: 'Hosted analytics for every project you ship.',
     features: [
-      '1 project',
+      'Unlimited projects',
       'All analytics',
       '1–90 day retention',
       'GitHub installation PR',
@@ -28,25 +28,10 @@ const plans = [
     action: { label: 'Start free', href: '/dashboard', style: 'secondary' },
   },
   {
-    name: 'Early access',
-    price: '$0',
-    period: '/ month',
-    description: 'Everything Crease can do, while it’s still young.',
-    features: [
-      'Unlimited projects',
-      'All analytics',
-      'Vercel integration',
-      'A direct line to the founder',
-      'Early access to new features',
-    ],
-    action: { label: 'Open dashboard', href: '/dashboard', style: 'primary' },
-    featured: true,
-  },
-  {
-    name: 'Self-host',
+    name: 'Open source',
     price: '$0',
     period: '/ forever',
-    description: 'Run the whole thing on your own Postgres.',
+    description: 'Run the same stack on your own Postgres.',
     features: [
       'FastAPI + Postgres',
       'Tracker and npm package',
@@ -56,22 +41,36 @@ const plans = [
     ],
     action: { label: 'Read the source', href: repo, style: 'secondary' },
   },
+  {
+    name: 'Early access',
+    price: '$0',
+    period: '/ month',
+    description: 'Everything now, and a say in what ships next.',
+    features: [
+      'Vercel integration',
+      'A direct line to the founder',
+      'Early access to new features',
+      'Input on the roadmap',
+    ],
+    action: { label: 'Open dashboard', href: '/dashboard', style: 'primary' },
+    featured: true,
+  },
 ] as const;
 
 const comparison = [
-  { label: 'Projects', free: '1', early: 'Unlimited', self: 'Unlimited' },
-  { label: 'Page views and custom events', free: 'Included', early: 'Included', self: 'Included' },
-  { label: 'Retention', free: '1–90 days', early: '1–90 days', self: 'Your database' },
-  { label: 'GitHub installation PR', free: 'Included', early: 'Included', self: 'Included' },
-  { label: 'Vercel integration', free: '—', early: 'Included', self: 'Included' },
-  { label: 'Self-host', free: '—', early: '—', self: 'Included' },
-  { label: 'Support', free: 'Community', early: 'Direct line to the founder', self: 'Community' },
+  { label: 'Projects', free: 'Unlimited', open: 'Unlimited', early: 'Unlimited' },
+  { label: 'Page views and custom events', free: 'Included', open: 'Included', early: 'Included' },
+  { label: 'Retention', free: '1–90 days', open: 'Your database', early: '1–90 days' },
+  { label: 'GitHub installation PR', free: 'Included', open: 'Included', early: 'Included' },
+  { label: 'Vercel integration', free: 'Included', open: 'Configure your own', early: 'Included' },
+  { label: 'Self-host', free: '—', open: 'Included', early: '—' },
+  { label: 'Support', free: 'Community', open: 'Community', early: 'Direct line to the founder' },
 ];
 
 const faqs = [
   {
     q: 'Is Crease really free?',
-    a: 'Yes. One project is free forever, and every plan is free while Crease is in early access. If paid plans arrive later, existing projects will hear about it well before anything changes.',
+    a: 'Yes. Hosted Crease is free for unlimited projects while it is in early access. If paid plans arrive later, existing projects will hear about it well before anything changes.',
   },
   {
     q: 'Do I need a credit card?',
@@ -79,7 +78,7 @@ const faqs = [
   },
   {
     q: 'What happens when early access ends?',
-    a: 'Existing projects will be told exactly what changes before it happens. Nothing switches to a paid plan silently, and the free single-project plan stays free.',
+    a: 'Existing projects will be told exactly what changes before it happens. Nothing switches to a paid plan silently.',
   },
   {
     q: 'Can I self-host Crease?',
@@ -87,11 +86,11 @@ const faqs = [
   },
   {
     q: 'What counts as a project?',
-    a: 'One site or app with its own domain. The free plan covers one project; early access lifts the limit so you can add every side project you ship.',
+    a: 'One site or app with its own domain. There is no project limit during early access.',
   },
   {
     q: 'How long do you keep data?',
-    a: 'You choose a retention window between 1 and 90 days for each project. Deleting a project deletes its events as well.',
+    a: 'You choose a retention window between 1 and 90 days for each project. Expired events are removed by a daily cleanup job, and deleting a project deletes its events as well.',
   },
 ];
 
@@ -146,11 +145,12 @@ export default function Pricing() {
           <h1 className={p.heroTitle}>
             Free while it’s early.
             <br />
-            Free for one project, always.
+            Free for every project, today.
           </h1>
           <p className={p.heroLead}>
-            One project is free forever. During early access, every plan is free too. When paid
-            plans arrive, existing projects will hear about it well before anything changes.
+            Hosted Crease is free for unlimited projects while it is in early access. Self-host
+            the same stack whenever you like. When paid plans arrive, existing projects will hear
+            about it well before anything changes.
           </p>
           <div className={p.heroActions}>
             <Link className={`${s.btn} ${s.btnPrimary}`} href="/dashboard">
@@ -223,8 +223,8 @@ export default function Pricing() {
             The same product in every plan.
           </h2>
           <p className={p.compareLead}>
-            Every plan includes the full analytics product. The difference is how many projects
-            you run and how much of it you host yourself.
+            Every plan includes the full analytics product. The difference is where it runs and
+            how much access you want.
           </p>
           <div className={p.tableWrap}>
             <table className={p.table}>
@@ -232,8 +232,8 @@ export default function Pricing() {
                 <tr>
                   <th scope="col">Included</th>
                   <th scope="col">Free</th>
+                  <th scope="col">Open source</th>
                   <th scope="col">Early access</th>
-                  <th scope="col">Self-host</th>
                 </tr>
               </thead>
               <tbody>
@@ -241,8 +241,8 @@ export default function Pricing() {
                   <tr key={row.label}>
                     <th scope="row">{row.label}</th>
                     <td data-label="Free">{row.free}</td>
+                    <td data-label="Open source">{row.open}</td>
                     <td data-label="Early access">{row.early}</td>
-                    <td data-label="Self-host">{row.self}</td>
                   </tr>
                 ))}
               </tbody>

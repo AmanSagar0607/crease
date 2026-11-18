@@ -6,7 +6,7 @@ This checklist records known work before a broad public launch. The tracker and 
 
 - [x] Establish reviewed Alembic migrations for PostgreSQL and local SQLite workflows. Baseline is in `backend/migrations`; SQLite is no longer accepted by the API, but the migration was verified on an empty SQLite file.
 - [ ] Confirm production migration status and backup recovery plan before the new session queries depend on `analytics_sessions`.
-- [ ] Ensure the retention scheduler runs on Render and deletes both expired events and expired session rows.
+- [x] Retention runs in-process: one pass 30 seconds after startup and every 24 hours (`RETENTION_INTERVAL_HOURS`). Expired events, session rows, properties, touchpoints, and (when present) payment rows are deleted. `POST /internal/retention` remains available for an external scheduler when `RETENTION_SECRET` is set.
 - [x] Run SDK and API regression suites against isolated databases; the API suite now uses an isolated PostgreSQL schema.
 
 ## Before broad public launch
@@ -14,7 +14,7 @@ This checklist records known work before a broad public launch. The tracker and 
 - [ ] Complete tenant isolation, write-key rotation, CORS/preflight, request size, quotas, and abuse testing.
 - [ ] Verify SPA navigation and session expiry for the standalone SDK and npm package in real supported frameworks.
 - [ ] Validate event counts and session definitions against real traffic without labeling approximations as exact.
-- [ ] Keep country `Unknown` unless a trusted proxy overwrites the geolocation header and direct API access cannot spoof it.
+- [ ] Verify on the deployed Vercel site that the proxy overwrites `X-Vercel-IP-Country` and that `/internal/events` rejects requests without `GEO_FORWARD_SECRET`. Until that secret is set on both services, country stays `Unknown`; direct `/api/events` never trusts country headers.
 - [ ] Complete Vercel project discovery and report useful authorization/scope errors while preserving manual domain setup.
 - [ ] Add safe custom-property filters with parameterized queries; do not expose arbitrary SQL execution.
 - [ ] Document retention, account deletion, integration credential cleanup, and backup deletion limitations.

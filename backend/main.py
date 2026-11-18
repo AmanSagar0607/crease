@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import ipaddress
 import json
+import logging
 import math
 import os
 import re
@@ -44,9 +45,39 @@ PUBLIC_API_URL = os.getenv('PUBLIC_API_URL', 'http://localhost:3000').rstrip('/'
 CLIENT_ID = os.getenv('GITHUB_CLIENT_ID', '')
 CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET', '')
 SECURE = os.getenv('COOKIE_SECURE', 'false').lower() == 'true'
-# Country data is accepted only on the authenticated internal ingestion route.
-TRUST_VERCEL_GEO = os.getenv('TRUST_VERCEL_GEO', 'false').lower() == 'true'
+# Country data is accepted only on the authenticated internal ingestion route. That route
+# validates GEO_FORWARD_SECRET first, so a forwarded country is trusted by default. Set
+# TRUST_VERCEL_GEO=false only when an untrusted party can hold the forward secret.
+TRUST_VERCEL_GEO = os.getenv('TRUST_VERCEL_GEO', 'true').lower() == 'true'
 GEO_FORWARD_SECRET = os.getenv('GEO_FORWARD_SECRET', '')
+# Shared secret for POST /internal/retention. Optional: the API also runs retention on
+# its own schedule, so self-hosted and single-instance deployments need no external cron.
+RETENTION_SECRET = os.getenv('RETENTION_SECRET', '')
+RETENTION_INTERVAL_HOURS = float(os.getenv('RETENTION_INTERVAL_HOURS', '24'))
+RETENTION_START_DELAY_SECONDS = float(os.getenv('RETENTION_START_DELAY_SECONDS', '30'))
+retention_log = logging.getLogger('crease.retention')
+if not retention_log.handlers:
+    _retention_handler = logging.StreamHandler()
+    _retention_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s'))
+    retention_log.addHandler(_retention_handler)
+retention_log.setLevel(logging.INFO)
+# Drop requests whose User-Agent identifies a crawler, monitor, or automation client.
+FILTER_BOTS = os.getenv('FILTER_BOTS', 'true').lower() == 'true'
+BOT_USER_AGENT = re.compile(
+    r'(?:bot\b|crawler|spider|crawl|slurp|scrapy|archiver|'
+    r'headlesschrome|phantomjs|puppeteer|playwright|selenium|lighthouse|pagespeed|'
+    r'pingdom|uptime|statuscake|gtmetrix|'
+    r'facebookexternalhit|whatsapp|telegrambot|slackbot|discordbot|embedly|quora link preview|'
+    r'ahrefs|semrush|mj12bot|dotbot|petalbot|bytespider|dataforseo|seznam|yandex|baidu|'
+    r'googlebot|bingbot|duckduckbot|applebot|'
+    r'curl/|wget/|python-requests|python-urllib|go-http-client|okhttp|libwww)',
+    re.I,
+)
+
+
+def is_bot(user_agent: str) -> bool:
+    """Return True for obvious crawlers, monitors, and non-browser clients."""
+    return bool(BOT_USER_AGENT.search(user_agent or ''))
 ISO_COUNTRIES = frozenset('AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW'.split())
 GITHUB_APP_SLUG = os.getenv('GITHUB_APP_SLUG', '')
 GITHUB_APP_CLIENT_ID = os.getenv('GITHUB_APP_CLIENT_ID', '')
@@ -68,7 +99,62 @@ async def health():
             db.execute(text('SELECT 1'))
     except Exception as exc:
         raise HTTPException(503, 'Database connection is unavailable') from exc
-    return {'status': 'ok', 'database': 'connected'}
+    return {
+        'status': 'ok',
+        'database': 'connected',
+        'ingestion': {'bot_filter': FILTER_BOTS, 'geo_forwarding': bool(GEO_FORWARD_SECRET) and TRUST_VERCEL_GEO},
+        'retention': {
+            'scheduled_hours': RETENTION_INTERVAL_HOURS,
+            'external_trigger': bool(RETENTION_SECRET),
+            'last_run_at': getattr(app.state, 'retention_last_run', None),
+            'last_totals': getattr(app.state, 'retention_last_totals', None),
+        },
+    }
+
+
+@app.post('/internal/retention')
+async def run_retention(request: Request):
+    """Delete expired events for every project. Optional external trigger."""
+    supplied = request.headers.get('x-crease-retention-secret', '')
+    if not RETENTION_SECRET or not secrets.compare_digest(digest(supplied), digest(RETENTION_SECRET)):
+        raise HTTPException(401, 'Unauthorized')
+    return await retention_once()
+
+
+async def retention_once():
+    """Run one retention pass off the event loop."""
+    # Imported lazily: expire imports this module for the engine and clock.
+    from expire import enforce_retention
+
+    totals = await asyncio.to_thread(enforce_retention)
+    app.state.retention_last_run = stamp(now())
+    app.state.retention_last_totals = totals
+    return totals
+
+
+async def retention_loop():
+    await asyncio.sleep(RETENTION_START_DELAY_SECONDS)
+    while True:
+        try:
+            await retention_once()
+        except Exception:
+            retention_log.exception('scheduled retention failed')
+        await asyncio.sleep(RETENTION_INTERVAL_HOURS * 3600)
+
+
+@app.on_event('startup')
+async def start_retention_scheduler():
+    if RETENTION_INTERVAL_HOURS <= 0:
+        retention_log.info('scheduled retention disabled')
+        return
+    app.state.retention_task = asyncio.create_task(retention_loop())
+
+
+@app.on_event('shutdown')
+async def stop_retention_scheduler():
+    task = getattr(app.state, 'retention_task', None)
+    if task:
+        task.cancel()
 
 def now(): return datetime.now(timezone.utc)
 def digest(value): return hashlib.sha256(value.encode()).hexdigest()
@@ -540,7 +626,7 @@ async def limits(request: Request, call_next):
     payment_webhook = bool(re.fullmatch(r'/api/payment-webhooks/stripe/[0-9a-f-]{36}', request.url.path))
     if request.url.path == '/api/events' and request.method == 'OPTIONS':
         return Response(status_code=204, headers={'Access-Control-Allow-Origin': origin or 'null', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Crease-Key', 'Vary': 'Origin'})
-    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events') and not payment_webhook and origin != FRONTEND_URL:
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events', '/internal/retention') and not payment_webhook and origin != FRONTEND_URL:
         return Response(status_code=403)
     if payment_webhook:
         peer = request.client.host if request.client else 'unknown'
@@ -620,6 +706,11 @@ async def ingest(data: Batch, request: Request):
         domain = project['domain']
         alternate = domain[4:] if domain.startswith('www.') else 'www.' + domain
         if host not in (domain, alternate): raise HTTPException(403, 'Origin does not match project')
+        user_agent = request.headers.get('user-agent', '')
+        if FILTER_BOTS and is_bot(user_agent):
+            # Accepted by the protocol but deliberately not stored, so crawlers and
+            # uptime monitors never inflate visitor or session counts.
+            return {'accepted': 0, 'filtered': 'bot'}
         inserted = 0
         for e in data.events:
             if not e.path.startswith('/') or '?' in e.path or '#' in e.path: raise HTTPException(422, 'Invalid path')
@@ -627,7 +718,7 @@ async def ingest(data: Batch, request: Request):
             t = e.timestamp if e.timestamp.tzinfo else e.timestamp.replace(tzinfo=timezone.utc)
             event_time = t.astimezone(timezone.utc)
             if abs((now()-event_time).total_seconds()) > 86400 * 7: raise HTTPException(422, 'Event timestamp out of range')
-            ua = request.headers.get('user-agent','').lower(); device = 'mobile' if 'mobile' in ua else 'desktop' if ua else 'unknown'
+            ua = user_agent.lower(); device = 'mobile' if 'mobile' in ua else 'desktop' if ua else 'unknown'
             referrer = e.referrer.lower() if e.referrer and re.fullmatch(r'[a-zA-Z0-9.-]+', e.referrer) else None
             session_id = resolve_session(db, data.projectId, e.visitorId, e.id, event_time)
             result=db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,country,device,referrer,properties) VALUES (:project,:id,:name,:ts,:path,:visitor,:session,:country,:device,:referrer,:properties) ON CONFLICT (project_id,id) DO NOTHING'), {'project':data.projectId,'id':e.id,'name':e.name,'ts':stamp(event_time),'path':e.path,'visitor':e.visitorId,'session':session_id,'country':country,'device':device,'referrer':referrer,'properties':json.dumps(e.properties)})
