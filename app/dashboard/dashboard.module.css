@@ -2150,19 +2150,6 @@
     transform: none;
   }
 }
-.dashboardCat {
-  display: flex;
-  justify-content: flex-end;
-  margin: 0 8px 8px 0;
-}
-
-.dashboardCat button {
-  --catBody: #fff;
-  --catSoft: #e5e5e5;
-  --catInk: #111;
-  --catBlush: #d3d3d3;
-}
-
 /* ---------- Project write key ---------- */
 
 .keyNotice {
@@ -2609,8 +2596,7 @@
 }
 
 .analyticsDashboard .projectHero,
-.analyticsDashboard .tabs,
-.analyticsDashboard .dashboardCat {
+.analyticsDashboard .tabs {
   display: none;
 }
 
@@ -3648,6 +3634,10 @@
 .dashboard:not(.analyticsDashboard) .header { padding: 0 24px; border-bottom: 1px solid var(--line); background: var(--page); }
 .dashboard:not(.analyticsDashboard) .headerInner { width: min(1120px, 100%); height: 56px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .dashboard:not(.analyticsDashboard) .main { width: min(1120px, calc(100% - 64px)); max-width: 1120px; padding-top: 32px; }
+@media (min-width: 1024px) {
+  .dashboard:not(.analyticsDashboard) .header { padding-inline: 0; }
+  .dashboard:not(.analyticsDashboard) .headerInner { width: min(1120px, calc(100% - 64px)); }
+}
 .dashboard:not(.analyticsDashboard) .projectGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .dashboard:not(.analyticsDashboard) .projectCard { min-width: 0; padding: 20px; border-radius: 12px; box-shadow: none; }
 .dashboard:not(.analyticsDashboard) .projectCardName strong { font-size: .9375rem; }
@@ -3780,6 +3770,13 @@
     grid-row: 3;
     width: min(1440px, calc(100% - 64px));
     margin: 0 auto;
+  }
+
+  /* Preserve a clearly visible gutter on both sides of the collapsed rail. */
+  .analyticsDashboard.dashboard:has(> [data-slot='sidebar'][data-state='collapsed']) .main,
+  .analyticsDashboard.dashboard:has(> [data-slot='sidebar'][data-state='collapsed']) .footer,
+  .analyticsDashboard.dashboard:has(> [data-slot='sidebar'][data-state='collapsed']) .analyticsHeader .headerInner {
+    width: min(1440px, calc(100% - 96px));
   }
 
   .analyticsDashboard [data-slot='sidebar-container'] {

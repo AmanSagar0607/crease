@@ -11,7 +11,6 @@ import VerifiedBadge from './VerifiedBadge';
 import ProjectOnboarding from './ProjectOnboarding';
 import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import LivingCat from '../mascot/living-cat';
 import OverviewV1 from './OverviewV1';
 import ReportToolbar from './ReportToolbar';
 import AcquisitionSection from './AcquisitionSection';
@@ -32,7 +31,6 @@ import {
   type Tab,
 } from './navigation';
 import { dateRange, type AttributionModel, type Preset, type Range } from './reporting';
-import { dispatchMascotEvent } from '../mascot/mascot-events';
 import s from './dashboard.module.css';
 
 function ProjectNavigation({ children }: { children: ReactNode }) {
@@ -126,7 +124,6 @@ type FunnelStep = {
   conversion_from_previous: number | null;
 };
 type Funnel = { steps: FunnelStep[]; days: number; start: string; end: string };
-const firstPageviewSeen = new Set<string>();
 function writeKeyStorage(projectId: string) {
   return `crease-write-key:${projectId}`;
 }
@@ -146,25 +143,6 @@ function saveWriteKey(projectId: string, key: string) {
   } catch {
     // Storage can be unavailable; the key stays in component state for this session.
   }
-}
-
-function celebrateFirstPageview(projectId: string, summary: Summary, project?: Project) {
-  if (!project || summary.metrics.pageviews <= 0 || !project.last_event_at) return;
-
-  const lastEvent = new Date(project.last_event_at).getTime();
-  if (!Number.isFinite(lastEvent) || Date.now() - lastEvent > 10 * 60 * 1000) return;
-  if (firstPageviewSeen.has(projectId)) return;
-  firstPageviewSeen.add(projectId);
-
-  try {
-    const key = `crease-mascot-first-pageview:${projectId}`;
-    if (window.localStorage.getItem(key)) return;
-    window.localStorage.setItem(key, String(Date.now()));
-  } catch {
-    // Storage can be unavailable; the in-memory guard still prevents repeats.
-  }
-
-  dispatchMascotEvent({ kind: 'first-pageview', projectName: project.name });
 }
 
 const SESSION_DEFINITION = 'Sessions end after 30 min idle or at UTC midnight';
@@ -526,7 +504,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     try {
       const result = await api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=30${rangeQuery}${filterQuery}`);
       setSummary(result);
-      celebrateFirstPageview(selected, result, projectRef.current);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         handleUnauthorized(setSummaryError);
@@ -819,7 +796,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         method: 'POST',
         body: JSON.stringify({ name, domain }),
       });
-      const isFirstProject = projects.length === 0;
       setProjects((list) => [...list, created]);
       setSelected(created.id);
       setName('');
@@ -827,9 +803,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       saveWriteKey(created.id, created.write_key ?? '');
       setWriteKey(created.write_key ?? '');
       setKeyNotice(created.write_key ? 'Write key created. Copy the installation code now; it is also stored in this browser.' : '');
-      if (isFirstProject) {
-        dispatchMascotEvent({ kind: 'project-created', projectName: created.name });
-      }
       setOnboarding(true);
       router.push(`/dashboard/projects/${encodeURIComponent(created.id)}?onboarding=1`);
     } catch (e) {
@@ -1060,35 +1033,28 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
               </span>
             )}
           </div>
-          <nav className={s.breadcrumb} aria-label="Breadcrumb">
-            <Link
-              className={s.crumbRoot}
-              href="/dashboard?view=projects"
-              onClick={() => {
-                setShowProjects(true);
-                setSelected('');
-              }}
-            >
-              Projects
-            </Link>
-            {project && (
-              <>
-                <span className={s.crumbRoot} aria-hidden="true">/</span>
-                <strong>{project.name}</strong>
-              </>
-            )}
-          </nav>
+          {project && (
+            <nav className={s.breadcrumb} aria-label="Breadcrumb">
+              <Link
+                className={s.crumbRoot}
+                href="/dashboard?view=projects"
+                onClick={() => {
+                  setShowProjects(true);
+                  setSelected('');
+                }}
+              >
+                Projects
+              </Link>
+            </nav>
+          )}
           <div className={s.account}>
-            {/* Project analytics is a deliberately dark-only surface, so the site
-                theme toggle would have no visible effect here. */}
-            {!project && <ThemeToggle />}
+            {/* Analytics stays dark-only, so the theme toggle appears on the projects view only. */}
+            {!project && <ThemeToggle iconOnly />}
             <Link className={s.headerLink} href="/docs">
               Docs
             </Link>
             {user && <Link className={`${s.headerLink} ${s.headerPrimary}`} href="/dashboard?view=projects#add-website" onClick={() => { setShowProjects(true); setSelected(''); }}>+ Website</Link>}
-            <Link className={s.headerLink} href="/account">
-              Account
-            </Link>
+            {!project && <Link className={s.headerLink} href="/account">Account</Link>}
             {!project && user && (
               <button className={s.signOut} type="button" onClick={logout}>
                 Sign out
@@ -1099,9 +1065,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       </header>
 
       <main className={s.main} id="main">
-        <div className={s.dashboardCat}>
-          <LivingCat variant="dashboard" listen />
-        </div>
         {busy ? (
           <div className={s.loadingPage} role="status" aria-label="Loading your workspace">
             <span className={s.loadingBar} style={{ width: '22%' }} />
@@ -1800,12 +1763,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                     <p className={s.eyebrow}>YOUR WORKSPACE</p>
                     <h1>Your projects.</h1>
                     <p>Every site you track, in one place. Open a project to read its analytics or finish setup.</p>
-                  </div>
-                  <div className={s.pageActions}>
-                    <Link className={`${s.btn} ${s.btnSecondary}`} href="/docs">
-                      Read the docs
-                      <ArrowUpRightIcon className={s.iconSm} />
-                    </Link>
                   </div>
                 </div>
 
