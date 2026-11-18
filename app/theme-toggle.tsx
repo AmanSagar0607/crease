@@ -18,7 +18,7 @@ type Theme = 'system' | 'light' | 'dark';
 const THEME_LABELS: Record<Theme, string> = { system: 'System', light: 'Light', dark: 'Dark' };
 const THEME_ICONS = { system: Monitor, light: Sun, dark: Moon };
 
-export default function ThemeToggle({ className = '' }: { className?: string }) {
+export default function ThemeToggle({ className = '', iconOnly = false }: { className?: string; iconOnly?: boolean }) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -34,14 +34,18 @@ export default function ThemeToggle({ className = '' }: { className?: string }) 
           type="button"
           variant="outline"
           size="lg"
-          className={`${s.toggle} ${className}`.trim()}
+          className={`${s.toggle} ${iconOnly ? s.iconOnly : ''} ${className}`.trim()}
           aria-label={`Appearance: ${THEME_LABELS[selected]}`}
-          title={`Appearance: ${THEME_LABELS[selected]}`}
+          title={iconOnly ? undefined : `Appearance: ${THEME_LABELS[selected]}`}
         >
           <Icon aria-hidden="true" />
-          <span className={s.label}>Theme</span>
-          <span className={s.current}>{THEME_LABELS[selected]}</span>
-          <ChevronDown aria-hidden="true" className={s.chevron} />
+          {!iconOnly && (
+            <>
+              <span className={s.label}>Theme</span>
+              <span className={s.current}>{THEME_LABELS[selected]}</span>
+              <ChevronDown aria-hidden="true" className={s.chevron} />
+            </>
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className={s.menu}>

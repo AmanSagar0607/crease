@@ -15,6 +15,7 @@
 }
 
 .toggle > svg { width: 16px; height: 16px; }
+.toggle.iconOnly { width: 44px; min-width: 44px; height: 44px; padding: 0; justify-content: center; gap: 0; }
 .label { color: var(--muted-foreground); }
 .current { font-weight: 600; }
 .chevron { width: 14px !important; height: 14px !important; color: var(--muted-foreground); }
