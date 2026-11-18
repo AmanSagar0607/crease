@@ -483,6 +483,8 @@ class ApiTest(unittest.TestCase):
             db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,properties) VALUES (:project,:id,:name,:at,:path,:visitor,:session,:properties)'), {'project':p['id'],'id':'scheduled-old','name':'pageview','at':main.stamp(main.now()-timedelta(days=30)),'path':'/','visitor':'v','session':'s','properties':'{}'})
         totals = asyncio.run(main.retention_once())
         self.assertGreaterEqual(totals['events'], 1)
+        self.assertEqual(main.app.state.retention_last_totals, totals)
+        self.assertIsNotNone(main.app.state.retention_last_run)
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
 
