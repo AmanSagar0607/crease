@@ -1,16 +1,15 @@
 import { ClerkProvider } from '@clerk/nextjs';
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import ThemeProvider from './theme-provider';
 
 export const metadata: Metadata = {
-  title: 'Zappa — Revenue analytics for SaaS founders',
+  title: 'Zappa — Calm analytics for independent developers',
   description:
-    'Understand which channels bring visitors, which journeys convert, and which acquisition activities generate verified revenue.',
+    'A quiet analytics workspace for independent developers. Create an account, connect a site, and see what people actually do — nothing more.',
 };
 
-export const viewport: Viewport = { themeColor: '#f7f5ef' };
-
-const themeScript = `(function(){try{var k='crease-theme';var v=localStorage.getItem(k);var d=window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.dataset.theme=(v==='light'||v==='dark')?v:(d?'dark':'light');}catch(e){document.documentElement.dataset.theme='light';}})();`;
+export const viewport: Viewport = { themeColor: '#F0EFEB' };
 
 const clerkAppearance = {
   variables: {
@@ -35,11 +34,10 @@ const clerkAppearance = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
       <body>
-        <ClerkProvider appearance={clerkAppearance}>{children}</ClerkProvider>
+        <ClerkProvider appearance={clerkAppearance}>
+          <ThemeProvider>{children}</ThemeProvider>
+        </ClerkProvider>
       </body>
     </html>
   );

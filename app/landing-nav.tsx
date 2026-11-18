@@ -39,6 +39,7 @@ export default function LandingNav() {
           <a href="#how">How it works</a>
           <Link href="/pricing">Pricing</Link>
           <Link href="/docs">Docs</Link>
+          <Link href="/v0-preview">Preview</Link>
           <a href="https://github.com/AmanSagar0607/crease" target="_blank" rel="noreferrer">GitHub <ArrowUpRight aria-hidden="true" /></a>
         </div>
         <div className={s.navEnd}>
@@ -69,8 +70,10 @@ export default function LandingNav() {
             <Link href="#how" onClick={close}>How it works</Link>
             <Link href="/pricing" onClick={close}>Pricing</Link>
             <Link href="/docs" onClick={close}>Documentation</Link>
+            <Link href="/v0-preview" onClick={close}>Dashboard preview</Link>
             <Link href="/waitlist" onClick={close}>Early access</Link>
             <a href="https://github.com/AmanSagar0607/crease" target="_blank" rel="noreferrer" onClick={close}>GitHub <ArrowUpRight aria-hidden="true" /></a>
+            <div className={s.mobileMenuTheme}><ThemeToggle /></div>
             <div className={s.mobileMenuActions}>
               <Link className={s.mobileMenuLogin} href="/dashboard" onClick={close}>Log in</Link>
               <Link className={s.mobileMenuStart} href="/sign-up" onClick={close}>Start free <ArrowUpRight aria-hidden="true" /></Link>

@@ -1,5 +1,7 @@
 # Zappa design system
 
+> **Historical baseline:** This pre-redesign dark-theme specification is superseded by the root [DESIGN.md](../../DESIGN.md) and [research report](ZAPPA_RESEARCH_REPORT.md). Use those documents for current tokens and implementation; values below are retained only for project history.
+
 ## Product identity
 
 **Positioning:** Revenue and acquisition analytics for SaaS founders, indie hackers, and developers who need to understand which traffic and product actions create paying customers.\

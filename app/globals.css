@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
 @import 'tw-animate-css';
@@ -158,3 +158,112 @@ html[data-theme='dark'] {
 
 /* Zappa Clerk authentication surfaces */
 .auth-page{--auth-bg:#111110;--auth-panel:#171715;--auth-line:#302e2a;--auth-ink:#f2f1ec;--auth-muted:#aaa69d;min-height:100vh;padding:48px 24px 64px;background:var(--auth-bg);color:var(--auth-ink);display:flex;align-items:center;flex-direction:column;text-align:center}.auth-wordmark{align-self:flex-start;width:min(100%,520px);margin:0 auto 64px;text-align:left;font-size:21px;font-weight:650;letter-spacing:-.055em}.auth-wordmark span{color:#d8c5a7}.auth-eyebrow{margin:0 0 14px;color:var(--auth-muted);font-size:10px;font-weight:650;letter-spacing:.17em}.auth-page h1{max-width:520px;margin:0;font-size:clamp(32px,5vw,44px);font-weight:550;letter-spacing:-.055em;line-height:1.08;text-wrap:balance}.auth-intro{max-width:430px;margin:14px 0 28px;color:var(--auth-muted);font-size:14px;line-height:1.6;text-wrap:pretty}.auth-footnote{max-width:360px;margin:22px 0 0;color:#89867f;font-size:11px;line-height:1.6}.account-page{padding-top:38px}.account-page .auth-wordmark{margin-bottom:40px}.account-page .auth-intro{margin-bottom:26px}.auth-page :focus-visible{outline:2px solid #d8c5a7;outline-offset:3px}@media(max-width:560px){.auth-page{padding:30px 18px 46px}.auth-wordmark{margin-bottom:44px}.account-page .auth-wordmark{margin-bottom:34px}.auth-page h1{font-size:32px}.auth-intro{font-size:13px}}@media(prefers-reduced-motion:reduce){.auth-page *{scroll-behavior:auto!important;transition:none!important}}
+
+
+/* Zappa v0 semantic theme tokens: warm chalk light surfaces, ink-dark mode, and a single vermilion action/chart accent. */
+:root,
+html[data-theme='light'] {
+  color-scheme: light;
+  --background: #F0EFEB;
+  --foreground: #2D2D2D;
+  --card: #FFFFFF;
+  --card-foreground: #2D2D2D;
+  --popover: #FFFFFF;
+  --popover-foreground: #2D2D2D;
+  --primary: #C0391B;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E7E6E1;
+  --secondary-foreground: #2D2D2D;
+  --muted: #E7E6E1;
+  --muted-foreground: #6B6B6B;
+  --accent: #E7E6E1;
+  --accent-foreground: #2D2D2D;
+  --border: #D9D8D3;
+  --input: #D9D8D3;
+  --ring: #C0391B;
+  --sidebar: #F7F6F2;
+  --sidebar-foreground: #2D2D2D;
+  --sidebar-primary: #C0391B;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E7E6E1;
+  --sidebar-accent-foreground: #2D2D2D;
+  --sidebar-border: #D9D8D3;
+  --sidebar-ring: #C0391B;
+  --paper: #F0EFEB;
+  --surface: #FFFFFF;
+  --surface-hover: #E7E6E1;
+  --soft: #E7E6E1;
+  --soft2: #F7F6F2;
+  --ink: #2D2D2D;
+  --ink2: #4A4945;
+  --muted: #6B6B6B;
+  --line: #D9D8D3;
+  --lineStrong: #C9C7C1;
+  --blue: #C0391B;
+  --focus: #C0391B;
+  --accent-line: #EB3514;
+  --chart-muted: #817D75;
+  --chart-1: #EB3514;
+  --chart-2: #817D75;
+  --chart-3: #B9B4AA;
+  --chart-4: #6B6B6B;
+  --chart-5: #D9D8D3;
+  --font: 'Geist', 'Segoe UI', sans-serif;
+  --font-display: 'Geist', 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --radius: 0.75rem;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --background: #0B0B0B;
+  --foreground: #F0EFEB;
+  --card: #141414;
+  --card-foreground: #F0EFEB;
+  --popover: #141414;
+  --popover-foreground: #F0EFEB;
+  --primary: #FF5A3A;
+  --primary-foreground: #0B0B0B;
+  --secondary: #222222;
+  --secondary-foreground: #F0EFEB;
+  --muted: #222222;
+  --muted-foreground: #AAA69D;
+  --accent: #222222;
+  --accent-foreground: #F0EFEB;
+  --border: #30302E;
+  --input: #30302E;
+  --ring: #FF765C;
+  --sidebar: #141414;
+  --sidebar-foreground: #F0EFEB;
+  --sidebar-primary: #FF5A3A;
+  --sidebar-primary-foreground: #0B0B0B;
+  --sidebar-accent: #222222;
+  --sidebar-accent-foreground: #F0EFEB;
+  --sidebar-border: #30302E;
+  --sidebar-ring: #FF765C;
+  --paper: #0B0B0B;
+  --surface: #141414;
+  --surface-hover: #222222;
+  --soft: #222222;
+  --soft2: #1A1A1A;
+  --ink: #F0EFEB;
+  --ink2: #C9C6BE;
+  --muted: #AAA69D;
+  --line: #30302E;
+  --lineStrong: #44433F;
+  --blue: #FF5A3A;
+  --focus: #FF765C;
+  --accent-line: #FF5A3A;
+  --chart-muted: #AAA69D;
+  --chart-1: #FF5A3A;
+  --chart-2: #AAA69D;
+  --chart-3: #817D75;
+  --chart-4: #C9C6BE;
+  --chart-5: #30302E;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+}

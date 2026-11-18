@@ -229,3 +229,9 @@
 @media (prefers-contrast: more) {
   .kpi, .secondaryStats, .chart, .panel, .revenue, .unconfigured button { border-color: #a29d91; }
 }
+
+
+/* shadcn/Recharts wrapper sizing and semantic series colors. */
+.chartContainer { width: 100%; height: 100%; aspect-ratio: auto; }
+.legend span:first-child { color: var(--accent-line); }
+.legend span:nth-child(2) { color: var(--chart-muted); }
