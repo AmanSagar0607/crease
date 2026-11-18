@@ -228,6 +228,28 @@ class ProjectInput(BaseModel):
 class RetentionInput(BaseModel):
     retention_days: int = Field(ge=1, le=90)
 
+class WaitlistInput(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    consent: bool = Field(strict=True)
+
+class GoalInput(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    event_name: str = Field(min_length=1, max_length=64)
+    target_count: int = Field(gt=0, le=1000000000, strict=True)
+
+@app.post('/api/waitlist', status_code=202)
+async def join_waitlist(data: WaitlistInput):
+    email = data.email.strip().lower()
+    if not re.fullmatch(r'[^@\s]{1,64}@[^@\s]{1,253}\.[^@\s]{2,63}', email):
+        raise HTTPException(422, 'Enter a valid email address')
+    if not data.consent:
+        raise HTTPException(422, 'Consent is required to join the waitlist')
+    if not limiter.consume('waitlist:' + digest(email), 3, 60):
+        raise HTTPException(429, 'Please wait before trying again')
+    with engine.begin() as db:
+        db.execute(text('INSERT INTO waitlist_signups (email,consented_at) VALUES (:email,:at) ON CONFLICT (email) DO NOTHING'), {'email':email, 'at':now()})
+    return {'accepted': True}
+
 class GitHubInstallInput(BaseModel):
     repository: str = Field(min_length=3, max_length=200)
     path: str = Field(min_length=1, max_length=250)
@@ -909,6 +931,132 @@ async def funnel(project_id: str, first: str = Query(min_length=1, max_length=64
     first_count = int(row['first_count'] or 0)
     second_count = int(row['second_count'] or 0)
     return {'first':first,'second':second,'first_count':first_count,'second_count':second_count,'conversion':round(second_count/first_count, 4) if first_count else 0,'days':days}
+
+
+@app.get('/api/projects/{project_id}/funnel/multi')
+async def multi_funnel(project_id: str, steps: list[str] = Query(min_length=2, max_length=5), days: int = 30, start: date | None = None, end: date | None = None, user=Depends(session_user)):
+    if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
+    if any(not step.strip() or len(step) > 64 for step in steps): raise HTTPException(422, 'Each funnel event must contain 1 to 64 characters')
+    start_at, end_at, days = report_window(days, start, end)
+    params = {'id':project_id, 'since':stamp(start_at), 'until':stamp(end_at)}
+    ctes = []
+    for index, event_name in enumerate(steps):
+        step_number = index + 1
+        params[f'event_{step_number}'] = event_name.strip()
+        if index == 0:
+            ctes.append(f'''step_{step_number} AS (
+                SELECT session_id,MIN(occurred_at) AS at FROM events
+                WHERE project_id=:id AND name=:event_{step_number} AND occurred_at>=:since AND occurred_at<:until
+                    AND session_id IS NOT NULL
+                GROUP BY session_id
+            )''')
+        else:
+            previous = step_number - 1
+            ctes.append(f'''step_{step_number} AS (
+                SELECT p.session_id,MIN(e.occurred_at) AS at FROM step_{previous} p
+                JOIN events e ON e.project_id=:id AND e.session_id=p.session_id
+                    AND e.name=:event_{step_number} AND e.occurred_at>=p.at
+                    AND e.occurred_at>=:since AND e.occurred_at<:until
+                GROUP BY p.session_id
+            )''')
+    count_columns = ','.join(f'(SELECT COUNT(*) FROM step_{i}) AS count_{i}' for i in range(1, len(steps) + 1))
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        counts = db.execute(text(f"WITH {','.join(ctes)} SELECT {count_columns}"), params).mappings().one()
+    output = []
+    previous_count = None
+    for index, event_name in enumerate(steps, start=1):
+        count = int(counts[f'count_{index}'] or 0)
+        conversion = None if previous_count is None else (round(count / previous_count, 4) if previous_count else 0)
+        output.append({'event_name':event_name.strip(), 'count':count, 'conversion_from_previous':conversion})
+        previous_count = count
+    return {'steps':output,'days':days,'start':start_at.date().isoformat(),'end':(end_at-timedelta(microseconds=1)).date().isoformat()}
+
+
+def validate_goal_event(db, project_id, event_name):
+    exists = db.execute(text('SELECT 1 FROM events WHERE project_id=:id AND name=:name LIMIT 1'), {'id':project_id, 'name':event_name}).first()
+    if not exists:
+        raise HTTPException(422, 'Choose an event that has been observed for this project')
+
+
+@app.get('/api/projects/{project_id}/goal-events')
+async def project_goal_events(project_id: str, user=Depends(session_user)):
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        rows = db.execute(text('''
+            SELECT name AS label,COUNT(*) AS count
+            FROM events WHERE project_id=:id
+            GROUP BY name ORDER BY count DESC,name LIMIT 100
+        '''), {'id':project_id}).mappings().all()
+    return [{'label':row['label'],'count':int(row['count'])} for row in rows]
+
+
+@app.get('/api/projects/{project_id}/goals')
+async def project_goals(project_id: str, days: int = 30, start: date | None = None, end: date | None = None, user=Depends(session_user)):
+    if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
+    if (start is None) != (end is None): raise HTTPException(422, 'start and end must be provided together')
+    start_at, end_at, days = report_window(days, start, end)
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        rows = db.execute(text('''
+            SELECT g.id,g.name,g.event_name,g.target_count,g.created_at,
+                   COUNT(e.id) AS current_count
+            FROM project_goals g
+            LEFT JOIN events e ON e.project_id=g.project_id AND e.name=g.event_name
+                AND e.occurred_at>=:since AND e.occurred_at<:until
+            WHERE g.project_id=:id
+            GROUP BY g.id,g.name,g.event_name,g.target_count,g.created_at
+            ORDER BY g.created_at DESC,g.name
+        '''), {'id':project_id, 'since':stamp(start_at), 'until':stamp(end_at)}).mappings().all()
+    return [{'id':row['id'],'name':row['name'],'event_name':row['event_name'],'target_count':int(row['target_count']),
+             'current_count':int(row['current_count'] or 0),'progress':min(1, int(row['current_count'] or 0) / int(row['target_count'])),
+             'created_at':row['created_at'],'start':start_at.date().isoformat(),'end':(end_at-timedelta(microseconds=1)).date().isoformat()}
+            for row in rows]
+
+
+@app.post('/api/projects/{project_id}/goals', status_code=201)
+async def create_project_goal(project_id: str, data: GoalInput, user=Depends(session_user)):
+    name = data.name.strip()
+    event_name = data.event_name.strip()
+    if not name or not event_name: raise HTTPException(422, 'Goal name and event are required')
+    goal_id = str(uuid4())
+    created_at = stamp(now())
+    try:
+        with engine.begin() as db:
+            owned(db, project_id, user['id'])
+            validate_goal_event(db, project_id, event_name)
+            db.execute(text('INSERT INTO project_goals (id,project_id,name,event_name,target_count,created_at) VALUES (:id,:project,:name,:event,:target,:created)'),
+                       {'id':goal_id,'project':project_id,'name':name,'event':event_name,'target':data.target_count,'created':created_at})
+    except IntegrityError as exc:
+        raise HTTPException(409, 'A goal with this name already exists for the project') from exc
+    return {'id':goal_id,'name':name,'event_name':event_name,'target_count':data.target_count,'current_count':0,'progress':0,'created_at':created_at}
+
+
+@app.patch('/api/projects/{project_id}/goals/{goal_id}')
+async def update_project_goal(project_id: str, goal_id: str, data: GoalInput, user=Depends(session_user)):
+    name = data.name.strip()
+    event_name = data.event_name.strip()
+    if not name or not event_name: raise HTTPException(422, 'Goal name and event are required')
+    try:
+        with engine.begin() as db:
+            owned(db, project_id, user['id'])
+            validate_goal_event(db, project_id, event_name)
+            result = db.execute(text('UPDATE project_goals SET name=:name,event_name=:event,target_count=:target WHERE id=:goal AND project_id=:project'),
+                                {'name':name,'event':event_name,'target':data.target_count,'goal':goal_id,'project':project_id})
+            if result.rowcount == 0: raise HTTPException(404, 'Goal not found')
+    except IntegrityError as exc:
+        raise HTTPException(409, 'A goal with this name already exists for the project') from exc
+    return {'id':goal_id,'name':name,'event_name':event_name,'target_count':data.target_count}
+
+
+@app.delete('/api/projects/{project_id}/goals/{goal_id}', status_code=204)
+async def delete_project_goal(project_id: str, goal_id: str, user=Depends(session_user)):
+    with engine.begin() as db:
+        owned(db, project_id, user['id'])
+        result = db.execute(text('DELETE FROM project_goals WHERE id=:goal AND project_id=:project'), {'goal':goal_id,'project':project_id})
+        if result.rowcount == 0: raise HTTPException(404, 'Goal not found')
+    return Response(status_code=204)
+
 
 # Vercel access is per Crease account, encrypted at rest, and never sent to the browser.
 def vercel_cipher():

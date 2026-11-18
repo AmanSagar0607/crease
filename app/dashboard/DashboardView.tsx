@@ -16,6 +16,7 @@ import ReportToolbar from './ReportToolbar';
 import AcquisitionSection from './AcquisitionSection';
 import CampaignsSection from './CampaignsSection';
 import PagesSection from './PagesSection';
+import GoalsSection from './GoalsSection';
 import UnavailableSection from './UnavailableSection';
 import LiveActivity from './LiveActivity';
 import useOverviewReport from './useOverviewReport';
@@ -108,14 +109,12 @@ type Summary = {
   days: number;
   filter?: { property: string | null; value: string | null };
 };
-type Funnel = {
-  first: string;
-  second: string;
-  first_count: number;
-  second_count: number;
-  conversion: number;
-  days: number;
+type FunnelStep = {
+  event_name: string;
+  count: number;
+  conversion_from_previous: number | null;
 };
+type Funnel = { steps: FunnelStep[]; days: number; start: string; end: string };
 const firstPageviewSeen = new Set<string>();
 function writeKeyStorage(projectId: string) {
   return `crease-write-key:${projectId}`;
@@ -430,8 +429,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [eventsBusy, setEventsBusy] = useState(false);
   const [propertyKey, setPropertyKey] = useState('');
   const [propertyValue, setPropertyValue] = useState('');
-  const [funnelFirst, setFunnelFirst] = useState('');
-  const [funnelSecond, setFunnelSecond] = useState('');
+  const [funnelSteps, setFunnelSteps] = useState<string[]>([]);
   const [funnel, setFunnel] = useState<Funnel | null>(null);
   const [funnelBusy, setFunnelBusy] = useState(false);
   const [origin, setOrigin] = useState('');
@@ -604,23 +602,28 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   useEffect(() => {
     const names = eventNames.map((item) => item.label);
     if (!names.length) {
-      setFunnelFirst('');
-      setFunnelSecond('');
+      setFunnelSteps([]);
       return;
     }
-    setFunnelFirst((current) => (names.includes(current) ? current : names[0]));
-    setFunnelSecond((current) => (names.includes(current) ? current : names[1] ?? names[0]));
+    setFunnelSteps((current) => {
+      const next = current.length
+        ? current.slice(0, 5).map((name, index) => (names.includes(name) ? name : names[Math.min(index, names.length - 1)]))
+        : names.slice(0, 2);
+      while (next.length < 2) next.push(names[0]);
+      return next;
+    });
   }, [eventNames]);
 
   const loadFunnel = useCallback(async () => {
-    if (!selected || !funnelFirst || !funnelSecond) {
+    if (!selected || funnelSteps.length < 2 || funnelSteps.some((step) => !step)) {
       setFunnel(null);
       return;
     }
     setFunnelBusy(true);
     try {
-      const params = new URLSearchParams({ first: funnelFirst, second: funnelSecond, days: '30', ...(reportRange || {}) });
-      setFunnel(await api<Funnel>(`/api/projects/${encodeURIComponent(selected)}/funnel?${params.toString()}`));
+      const params = new URLSearchParams({ days: '30', ...(reportRange || {}) });
+      funnelSteps.forEach((step) => params.append('steps', step));
+      setFunnel(await api<Funnel>(`/api/projects/${encodeURIComponent(selected)}/funnel/multi?${params.toString()}`));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         router.replace('/login');
@@ -630,7 +633,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     } finally {
       setFunnelBusy(false);
     }
-  }, [selected, reportRange, funnelFirst, funnelSecond, router]);
+  }, [selected, reportRange, funnelSteps, router]);
 
   useEffect(() => {
     void loadFunnel();
@@ -693,8 +696,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setEvents([]);
     setPropertyKey('');
     setPropertyValue('');
-    setFunnelFirst('');
-    setFunnelSecond('');
+    setFunnelSteps([]);
     setFunnel(null);
     setSummaryError('');
   }, [selected]);
@@ -957,11 +959,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
               >
                 <item.icon className={s.navIcon} aria-hidden="true" />
                 <span>{item.label}</span>
-                {item.unavailable && (
-                  <small className={s.navSoon} title="No backend API yet — the section explains exactly what is missing">
-                    Soon
-                  </small>
-                )}
+
               </a>
             ))}
           </nav>
@@ -1304,93 +1302,100 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         <UnavailableSection variant="customers" onNavigate={selectAnalyticsSection} />
                       )}
 
+                      {activeSection === 'goals' && selected && (
+                        <GoalsSection projectId={selected} range={reportRange} />
+                      )}
+
                       {activeSection === 'funnels' && (
                         <section className={s.funnelSection} id="funnel">
-                        <div className={s.sectionHead}>
-                          <div>
-                            <h2>Funnel</h2>
-                            <p>Ordered sessions ? {rangeLabel}.</p>
-                          </div>
-                          <span className={s.updated}>
-                            {funnel ? `${Math.round(funnel.conversion * 100)}% conversion` : 'Two steps'}
-                          </span>
-                        </div>
-                        <p className={s.funnelLimit}>
-                          Two ordered steps only for now: sessions where step 1 happens before step 2. Multi-step
-                          funnels, per-step property filters and saved funnels need backend support that does not exist
-                          yet, so they are not offered here.
-                        </p>
-                        <div className={s.funnelControls}>
-                          <label className={s.filterField}>
-                            <span className={s.srOnly}>First step</span>
-                            <select value={funnelFirst} onChange={(event) => setFunnelFirst(event.target.value)}>
-                              {eventNames.length ? (
-                                eventNames.map((item) => (
-                                  <option key={item.label} value={item.label}>
-                                    {item.label}
-                                  </option>
-                                ))
-                              ) : (
-                                <option value="">No events yet</option>
-                              )}
-                            </select>
-                            <ChevronIcon />
-                          </label>
-                          <span className={s.funnelArrow} aria-hidden="true">
-                            →
-                          </span>
-                          <label className={s.filterField}>
-                            <span className={s.srOnly}>Second step</span>
-                            <select value={funnelSecond} onChange={(event) => setFunnelSecond(event.target.value)}>
-                              {eventNames.length ? (
-                                eventNames.map((item) => (
-                                  <option key={item.label} value={item.label}>
-                                    {item.label}
-                                  </option>
-                                ))
-                              ) : (
-                                <option value="">No events yet</option>
-                              )}
-                            </select>
-                            <ChevronIcon />
-                          </label>
-                        </div>
-                        {funnelBusy ? (
-                          <div className={s.funnelSteps} aria-busy="true">
-                            <span className={s.skeleton} style={{ height: 52 }} />
-                          </div>
-                        ) : funnel && funnel.first_count > 0 ? (
-                          <div className={s.funnelSteps}>
-                            <div className={s.funnelStep}>
-                              <span className={s.funnelStepLabel}>Step 1 · {funnel.first}</span>
-                              <strong>{compact(funnel.first_count)}</strong>
-                              <span className={s.funnelBar}>
-                                <i style={{ width: '100%' }} />
-                              </span>
+                          <div className={s.sectionHead}>
+                            <div>
+                              <h2>Funnel</h2>
+                              <p>Ordered session steps · {rangeLabel}.</p>
                             </div>
-                            <div className={s.funnelStep}>
-                              <span className={s.funnelStepLabel}>Step 2 · {funnel.second}</span>
-                              <strong>{compact(funnel.second_count)}</strong>
-                              <span className={s.funnelBar}>
-                                <i
-                                  style={{
-                                    width: `${Math.round((funnel.second_count / funnel.first_count) * 100)}%`,
-                                  }}
-                                />
-                              </span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className={s.emptyBlock}>
-                            <strong>{eventNames.length ? 'No sessions completed step 1' : 'No events to build a funnel'}</strong>
-                            <span>
-                              {eventNames.length
-                                ? 'Try another pair of events or a longer range.'
-                                : 'Install the tracker and send named events first.'}
+                            <span className={s.updated}>
+                              {funnel?.steps[0]?.count
+                                ? `${Math.round(((funnel.steps[funnel.steps.length - 1]?.count ?? 0) / funnel.steps[0].count) * 100)}% complete`
+                                : `${funnelSteps.length || 2} steps`}
                             </span>
                           </div>
-                        )}
-                      </section>
+                          <p className={s.funnelLimit}>
+                            Choose 2–5 observed events. A session advances when each event occurs in order; each session counts once per step. Saved funnels and property filters are not available yet.
+                          </p>
+                          <div className={s.funnelControls}>
+                            {funnelSteps.map((step, index) => (
+                              <div className={s.funnelControl} key={`funnel-step-${index}`}>
+                                {index > 0 && <span className={s.funnelArrow} aria-hidden="true">→</span>}
+                                <label className={s.filterField}>
+                                  <span className={s.srOnly}>Funnel step {index + 1}</span>
+                                  <select
+                                    value={step}
+                                    onChange={(event) => setFunnelSteps((current) => current.map((value, stepIndex) => stepIndex === index ? event.target.value : value))}
+                                    disabled={!eventNames.length}
+                                  >
+                                    {eventNames.length ? eventNames.map((item) => (
+                                      <option key={item.label} value={item.label}>{item.label}</option>
+                                    )) : <option value="">No events yet</option>}
+                                  </select>
+                                  <ChevronIcon />
+                                </label>
+                                {index > 1 && (
+                                  <button
+                                    className={s.filterClear}
+                                    type="button"
+                                    aria-label={`Remove funnel step ${index + 1}`}
+                                    onClick={() => setFunnelSteps((current) => current.filter((_, stepIndex) => stepIndex !== index))}
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                            <button
+                              className={s.filterClear}
+                              type="button"
+                              disabled={funnelSteps.length >= 5 || !eventNames.length}
+                              onClick={() => setFunnelSteps((current) => [...current, eventNames[0]?.label ?? ''])}
+                            >
+                              Add step
+                            </button>
+                          </div>
+                          {funnelBusy ? (
+                            <div className={s.funnelSteps} aria-busy="true" role="status">
+                              <span className={s.skeleton} style={{ height: 52 }} />
+                            </div>
+                          ) : funnel && funnel.steps[0]?.count > 0 ? (
+                            <div className={s.funnelSteps} aria-label="Funnel session counts">
+                              {funnel.steps.map((step, index) => {
+                                const firstCount = funnel.steps[0].count;
+                                const previousCount = index > 0 ? funnel.steps[index - 1].count : null;
+                                const completion = previousCount ? Math.round((step.count / previousCount) * 100) : 100;
+                                const width = Math.round((step.count / firstCount) * 100);
+                                return (
+                                  <div className={s.funnelStep} key={`${step.event_name}-${index}`}>
+                                    <span className={s.funnelStepLabel}>Step {index + 1} · {step.event_name}</span>
+                                    <strong>{compact(step.count)}</strong>
+                                    <span className={s.funnelStepConversion}>
+                                      {index === 0 ? 'Starting sessions' : `${completion}% from previous step`}
+                                    </span>
+                                    <span className={s.funnelBar}>
+                                      <i style={{ width: `${width}%` }} />
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className={s.emptyBlock}>
+                              <strong>{eventNames.length ? 'No sessions reached the first step' : 'No events to build a funnel'}</strong>
+                              <span>
+                                {eventNames.length
+                                  ? 'Try another event sequence or a longer date range.'
+                                  : 'Install the tracker and send named events first.'}
+                              </span>
+                            </div>
+                          )}
+                        </section>
                       )}
 
                       {activeSection === 'events' && (

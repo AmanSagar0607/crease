@@ -144,3 +144,13 @@ Each item was developed on its own branch and merged locally with `--no-ff`. `gh
 - **Retention needs an external scheduler.** The repository provides the job and logging but not the schedule.
 - **Rate limiting is fixed-window.** Boundary bursts are possible, and the counters add database load.
 - **The browser write key is not a secret.** It scopes writes to a project but cannot make public browser events unforgeable; origin checks are only a deterrent.
+
+## Local MVP continuation — 2026-11-18
+
+- Added project-scoped event-count goals using the existing FastAPI/Postgres service: `GET /goal-events`, `GET /goals`, `POST /goals`, `PATCH /goals/{goal_id}`, and `DELETE /goals/{goal_id}` under `/api/projects/{project_id}`. Every route checks project ownership; event names must already exist for that project; goal targets are positive bounded integers; duplicate names return `409`.
+- Added Alembic revision `0005_project_goals`. Progress counts observed occurrences of the selected event inside the requested UTC date window and is capped at the target for display. Revenue is not inferred.
+- Added the Goals dashboard section with create/edit/delete, loading/error/empty states, responsive overflow handling, and observed-event choices.
+- Removed hardcoded sample analytics values and charts from the landing and sign-in previews; they now explain that project values only appear after tracking is verified.
+- The linked Neon integration is connected, but its reported schema contains only Neon Auth tables. It does not match the existing Crease API database, so this change uses the established API database boundary and does not create parallel analytics tables in the linked integration.
+- Verification at this checkpoint: `npx tsc --noEmit`, Python syntax compilation, and `git diff --check` passed. Backend integration tests could not run because this workspace has neither `TEST_DATABASE_URL` nor a local PostgreSQL listener. Revision `0005_project_goals` is source only; no production migration, push, or deploy was performed.
+- Continued funnel work: added `GET /api/projects/{id}/funnel/multi` for two to five ordered event steps per session. The legacy two-step endpoint remains intact. Each step counts distinct sessions that completed the preceding sequence; query values are parameterized and constrained to 2–5 event names. Saved funnels, step-level property filters, and funnel tests against PostgreSQL remain pending.

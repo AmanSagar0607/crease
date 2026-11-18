@@ -450,7 +450,7 @@
 .mockMetric em {
   display: block;
   margin-top: 2px;
-  color: var(--positive);
+  color: var(--muted2);
   font-size: 7px;
   font-style: normal;
 }
@@ -477,23 +477,15 @@
 }
 
 .mockBars {
-  display: flex;
+  display: grid;
   flex: 1;
-  align-items: flex-end;
-  gap: 5px;
+  place-content: center;
   min-height: 64px;
   margin-top: 10px;
-}
-
-.mockBars i {
-  flex: 1;
-  min-width: 0;
-  border-radius: 2px 2px 0 0;
-  background: var(--bar);
-}
-
-.mockBars i:last-child {
-  background: var(--barActive);
+  color: var(--muted2);
+  font-size: 8px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .mockRows {
