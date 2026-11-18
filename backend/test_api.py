@@ -475,6 +475,81 @@ class ApiTest(unittest.TestCase):
             rows = dict(db.execute(text('SELECT id, country FROM events WHERE project_id=:id'), {'id':p['id']}).all())
         self.assertEqual(rows, {'direct':None, 'missing':None, 'valid':'US', 'disabled':None})
 
+    def test_bot_user_agents_are_acknowledged_but_not_stored(self):
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        p = self.client.post('/api/projects', json={'name':'Bots','domain':'example.com'}, headers=headers).json()
+        self.verify_project(p['id'])
+        base = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        event = {'id':'bot-1','name':'pageview','timestamp':main.stamp(main.now()),'path':'/','visitorId':'v'}
+        for agent in ('Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                      'curl/8.4.0', 'Mozilla/5.0 (X11; Linux x86_64) HeadlessChrome/120.0.0.0 Safari/537.36',
+                      'Mozilla/5.0 (compatible; UptimeRobot/2.0)'):
+            response = self.client.post('/api/events', json={'projectId':p['id'],'events':[event]}, headers={**base,'user-agent':agent})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), {'accepted':0,'filtered':'bot'})
+        with main.engine.connect() as db:
+            self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
+        browser = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
+        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[event]}, headers={**base,'user-agent':browser}).json()['accepted'], 1)
+        with main.engine.connect() as db:
+            self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 1)
+
+    def test_forwarded_country_is_trusted_when_the_secret_is_configured(self):
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        p = self.client.post('/api/projects', json={'name':'Geo default','domain':'example.com'}, headers=headers).json()
+        self.verify_project(p['id'])
+        base = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        event = {'id':'geo-1','name':'pageview','timestamp':main.stamp(main.now()),'path':'/','visitorId':'v'}
+        with patch.object(main, 'GEO_FORWARD_SECRET', 'test-secret'):
+            response = self.client.post('/internal/events', json={'projectId':p['id'],'events':[event]}, headers={**base,'x-crease-forward-secret':'test-secret','x-crease-country':'DE'})
+        self.assertEqual(response.status_code, 200)
+        with main.engine.connect() as db:
+            self.assertEqual(db.execute(text('SELECT country FROM events WHERE id=:id'), {'id':'geo-1'}).scalar_one(), 'DE')
+
+    def test_retention_endpoint_requires_secret_and_deletes_expired_rows(self):
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        p = self.client.post('/api/projects', json={'name':'Cron','domain':'example.com'}, headers=headers).json()
+        self.assertEqual(self.client.patch('/api/projects/'+p['id']+'/retention', json={'retention_days':7}, headers=headers).status_code, 200)
+        with main.engine.begin() as db:
+            db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,properties) VALUES (:project,:id,:name,:at,:path,:visitor,:session,:properties)'), {'project':p['id'],'id':'expired','name':'pageview','at':main.stamp(main.now()-timedelta(days=30)),'path':'/','visitor':'v','session':'s','properties':'{}'})
+        self.assertEqual(self.client.post('/internal/retention').status_code, 401)
+        self.assertEqual(self.client.post('/internal/retention', headers={'x-crease-retention-secret':'wrong'}).status_code, 401)
+        with patch.object(main, 'RETENTION_SECRET', 'cron-secret'):
+            response = self.client.post('/internal/retention', headers={'x-crease-retention-secret':'cron-secret'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['events'], 1)
+        with main.engine.connect() as db:
+            self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
+
+    def test_scheduled_retention_helper_runs_without_an_external_cron(self):
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        p = self.client.post('/api/projects', json={'name':'Scheduled','domain':'example.com'}, headers=headers).json()
+        self.assertEqual(self.client.patch('/api/projects/'+p['id']+'/retention', json={'retention_days':7}, headers=headers).status_code, 200)
+        with main.engine.begin() as db:
+            db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,properties) VALUES (:project,:id,:name,:at,:path,:visitor,:session,:properties)'), {'project':p['id'],'id':'scheduled-old','name':'pageview','at':main.stamp(main.now()-timedelta(days=30)),'path':'/','visitor':'v','session':'s','properties':'{}'})
+        totals = asyncio.run(main.retention_once())
+        self.assertGreaterEqual(totals['events'], 1)
+        with main.engine.connect() as db:
+            self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
+
+    def test_retention_tolerates_absent_payment_tables(self):
+        headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('crease_session','u1')
+        p = self.client.post('/api/projects', json={'name':'No payments','domain':'example.com'}, headers=headers).json()
+        self.assertEqual(self.client.patch('/api/projects/'+p['id']+'/retention', json={'retention_days':7}, headers=headers).status_code, 200)
+        old = main.stamp(main.now() - timedelta(days=30))
+        with main.engine.begin() as db:
+            db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,properties) VALUES (:project,:id,:name,:at,:path,:visitor,:session,:properties)'), {'project':p['id'],'id':'old-event','name':'pageview','at':old,'path':'/','visitor':'v','session':'s','properties':'{}'})
+        real = expire.table_exists
+        def only_core(db, name):
+            if name.startswith('payment'):
+                return False
+            return real(db, name)
+        with patch.object(expire, 'table_exists', side_effect=only_core):
+            totals = expire.enforce_retention(main.engine)
+        self.assertEqual(totals['events'], 1)
+        with main.engine.connect() as db:
+            self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
+
     def test_event_preflight_allows_sdk_write_key_header(self):
         response = self.client.options('/api/events', headers={'origin':'https://example.com','access-control-request-method':'POST','access-control-request-headers':'content-type,x-crease-key'})
         self.assertEqual(response.status_code,204)
