@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import PlatformLogo, { platforms } from './platform-logos';
-import LivingCat from './mascot/living-cat';
 import LandingNav from './landing-nav';
 import InstallSnippet from './install-snippet';
+import LandingProductPreview from './v0-preview/LandingProductPreview';
 import s from './landing.module.css';
 
 const repo = 'https://github.com/AmanSagar0607/crease';
@@ -81,8 +81,6 @@ function Ghost({ className = '' }: { className?: string }) {
   );
 }
 
-const sideItems = ['Visitors', 'Pages', 'Referrers', 'Countries', 'Events'];
-
 export default function Home() {
   return (
     <div className={s.landing}>
@@ -94,7 +92,6 @@ export default function Home() {
 
       <main id="main">
         <section className={s.hero}>
-          <Ghost className={s.ghostHero} />
           <p className={s.heroEyebrow}><span aria-hidden="true" />Independent analytics · Open source</p>
           <h1>
             Analytics for the
@@ -109,7 +106,7 @@ export default function Home() {
             <Link className={`${s.btn} ${s.btnPrimary}`} href="/sign-up">
               Start free <span aria-hidden="true">↗</span>
             </Link>
-            <Link className={s.heroTextLink} href="/waitlist">Join early access</Link>
+            <Link className={s.heroTextLink} href="/v0-preview">Preview dashboard</Link>
           </div>
           <InstallSnippet />
           <div className={s.trustRow} aria-label="Product attributes">
@@ -127,107 +124,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className={s.mockWrap} aria-label="Zappa analytics dashboard preview">
-          <Ghost className={s.ghostMock} />
-          <div className={s.catPerch}>
-            <LivingCat variant="hero" listen />
-          </div>
-          <div className={s.mockPanel}>
-            <div className={s.window}>
-              <div className={s.windowTop}>
-                <div className={s.dots} aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                <span className={s.windowUrl}>your-site.com / overview</span>
-              </div>
-              <div className={s.mockBody}>
-                <aside className={s.sidebar} aria-hidden="true">
-                  <div className={s.workspace}>
-                    <span>✳</span>
-                    <div>
-                      your-site.com
-                      <em>project preview</em>
-                    </div>
-                  </div>
-                  <ul className={s.sideNav}>
-                    <li className={s.active}>
-                      Overview
-                      <span className={s.count}>01</span>
-                    </li>
-                    {sideItems.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                  <p className={s.sideLabel}>Project</p>
-                  <ul className={s.sideNav}>
-                    <li>Installation</li>
-                    <li>Integrations</li>
-                    <li>Settings</li>
-                  </ul>
-                </aside>
-
-                <div className={s.mockMain}>
-                  <div className={s.mockHead}>
-                    <div>
-                      <h3>Overview</h3>
-                      <small>Sample workspace · last 7 days</small>
-                    </div>
-                    <span className={s.previewChip}>
-                      SAMPLE DATA
-                    </span>
-                  </div>
-
-                  <div className={s.metrics}>
-                    {[
-                      { label: 'Visitors', value: '1,284', delta: '+14%' },
-                      { label: 'Page views', value: '3,906', delta: '+9%' },
-                      { label: 'Sessions', value: '1,742', delta: '+11%' },
-                      { label: 'Events', value: '6,318', delta: '+18%' },
-                    ].map((metric) => (
-                      <div className={s.metric} key={metric.label}>
-                        <span>{metric.label}<em>{metric.delta}</em></span>
-                        <strong>{metric.value}</strong>
-                        <small>Sample · vs prior week</small>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className={s.chartCard}>
-                    <div className={s.chartHead}>
-                      <b>Visitors over time</b>
-                      <span>Sample · 7 days</span>
-                    </div>
-                    <svg className={s.sampleChart} viewBox="0 0 760 180" role="img" aria-label="Sample visitors rise from 92 on Monday to 238 on Sunday">
-                      <defs><linearGradient id="sample-visitors-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#B85436" stopOpacity="0.18" /><stop offset="100%" stopColor="#B85436" stopOpacity="0" /></linearGradient></defs>
-                      <path d="M0 139 C42 133 75 141 108 128 S175 111 216 121 S282 101 324 111 S391 79 432 101 S499 68 540 83 S608 54 648 66 S717 39 760 28 L760 180 L0 180Z" fill="url(#sample-visitors-area)" />
-                      <path d="M0 139 C42 133 75 141 108 128 S175 111 216 121 S282 101 324 111 S391 79 432 101 S499 68 540 83 S608 54 648 66 S717 39 760 28" fill="none" stroke="#B85436" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                      <circle cx="760" cy="28" r="4" fill="#B85436" />
-                    </svg>
-                    <div className={s.chartTicks} aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
-                  </div>
-
-                  <div className={s.mockLower}>
-                    <div className={s.listCard}>
-                      <h4>Top pages <span>Sample</span></h4>
-                      <ul className={s.sampleRows}><li><span>/</span><strong>638</strong></li><li><span>/pricing</span><strong>421</strong></li><li><span>/docs</span><strong>297</strong></li></ul>
-                    </div>
-                    <div className={s.listCard}>
-                      <h4>Referrers <span>Sample</span></h4>
-                      <ul className={s.sampleRows}><li><span>Direct</span><strong>504</strong></li><li><span>github.com</span><strong>283</strong></li><li><span>news.ycombinator.com</span><strong>172</strong></li></ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className={s.toast}>
-            <i aria-hidden="true" />
-            Setup preview
-            <Link href="/docs">View docs</Link>
-          </div>
-        </section>
+        <LandingProductPreview />
 
         <section className={`${s.section} ${s.shell}`} id="problem">
           <div className={s.problemGrid}>

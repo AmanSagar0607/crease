@@ -2064,3 +2064,119 @@
 @media (prefers-contrast: more) {
   .navWrap, .mobileMenuPanel, .installSnippet, .mockPanel { border-color: var(--ink); }
 }
+
+
+/* Zappa v0: warm chalk canvas, restrained type, single vermilion action color. */
+.landing {
+  --bg: #F0EFEB;
+  --surface: #FFFFFF;
+  --surface2: #E7E6E1;
+  --surface3: #F7F6F2;
+  --card: #FFFFFF;
+  --ink: #2D2D2D;
+  --ink2: #4A4945;
+  --muted: #6B6B6B;
+  --line: #D9D8D3;
+  --footerBg: #0B0B0B;
+  --footerInk: #F0EFEB;
+  --footerMuted: #AAA69D;
+  --btnBg: #C0391B;
+  --btnInk: #FFFFFF;
+  --btnBgHover: #A9321A;
+  --navBg: rgb(240 239 235 / 88%);
+  --sidebarBg: #F7F6F2;
+  --container: 1120px;
+  color: var(--ink);
+  font-family: 'Geist', 'Segoe UI', sans-serif;
+}
+
+:global([data-theme='dark']) .landing {
+  --bg: #0B0B0B;
+  --surface: #141414;
+  --surface2: #222222;
+  --surface3: #1A1A1A;
+  --card: #141414;
+  --ink: #F0EFEB;
+  --ink2: #C9C6BE;
+  --muted: #AAA69D;
+  --line: #30302E;
+  --footerBg: #050505;
+  --footerInk: #F0EFEB;
+  --footerMuted: #AAA69D;
+  --btnBg: #FF5A3A;
+  --btnInk: #0B0B0B;
+  --btnBgHover: #FF765C;
+  --navBg: rgb(11 11 11 / 88%);
+  --sidebarBg: #141414;
+}
+
+.landing .nav {
+  width: min(760px, calc(100% - 32px));
+  height: 52px;
+  gap: 18px;
+  padding-inline: 18px 8px;
+  border-color: var(--line);
+  background: var(--navBg);
+}
+
+.landing .brand { font-size: 18px; font-weight: 650; letter-spacing: -.045em; }
+.landing .navLinks { gap: 14px; font-size: 14px; }
+.landing .navEnd { gap: 10px; }
+.landing .navAction { height: 44px; padding-inline: 16px; font-size: 14px; font-weight: 600; }
+.landing .hero h1 { max-width: 900px; font-size: clamp(44px, 6vw, 72px); font-weight: 600; letter-spacing: -.055em; line-height: 1.02; text-wrap: balance; }
+.landing .heroLead { max-width: 630px; font-size: 17px; line-height: 1.6; text-wrap: pretty; }
+.landing .btn { min-height: 44px; height: 44px; padding-inline: 20px; font-size: 15px; font-weight: 600; }
+.landing .heroTextLink { font-size: 15px; }
+.landing .mobileMenuTheme { padding: 14px 0 6px; border-top: 1px solid var(--line); }
+.landing .mobileMenuTheme > * { width: fit-content; }
+.landing .mobileMenuTheme button { min-height: 44px; }
+.landing .nav :focus-visible, .landing .hero :focus-visible { outline-color: #C0391B; }
+:global([data-theme='dark']) .landing .nav :focus-visible,
+:global([data-theme='dark']) .landing .hero :focus-visible { outline-color: #FF765C; }
+
+@media (max-width: 760px) {
+  .landing .nav { width: calc(100% - 24px); height: 48px; gap: 8px; padding: 0 8px 0 14px; }
+  .landing .navLinks, .landing .navTheme, .landing .navQuiet { display: none; }
+  .landing .navAction { height: 40px; min-height: 40px; padding-inline: 13px; font-size: 13px; }
+  .landing .hero h1 { font-size: clamp(42px, 10vw, 60px); }
+  .landing .heroLead { font-size: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing *, .landing *::before, .landing *::after { scroll-behavior: auto !important; }
+}
+
+
+/* Tablet navigation uses the same full-screen drawer before the desktop links compress. */
+.landing .heroEyebrow span { background: #C0391B; }
+.landing .trustRow span::before { color: #C0391B; }
+:global([data-theme='dark']) .landing .heroEyebrow span,
+:global([data-theme='dark']) .landing .trustRow span::before { background: #FF5A3A; color: #FF5A3A; }
+
+@media (max-width: 860px) {
+  .landing .nav { width: calc(100% - 32px); justify-content: space-between; }
+  .landing .navLinks, .landing .navTheme, .landing .navQuiet { display: none; }
+  .landing .mobileMenuToggle { width: 44px; height: 44px; display: inline-grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+  .landing .mobileMenuToggle svg { width: 20px; height: 20px; }
+}
+
+
+@media (max-width: 860px) {
+  .landing .mobileMenuLayer { position: fixed; z-index: 100; inset: 0; display: block; }
+  .landing .mobileMenuBackdrop { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: rgba(20, 18, 15, .48); animation: menuScrimIn 160ms ease-out both; }
+  .landing .mobileMenuPanel { position: absolute; inset: 0 0 auto; display: flex; flex-direction: column; gap: 2px; padding: 14px 20px 24px; border-bottom: 1px solid var(--line); border-radius: 0 0 16px 16px; background: var(--bg); box-shadow: 0 20px 50px rgba(20, 18, 15, .16); animation: menuSheetIn 260ms cubic-bezier(.22, 1, .36, 1) both; }
+  .landing .mobileMenuHead { min-height: 48px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .landing .mobileMenuBrand { color: var(--ink); font-size: 1.25rem; font-weight: 700; letter-spacing: -.06em; }
+  .landing .mobileMenuClose { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+  .landing .mobileMenuPanel > a { min-height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-radius: 8px; color: var(--ink); font-size: 1.0625rem; font-weight: 500; }
+  .landing .mobileMenuPanel > a:hover { background: var(--surface2); }
+  .landing .mobileMenuActions { display: grid; grid-template-columns: 1fr 1.2fr; gap: 10px; margin-top: 14px; }
+  .landing .mobileMenuActions a { min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 1rem; font-weight: 600; }
+  .landing .mobileMenuLogin { background: var(--surface); color: var(--ink); }
+  .landing a.mobileMenuStart { background: var(--btnBg); color: var(--btnInk); border-color: transparent; }
+  .landing .mobileMenuTheme { min-height: 52px; display: flex; align-items: center; padding: 4px 12px; }
+  .landing .mobileMenuTheme :global(button) { min-height: 44px; }
+}
+
+:global([data-theme='dark']) .landing .heroEyebrow span { background: #FF5A3A; }
+:global([data-theme='dark']) .landing .trustRow span::before { color: #FF5A3A; }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useClerk } from '@clerk/nextjs';
+import { useAuth, useClerk } from '@clerk/nextjs';
 import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
@@ -21,6 +21,7 @@ import GoalsSection from './GoalsSection';
 import UnavailableSection from './UnavailableSection';
 import LiveActivity from './LiveActivity';
 import useOverviewReport from './useOverviewReport';
+import { appendFunnelStep, buildFunnelRequest, normalizeFunnelSteps, selectFunnelStep } from './funnel-api';
 import {
   LEGACY_HASHES,
   NAV_GROUPS,
@@ -401,6 +402,18 @@ function BreakdownCard({
 export default function DashboardView({ projectId }: { projectId?: string }) {
   const router = useRouter();
   const { signOut } = useClerk();
+  const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
+  const handleUnauthorized = useCallback((setMessage: (message: string) => void) => {
+    if (clerkLoaded && !isSignedIn) {
+      router.replace('/sign-in');
+      return;
+    }
+    setMessage(
+      clerkLoaded
+        ? `Clerk shows an active session, but the analytics API rejected it (401). Check that CLERK_ISSUER matches this Clerk instance, CLERK_AUTHORIZED_PARTIES includes ${window.location.origin}, and the session token reaches the API.`
+        : 'Could not verify your sign-in yet. Refresh after Clerk finishes loading.',
+    );
+  }, [clerkLoaded, isSignedIn, router]);
   const [user, setUser] = useState<User | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState('');
@@ -478,14 +491,14 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setSelected(projectId ? (list.some((project) => project.id === projectId) ? projectId : '') : !viewingProjects && list.length === 1 ? list[0].id : '');
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/sign-in');
+        handleUnauthorized(setError);
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load your workspace.');
     } finally {
       setBusy(false);
     }
-  }, [projectId, router]);
+  }, [projectId, handleUnauthorized]);
 
   useEffect(() => {
     void load();
@@ -516,14 +529,14 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       celebrateFirstPageview(selected, result, projectRef.current);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/sign-in');
+        handleUnauthorized(setSummaryError);
         return;
       }
       setSummaryError(e instanceof Error ? e.message : 'Could not load analytics.');
     } finally {
       setSummaryBusy(false);
     }
-  }, [selected, rangeQuery, filterQuery, router]);
+  }, [selected, rangeQuery, filterQuery, handleUnauthorized]);
 
   useEffect(() => {
     void loadSummary();
@@ -545,14 +558,14 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/sign-in');
+        handleUnauthorized(setSetupNotice);
         return;
       }
       setSetupNotice(e instanceof Error ? e.message : 'Could not check for events.');
     } finally {
       setSetupChecking(false);
     }
-  }, [selected, loadSummary, router]);
+  }, [selected, loadSummary, handleUnauthorized]);
 
   useEffect(() => {
     if ((tab !== 'installation' && !onboarding) || !project || project.last_event_at) return;
@@ -572,12 +585,12 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setProperties(await api<PropertyKey[]>(`/api/projects/${encodeURIComponent(selected)}/properties`));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/sign-in');
+        handleUnauthorized(setError);
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load custom properties.');
     }
-  }, [selected, router]);
+  }, [selected, handleUnauthorized]);
 
   useEffect(() => {
     void loadProperties();
@@ -598,14 +611,14 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setEvents(await api<EventRow[]>(`/api/projects/${encodeURIComponent(selected)}/events?${params.toString()}`));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/sign-in');
+        handleUnauthorized(setError);
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load events.');
     } finally {
       setEventsBusy(false);
     }
-  }, [selected, reportRange, filterProperty, filterValue, router]);
+  }, [selected, reportRange, filterProperty, filterValue, handleUnauthorized]);
 
   useEffect(() => {
     void loadEvents();
@@ -613,17 +626,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   useEffect(() => {
     const names = eventNames.map((item) => item.label);
-    if (!names.length) {
-      setFunnelSteps([]);
-      return;
-    }
-    setFunnelSteps((current) => {
-      const next = current.length
-        ? current.slice(0, 5).map((name, index) => (names.includes(name) ? name : names[Math.min(index, names.length - 1)]))
-        : names.slice(0, 2);
-      while (next.length < 2 && names.length >= 2) next.push(names[next.length] ?? names[0]);
-      return next;
-    });
+    setFunnelSteps((current) => normalizeFunnelSteps(current, names));
   }, [eventNames]);
 
   const loadFunnel = useCallback(async () => {
@@ -632,7 +635,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setFunnelError('');
       return;
     }
-    if (funnelSteps.length < 2 || funnelSteps.some((step) => !step)) {
+    if (funnelSteps.length < 2 || funnelSteps.some((step) => !step) || new Set(funnelSteps).size !== funnelSteps.length) {
       setFunnel(null);
       setFunnelError(eventNames.length < 2 ? 'Track at least two distinct events before building a funnel.' : 'Choose at least two funnel steps to continue.');
       return;
@@ -640,13 +643,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setFunnelBusy(true);
     setFunnelError('');
     try {
-      const range = { days: '30', ...(reportRange || {}) };
+      const resultPath = buildFunnelRequest(selected, reportRange, funnelSteps);
       if (funnelSteps.length === 2) {
-        // The deployed API has a stable two-step route; reserve /multi for 3–5 steps.
-        const params = new URLSearchParams({ ...range, first: funnelSteps[0], second: funnelSteps[1] });
-        const result = await api<{ first: string; second: string; first_count: number; second_count: number; conversion: number; days: number }>(
-          `/api/projects/${encodeURIComponent(selected)}/funnel?${params.toString()}`,
-        );
+        const result = await api<{ first: string; second: string; first_count: number; second_count: number; conversion: number; days: number }>(resultPath);
         setFunnel({
           days: result.days,
           start: reportRange?.start ?? '',
@@ -657,13 +656,11 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           ],
         });
       } else {
-        const params = new URLSearchParams(range);
-        funnelSteps.forEach((step) => params.append('steps', step));
-        setFunnel(await api<Funnel>(`/api/projects/${encodeURIComponent(selected)}/funnel/multi?${params.toString()}`));
+        setFunnel(await api<Funnel>(resultPath));
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/sign-in');
+        handleUnauthorized(setFunnelError);
         return;
       }
       if (e instanceof ApiError && e.status === 404 && funnelSteps.length > 2) {
@@ -674,7 +671,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     } finally {
       setFunnelBusy(false);
     }
-  }, [selected, reportRange, funnelSteps, eventNames.length, router]);
+  }, [selected, reportRange, funnelSteps, eventNames.length, handleUnauthorized]);
 
   useEffect(() => {
     void loadFunnel();
@@ -756,12 +753,12 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       );
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/sign-in');
+        handleUnauthorized(setError);
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load domain verification status.');
     }
-  }, [selected, router]);
+  }, [selected, handleUnauthorized]);
 
   useEffect(() => {
     void loadVerification();
@@ -972,7 +969,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         <ProjectNavigation>
           <div className={s.sidebarTop}>
             <div className={s.sidebarBrandRow}>
-              <Link className={s.sidebarBrand} href="/" aria-label="Zappa home">Zappa</Link>
               <SidebarTrigger className={s.sidebarCollapse} aria-label="Collapse or expand sidebar" />
             </div>
             <label className={s.sidebarSwitcher}>
@@ -1399,10 +1395,12 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                                   <span className={s.srOnly}>Funnel step {index + 1}</span>
                                   <select
                                     value={step}
-                                    onChange={(event) => setFunnelSteps((current) => current.map((value, stepIndex) => stepIndex === index ? event.target.value : value))}
+                                    onChange={(event) => setFunnelSteps((current) => selectFunnelStep(current, index, event.target.value))}
                                     disabled={!eventNames.length}
                                   >
-                                    {eventNames.length ? eventNames.map((item) => (
+                                    {eventNames.length ? eventNames
+                                      .filter((item) => item.label === step || !funnelSteps.some((selectedName, selectedIndex) => selectedIndex !== index && selectedName === item.label))
+                                      .map((item) => (
                                       <option key={item.label} value={item.label}>{item.label}</option>
                                     )) : <option value="">No events yet</option>}
                                   </select>
@@ -1423,11 +1421,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             <button
                               className={s.filterClear}
                               type="button"
-                              disabled={funnelSteps.length >= 5 || !eventNames.length}
-                              onClick={() => setFunnelSteps((current) => {
-                                const available = eventNames.map((item) => item.label);
-                                return [...current, available.find((name) => !current.includes(name)) ?? available[0] ?? ''];
-                              })}
+                              disabled={funnelSteps.length >= 5 || new Set(eventNames.map((item) => item.label)).size < 2 || !eventNames.some((item) => !funnelSteps.includes(item.label))}
+                              onClick={() => setFunnelSteps((current) => appendFunnelStep(current, eventNames.map((item) => item.label)))}
                             >
                               Add step
                             </button>
@@ -1436,7 +1431,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             <div className={s.statePanel} data-tone="warn" role="status">
                               <AlertIcon className={s.icon} />
                               <div className={s.statePanelBody}>
-                                <strong>Extended funnel support is pending</strong>
+                                <strong>Funnel unavailable</strong>
                                 <p>{funnelError}</p>
                               </div>
                             </div>

@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import type { AnalyticsSection } from './navigation';
 import { compareLabel, display, eventLabel, type AttributionModel, type Metrics, type Report } from './reporting';
 import s from './overview-v1.module.css';
@@ -29,6 +30,13 @@ const SECONDARY_METRICS: { key: keyof Metrics; label: string; description: strin
   { key: 'returning_visitors', label: 'Returning visitors', description: 'Observed before this period in retained project history.' },
   { key: 'conversions', label: 'Converted visitors', description: 'Distinct visitors who triggered the selected conversion event.' },
 ];
+
+const OVERVIEW_CHART_CONFIG: ChartConfig = {
+  visitors: { label: 'Visitors', color: 'var(--accent-line)' },
+  sessions: { label: 'Sessions', color: 'var(--chart-muted)' },
+  previous_visitors: { label: 'Previous visitors', color: 'var(--accent-line)' },
+  previous_sessions: { label: 'Previous sessions', color: 'var(--chart-muted)' },
+};
 
 export default function OverviewV1({ report, loading, error, onRetry, model, conversionEvent, filtered, onNavigate }: Props) {
   const [sourceSearch, setSourceSearch] = useState('');
@@ -143,8 +151,14 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                 <>
                 {sparse && <p className={s.sparseNote}>Activity is sparse in this period; markers show observed days.</p>}
                 <div className={s.chartArea}>
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ChartContainer
+                    config={OVERVIEW_CHART_CONFIG}
+                    className={s.chartContainer}
+                    role="img"
+                    aria-label="Daily visitors and sessions compared with the previous period"
+                  >
                     <LineChart data={report.series} margin={{ top: 12, right: 16, left: -20, bottom: 0 }}>
+                      <CartesianGrid stroke="var(--line)" vertical={false} />
                       <XAxis
                         dataKey="date"
                         interval={Math.max(0, Math.ceil(report.series.length / 6) - 1)}
@@ -154,17 +168,17 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                         axisLine={false}
                       />
                       <YAxis allowDecimals={false} tick={{ fill: 'var(--muted)', fontSize: 13 }} tickLine={false} axisLine={false} />
-                      <Tooltip
-                        contentStyle={{ background: 'var(--paper)', color: 'var(--ink)', border: '1px solid var(--line)' }}
-                        labelFormatter={(label) => `${label} UTC`}
+                      <ChartTooltip
+                        cursor={false}
+                        content={<ChartTooltipContent labelFormatter={(label) => `${String(label)} UTC`} />}
                       />
-                      <Line type="monotone" dataKey="visitors" name="Visitors" stroke="var(--ink)" strokeWidth={2} dot={sparse ? { r: 3 } : false} />
-                      <Line type="monotone" dataKey="sessions" name="Sessions" stroke="var(--blue)" strokeWidth={2} dot={sparse ? { r: 3 } : false} />
+                      <Line type="monotone" dataKey="visitors" name="Visitors" stroke="var(--color-visitors)" strokeWidth={2.5} dot={sparse ? { r: 3 } : false} />
+                      <Line type="monotone" dataKey="sessions" name="Sessions" stroke="var(--color-sessions)" strokeWidth={2} dot={sparse ? { r: 3 } : false} />
                       <Line
                         type="monotone"
                         dataKey="previous_visitors"
                         name="Previous visitors"
-                        stroke="var(--ink)"
+                        stroke="var(--color-previous_visitors)"
                         strokeDasharray="4 4"
                         strokeOpacity={0.5}
                         dot={false}
@@ -173,20 +187,20 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                         type="monotone"
                         dataKey="previous_sessions"
                         name="Previous sessions"
-                        stroke="var(--blue)"
+                        stroke="var(--color-previous_sessions)"
                         strokeDasharray="4 4"
                         strokeOpacity={0.4}
                         dot={false}
                       />
                     </LineChart>
-                  </ResponsiveContainer>
+                  </ChartContainer>
                 </div>
                 </>
               )}
             </section>
 
             <div className={s.twoCol}>
-              <section className={s.panel}>
+              <section className={s.panel} id="acquisition">
                 <div className={s.sectionHead}>
                   <div>
                     <span className={s.eyebrow}>ACQUISITION</span>
@@ -254,7 +268,7 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                 )}
               </section>
 
-              <section className={s.panel}>
+              <section className={s.panel} id="campaigns">
                 <div className={s.sectionHead}>
                   <div>
                     <span className={s.eyebrow}>CAMPAIGNS</span>
@@ -303,7 +317,7 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
             </div>
 
             <div className={s.twoCol}>
-              <section className={s.panel}>
+              <section className={s.panel} id="pages">
                 <div className={s.sectionHead}>
                   <div>
                     <span className={s.eyebrow}>LANDING PAGES</span>
@@ -350,7 +364,7 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                 )}
               </section>
 
-              <section className={s.panel}>
+              <section className={s.panel} id="events">
                 <div className={s.sectionHead}>
                   <div>
                     <span className={s.eyebrow}>RECENT ACTIVITY</span>
@@ -394,7 +408,7 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
               </section>
             </div>
 
-            <div className={s.revenue}>
+            <div className={s.revenue} id="revenue">
               <div>
                 <span className={s.eyebrow}>REVENUE</span>
                 <h3>Revenue reporting unavailable</h3>
