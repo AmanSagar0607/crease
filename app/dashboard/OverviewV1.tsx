@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import type { AnalyticsSection } from './navigation';
-import { compareLabel, display, eventLabel, type AttributionModel, type Metrics, type Report } from './reporting';
+import { compareLabel, display, displayPagePath, eventLabel, type AttributionModel, type Metrics, type Report } from './reporting';
 import s from './overview-v1.module.css';
 
 type Props = {
@@ -523,7 +523,7 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                       <li key={`${event.occurred_at}-${index}`}>
                         <div>
                           <strong>{eventLabel(event.name)}</strong>
-                          <span>{event.path}</span>
+                          <span>{displayPagePath(event.path)}</span>
                         </div>
                         <time dateTime={event.occurred_at}>
                           {new Date(event.occurred_at).toLocaleString(undefined, {

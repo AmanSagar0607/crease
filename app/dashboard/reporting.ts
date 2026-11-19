@@ -67,6 +67,10 @@ export function eventLabel(name: string) {
   return name;
 }
 
+export function displayPagePath(path: string) {
+  return path === '/' ? 'Home' : path;
+}
+
 export function formatUtcStamp(iso: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;

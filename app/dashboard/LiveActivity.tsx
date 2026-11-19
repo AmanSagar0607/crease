@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { eventLabel, formatUtcStamp, type Range } from './reporting';
+import { displayPagePath, eventLabel, formatUtcStamp, type Range } from './reporting';
 import s from './sections.module.css';
 
 type LiveEvent = { id: string; name: string; path: string; occurred_at: string; country?: string | null; device?: string | null };
@@ -176,7 +176,7 @@ export default function LiveActivity({ projectId, range }: { projectId: string; 
           {filteredEvents.map((event) => (
             <li className={s.eventRow} key={event.id}>
               <strong>{eventLabel(event.name)}</strong>
-              <span className={s.eventPath} title={event.path}>{event.path}</span>
+              <span className={s.eventPath} title={event.path}>{displayPagePath(event.path)}</span>
               <span className={s.eventMeta}>
                 {event.device && <span>{event.device}</span>}{event.country && <span>{event.country}</span>}
                 <time dateTime={event.occurred_at} title={`${formatUtcStamp(event.occurred_at)} UTC`}>{relativeWhen(event.occurred_at)}</time>

@@ -30,7 +30,7 @@ import {
   type AnalyticsSection,
   type Tab,
 } from './navigation';
-import { dateRange, type AttributionModel, type Preset, type Range } from './reporting';
+import { dateRange, displayPagePath, type AttributionModel, type Preset, type Range } from './reporting';
 import s from './dashboard.module.css';
 
 function ProjectNavigation({ children }: { children: ReactNode }) {
@@ -1607,7 +1607,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             {events.map((event) => (
                               <li className={s.eventRow} key={event.id}>
                                 <span className={s.eventName}>{event.name}</span>
-                                <span className={s.eventPath}>{event.path}</span>
+                                <span className={s.eventPath} title={event.path}>{displayPagePath(event.path)}</span>
                                 <span className={s.eventProps}>
                                   {Object.entries(event.properties).map(([key, value]) => (
                                     <span className={s.eventProp} key={key}>
