@@ -32,8 +32,9 @@ export default function ProjectOnboarding(props: Props) {
   const [copyError, setCopyError] = useState('');
   const snippet = `<script>\n  // Dispatch Zappa:consent after any required consent has been granted.\n  window.addEventListener('Zappa:consent', function () {\n    var script = document.createElement('script');\n    script.src = ${JSON.stringify(props.origin + '/Zappa.js')};\n    script.onload = function () {\n      window.Zappa.init({\n        projectId: ${JSON.stringify(props.projectId)},\n        writeKey: ${JSON.stringify(props.writeKey)},\n        endpoint: ${JSON.stringify(props.endpoint)}\n      });\n    };\n    document.head.appendChild(script);\n  }, { once: true });\n</script>`;
   const npmInstallCommand = 'npm install @aman-sagar06077/zappa-analytics';
+  const npmEnvSnippet = `NEXT_PUBLIC_ZAPPA_PROJECT_ID=${props.projectId}\nNEXT_PUBLIC_ZAPPA_WRITE_KEY=${props.writeKey}\nNEXT_PUBLIC_ZAPPA_ORIGIN=${props.origin || 'https://www.zappa.in'}`;
   const npmSnippet = npmTarget === 'next'
-    ? `import { Analytics } from '@aman-sagar06077/zappa-analytics/next';\n\n// Add inside your root layout's <body>\n<Analytics\n  projectId=${JSON.stringify(props.projectId)}\n  writeKey=${JSON.stringify(props.writeKey)}\n  endpoint=${JSON.stringify(props.endpoint)}\n/>`
+    ? `import { Analytics } from '@aman-sagar06077/zappa-analytics/next';\n\n// Add inside your root layout's <body>\n<Analytics\n  projectId={process.env.NEXT_PUBLIC_ZAPPA_PROJECT_ID!}\n  writeKey={process.env.NEXT_PUBLIC_ZAPPA_WRITE_KEY!}\n  endpoint={process.env.NEXT_PUBLIC_ZAPPA_ORIGIN + '/api/events'}\n/>`
     : `import { init } from '@aman-sagar06077/zappa-analytics';\n\nconst analytics = init({\n  projectId: ${JSON.stringify(props.projectId)},\n  writeKey: ${JSON.stringify(props.writeKey)},\n  endpoint: ${JSON.stringify(props.endpoint)}\n});\n\nanalytics.track('signup_completed', { plan: 1 });`;
   async function copy(value: string, label: string) {
     try { await navigator.clipboard.writeText(value); setCopied(label); setCopyError(''); }
@@ -64,11 +65,16 @@ export default function ProjectOnboarding(props: Props) {
                 <button className={styles.copyAction} type="button" onClick={() => void copy(npmInstallCommand, 'npm-install')}>{copied === 'npm-install' ? 'Copied' : 'Copy install command'}</button>
               </div>
               <div className={styles.command}><code>{npmInstallCommand}</code></div>
+              {npmTarget === 'next' && <section className={styles.envGuide} aria-label="Next.js environment variables">
+                <div className={styles.envGuideHead}><div><strong>1. Add to <code>.env.local</code></strong><span>These values are generated for {props.name}.</span></div><button type="button" onClick={() => void copy(npmEnvSnippet, 'npm-env')} disabled={!props.writeKey}>{copied === 'npm-env' ? 'Copied' : 'Copy env vars'}</button></div>
+                <pre className={styles.envCode} tabIndex={0}><code>{props.writeKey ? npmEnvSnippet : 'Generate a project write key to prepare these values.'}</code></pre>
+                <p className={styles.note}>For production, add the same values in your hosting provider’s environment settings. These <code>NEXT_PUBLIC_</code> values are public browser config; the write key scopes events to this project and is not a secret.</p>
+              </section>}
               <div className={styles.npmTargets} role="group" aria-label="Package setup target">
                 <button type="button" aria-pressed={npmTarget === 'next'} onClick={() => setNpmTarget('next')}>Next.js</button>
                 <button type="button" aria-pressed={npmTarget === 'javascript'} onClick={() => setNpmTarget('javascript')}>JavaScript</button>
               </div>
-              <p className={styles.instructions}>{npmTarget === 'next' ? 'Add this component inside your root layout’s <body>. It sends page views automatically.' : 'Add this initialization to your app entry point. Page views and custom events send automatically.'}</p>
+              <p className={styles.instructions}>{npmTarget === 'next' ? '2. Add this component inside your root layout’s <body>. It sends page views automatically.' : 'Add this initialization to your app entry point. Page views and custom events send automatically.'}</p>
               <div className={styles.codeWrap}><button type="button" onClick={() => void copy(npmSnippet, 'npm-code')} disabled={!props.writeKey}>{copied === 'npm-code' ? 'Copied' : 'Copy setup code'}</button><pre tabIndex={0}><code>{props.writeKey ? npmSnippet : 'Write key unavailable. Open the dashboard Installation page to generate one.'}</code></pre></div>
               <p className={styles.note}>Project ID, write key, and collector URL are filled in for this site. If your site requires analytics consent, only render or initialize this package after consent is granted.</p>
               <p className={styles.docsLink}><a href="/docs">Open full setup guide</a></p>

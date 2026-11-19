@@ -12,9 +12,15 @@ npm i @aman-sagar06077/zappa-analytics
 import { Analytics } from '@aman-sagar06077/zappa-analytics/next';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html><body>{children}<Analytics projectId="YOUR_PROJECT_ID" writeKey="Zappa_YOUR_PROJECT_WRITE_KEY" /></body></html>;
+  return <html><body>{children}<Analytics
+    projectId={process.env.NEXT_PUBLIC_ZAPPA_PROJECT_ID!}
+    writeKey={process.env.NEXT_PUBLIC_ZAPPA_WRITE_KEY!}
+    endpoint={process.env.NEXT_PUBLIC_ZAPPA_ORIGIN + '/api/events'}
+  /></body></html>;
 }
 ```
+
+Copy the project-specific `NEXT_PUBLIC_ZAPPA_PROJECT_ID`, `NEXT_PUBLIC_ZAPPA_WRITE_KEY`, and `NEXT_PUBLIC_ZAPPA_ORIGIN` values from Zappa's Installation setup into `.env.local` and your production hosting environment. These values are public browser configuration; the write key scopes events to one project and is not a secret.
 
 ## Any JavaScript site
 

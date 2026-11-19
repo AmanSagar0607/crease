@@ -438,7 +438,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [funnel, setFunnel] = useState<Funnel | null>(null);
   const [funnelBusy, setFunnelBusy] = useState(false);
   const [funnelError, setFunnelError] = useState('');
-  const [origin, setOrigin] = useState('');
   const [tab, setTab] = useState<Tab>('analytics');
   const [activeSection, setActiveSection] = useState<AnalyticsSection>('overview');
   const project = showProjects ? undefined : projects.find((item) => item.id === selected);
@@ -684,7 +683,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   }
 
   useEffect(() => {
-    setOrigin(window.location.origin);
     setOnboarding(new URLSearchParams(window.location.search).get('onboarding') === '1');
     const read = () => {
       const candidate = window.location.hash.slice(1);
@@ -879,8 +877,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     }
   }
 
-  const collector = process.env.NEXT_PUBLIC_COLLECTOR_URL || (origin ? `${origin}/api/events` : '');
-  const snippet = `<script src="${origin}/Zappa.js" defer></script>
+  const collectorOrigin = process.env.NEXT_PUBLIC_ZAPPA_ORIGIN || 'https://www.zappa.in';
+  const collector = `${collectorOrigin}/api/events`;
+  const snippet = `<script src="${collectorOrigin}/Zappa.js" defer></script>
 <script>
   // Dispatch Zappa:consent after any required consent has been granted.
   window.addEventListener('Zappa:consent', function () {
@@ -939,7 +938,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       domain={project.domain}
       projectId={project.id}
       writeKey={writeKey}
-      origin={origin}
+      origin={collectorOrigin}
       endpoint={collector}
       verified={project.verified === true}
       verification={verification}
