@@ -1,5 +1,5 @@
 [project]
-name = "crease-api"
+name = "Zappa-api"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
@@ -10,4 +10,7 @@ dependencies = [
   "httpx==0.28.1",
   "python-dotenv==1.2.2",
   "cryptography==47.0.0",
+  "stripe==17.0.0",
+  "PyJWT[crypto]==2.10.1",
+  "svix==1.81.0",
 ]

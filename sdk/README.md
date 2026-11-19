@@ -1,19 +1,19 @@
-# Crease browser SDK (early prototype)
+# Zappa browser SDK (early prototype)
 
 This standalone script is an initial SDK, not a production-ready analytics service. Call `init` only when your consent policy permits tracking.
 
 ```html
-<script src="/crease.js" defer></script>
+<script src="/Zappa.js" defer></script>
 <script>
   // After the script loads and the visitor has granted any required consent:
-  crease.init({
+  Zappa.init({
     projectId: 'YOUR_PROJECT_ID',
-    writeKey: 'crease_YOUR_PROJECT_WRITE_KEY',
+    writeKey: 'Zappa_YOUR_PROJECT_WRITE_KEY',
     endpoint: 'https://YOUR_COLLECTOR/api/events'
   });
-  crease.capture('signup_started', { from_pricing: true });
+  Zappa.capture('signup_started', { from_pricing: true });
   // pushState, replaceState, query-only changes, and back/forward are tracked automatically.
-  // When consent is withdrawn, call crease.optOut().
+  // When consent is withdrawn, call Zappa.optOut().
 </script>
 ```
 

@@ -1,6 +1,6 @@
-const DEFAULT_ENDPOINT = 'https://crease-bice.vercel.app/api/events';
-const VISITOR_KEY = 'crease_visitor';
-const SESSION_KEY = 'crease_session';
+const DEFAULT_ENDPOINT = 'https://www.zappa.in/api/events';
+const VISITOR_KEY = 'Zappa_visitor';
+const SESSION_KEY = 'Zappa_session';
 const IDLE_MS = 30 * 60 * 1000;
 const MAX_SESSION_MS = 24 * 60 * 60 * 1000;
 
@@ -10,9 +10,9 @@ function makeId() {
 
 export function init(options = {}) {
   const noop = { track() {}, page() {}, identify() { return null; }, reset() {}, optOut() {}, destroy() {} };
-  if (typeof window === 'undefined' || !options.projectId || typeof options.writeKey !== 'string' || !/^crease_[A-Za-z0-9_-]{16,}$/.test(options.writeKey)) return noop;
+  if (typeof window === 'undefined' || !options.projectId || typeof options.writeKey !== 'string' || !/^Zappa_[A-Za-z0-9_-]{16,}$/.test(options.writeKey)) return noop;
   if (options.enabled === false) return noop;
-  if (window.__creaseAnalytics) return window.__creaseAnalytics;
+  if (window.__ZappaAnalytics) return window.__ZappaAnalytics;
 
   const endpoint = options.endpoint || DEFAULT_ENDPOINT;
   const visitorKey = VISITOR_KEY + ':' + options.projectId, sessionKey = SESSION_KEY + ':' + options.projectId;
@@ -58,12 +58,12 @@ export function init(options = {}) {
     if (timer) clearTimeout(timer); timer = null;
     if (!enabled || !queue.length) return;
     const batch = queue.slice(0, 20); queue = queue.slice(batch.length);
-    fetch(endpoint, { method: 'POST', credentials: 'omit', keepalive: true, headers: { 'Content-Type': 'application/json', 'X-Crease-Key': options.writeKey }, body: JSON.stringify({ projectId: options.projectId, events: batch }) })
+    fetch(endpoint, { method: 'POST', credentials: 'omit', keepalive: true, headers: { 'Content-Type': 'application/json', 'X-Zappa-Key': options.writeKey }, body: JSON.stringify({ projectId: options.projectId, events: batch }) })
       .then((response) => { if (!response.ok && (response.status === 429 || response.status >= 500)) throw new Error('Temporary ingestion failure'); })
       .catch(() => { if (enabled) { queue = [...batch, ...queue].slice(0, 100); timer ??= setTimeout(flush, 10000); } });
     if (queue.length) timer ??= setTimeout(flush, 2000);
   };
-  const track = (name, properties = {}, pathOverride) => {
+  const track = (name, properties = {}, pathOverride, pageReferrer) => {
     if (!enabled || typeof name !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$/.test(name)) return;
     const clean = {};
     if (properties && typeof properties === 'object') Object.entries(properties).slice(0, 20).forEach(([key, value]) => {
@@ -71,8 +71,10 @@ export function init(options = {}) {
     });
     const active = session();
     if (name === 'pageview') { active.pageviews += 1; active.exitPage = location.pathname; write(sessionKey, JSON.stringify(active)); }
-    let referrer;
-    try { referrer = document.referrer ? new URL(document.referrer).hostname : null; } catch { referrer = null; }
+    let referrer = pageReferrer;
+    if (typeof referrer === 'undefined') {
+      try { referrer = document.referrer ? new URL(document.referrer).hostname : null; } catch { referrer = null; }
+    }
     const event = { id: makeId(), name, timestamp: new Date().toISOString(), path: pathOverride || location.pathname, visitorId: visitor(), sessionId: active.id, referrer, properties: clean, schemaVersion: 1 };
     if (name === 'pageview') event.attribution = campaign();
     queue.push(event);
@@ -83,16 +85,20 @@ export function init(options = {}) {
     const url = location.pathname + location.search;
     if (!enabled || url === lastUrl) return;
     flushVitals(lastPath || location.pathname); resetVitals();
-    lastUrl = url; lastPath = location.pathname; track('pageview');
+    const previous = lastUrl;
+    lastUrl = url; lastPath = location.pathname;
+    // SPA navigation comes from this site, not from the original external referrer.
+    const referrer = previous ? location.hostname : undefined;
+    track('pageview', {}, undefined, referrer);
   };
   const leaving = () => { flushVitals(lastPath); flush(); };
   const hidden = () => { if (document.visibilityState === 'hidden') leaving(); };
-  const dispatchRoute = () => window.dispatchEvent(new Event('crease:navigation'));
+  const dispatchRoute = () => window.dispatchEvent(new Event('Zappa:navigation'));
   ['pushState', 'replaceState'].forEach((method) => {
     const original = history[method];
-    if (typeof original !== 'function' || original.__creasePatched) return;
+    if (typeof original !== 'function' || original.__ZappaPatched) return;
     const wrapped = function (...args) { const result = original.apply(this, args); dispatchRoute(); return result; };
-    wrapped.__creasePatched = true; originals[method] = original; history[method] = wrapped;
+    wrapped.__ZappaPatched = true; originals[method] = original; history[method] = wrapped;
   });
   const api = {
     track, page, flush, identify: visitor,
@@ -100,17 +106,17 @@ export function init(options = {}) {
     optOut() { enabled = false; queue = []; lastUrl = null; resetVitals(); observerList.forEach((observer) => { try { observer.disconnect(); } catch {} }); observerList.length = 0; if (timer) clearTimeout(timer); timer = null; remove(visitorKey); remove(sessionKey); remove(VISITOR_KEY); remove(SESSION_KEY); },
     destroy() {
       enabled = false; queue = [];
-      window.removeEventListener('popstate', page); window.removeEventListener('crease:navigation', page); window.removeEventListener('pagehide', leaving);
+      window.removeEventListener('popstate', page); window.removeEventListener('Zappa:navigation', page); window.removeEventListener('pagehide', leaving);
       document.removeEventListener('visibilitychange', hidden);
-      Object.entries(originals).forEach(([method, original]) => { if (history[method]?.__creasePatched) history[method] = original; });
+      Object.entries(originals).forEach(([method, original]) => { if (history[method]?.__ZappaPatched) history[method] = original; });
       if (timer) clearTimeout(timer); timer = null;
-      if (window.__creaseAnalytics === api) delete window.__creaseAnalytics;
+      if (window.__ZappaAnalytics === api) delete window.__ZappaAnalytics;
     },
   };
   if (enabled) {
     observeVitals();
-    window.addEventListener('popstate', page); window.addEventListener('crease:navigation', page); window.addEventListener('pagehide', leaving); document.addEventListener('visibilitychange', hidden); page();
+    window.addEventListener('popstate', page); window.addEventListener('Zappa:navigation', page); window.addEventListener('pagehide', leaving); document.addEventListener('visibilitychange', hidden); page();
   }
-  window.__creaseAnalytics = api;
+  window.__ZappaAnalytics = api;
   return api;
 }

@@ -1,63 +1,61 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { ChevronDown, Monitor, Moon, Sun } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useTheme } from './theme-provider';
 import s from './theme-toggle.module.css';
 
-type Theme = 'light' | 'dark';
+type Theme = 'system' | 'light' | 'dark';
+const THEME_LABELS: Record<Theme, string> = { system: 'System', light: 'Light', dark: 'Dark' };
+const THEME_ICONS = { system: Monitor, light: Sun, dark: Moon };
 
-function readTheme(): Theme {
-  if (typeof document === 'undefined') return 'light';
-  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
-}
-
-export default function ThemeToggle({ className = '' }: { className?: string }) {
-  const [theme, setTheme] = useState<Theme>('light');
+export default function ThemeToggle({ className = '', iconOnly = false }: { className?: string; iconOnly?: boolean }) {
+  const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    setTheme(readTheme());
-    setMounted(true);
-  }, []);
+  useEffect(() => setMounted(true), []);
 
-  function toggle() {
-    const next: Theme = readTheme() === 'dark' ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next;
-    try {
-      localStorage.setItem('crease-theme', next);
-    } catch {
-      /* Storage can be unavailable in private modes; the session still switches. */
-    }
-    setTheme(next);
-  }
-
-  const label = mounted ? (theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode') : 'Toggle color theme';
+  const selected = mounted && (theme === 'light' || theme === 'dark') ? theme : 'system';
+  const Icon = THEME_ICONS[selected];
 
   return (
-    <button
-      type="button"
-      className={`${s.toggle} ${className}`.trim()}
-      onClick={toggle}
-      aria-label={label}
-      title={label}
-    >
-      <svg className={s.moon} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path
-          d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1Z"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <svg className={s.sun} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.6" />
-        <path
-          d="M12 2.5v2M12 19.5v2M4.3 4.3l1.4 1.4M18.3 18.3l1.4 1.4M2.5 12h2M19.5 12h2M4.3 19.7l1.4-1.4M18.3 5.7l1.4-1.4"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
-      </svg>
-    </button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="lg"
+          className={`${s.toggle} ${iconOnly ? s.iconOnly : ''} ${className}`.trim()}
+          aria-label={`Appearance: ${THEME_LABELS[selected]}`}
+          title={iconOnly ? undefined : `Appearance: ${THEME_LABELS[selected]}`}
+        >
+          <Icon aria-hidden="true" />
+          {!iconOnly && (
+            <>
+              <span className={s.label}>Theme</span>
+              <span className={s.current}>{THEME_LABELS[selected]}</span>
+              <ChevronDown aria-hidden="true" className={s.chevron} />
+            </>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={8} className={s.menu}>
+        <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={selected} onValueChange={(value) => setTheme(value as Theme)}>
+          <DropdownMenuRadioItem value="system"><Monitor aria-hidden="true" />System</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="light"><Sun aria-hidden="true" />Light</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="dark"><Moon aria-hidden="true" />Dark</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

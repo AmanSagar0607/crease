@@ -1,70 +1,47 @@
 import Link from 'next/link';
-import ThemeToggle from './theme-toggle';
 import PlatformLogo, { platforms } from './platform-logos';
-import LivingCat from './mascot/living-cat';
+import LandingNav from './landing-nav';
+import InstallSnippet from './install-snippet';
+import LandingProductPreview from './v0-preview/LandingProductPreview';
 import s from './landing.module.css';
 
-const repo = 'https://github.com/AmanSagar0607/crease';
-
-const bars = [38, 50, 42, 58, 47, 68, 55, 63, 78, 67, 85, 76, 92, 100];
+const repo = 'https://github.com/AmanSagar0607/Zappa';
 
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-const weekDays = [
-  { value: 18, spark: [34, 58, 46, 82] },
-  { value: 24, spark: [46, 72, 58, 94] },
-  { value: 15, spark: [28, 50, 40, 70] },
-  { value: 31, spark: [62, 88, 74, 100] },
-  { value: 22, spark: [42, 68, 54, 86] },
-  { value: 12, spark: [22, 40, 32, 56] },
-  { value: 0, spark: [] },
-];
-
-const quotes = [
+const principles = [
   {
-    text: 'I finally know which page people actually read. It took one pull request.',
-    name: 'Maya R.',
-    role: 'designer & developer',
-    initials: 'MR',
+    label: 'DB',
+    category: 'Storage',
+    title: 'Your data, your database.',
+    body: 'Every event is scoped to your project. You choose a 1–90 day retention window and can delete a project and its data at any time.',
   },
   {
-    text: 'It’s the first analytics tool I don’t feel guilty opening.',
-    name: 'Jonas K.',
-    role: 'solo founder',
-    initials: 'JK',
+    label: 'JS',
+    category: 'Tracker',
+    title: 'A tracker you can read.',
+    body: 'One small script with no cookies and no fingerprinting. Initialization waits for the consent event you control.',
   },
   {
-    text: 'The install PR is the nicest onboarding I’ve seen on a side project.',
-    name: 'Priya N.',
-    role: 'indie hacker',
-    initials: 'PN',
-  },
-  {
-    text: 'Quiet, fast, and it doesn’t want a cookie banner for breakfast.',
-    name: 'Sam O.',
-    role: 'frontend engineer',
-    initials: 'SO',
-  },
-  {
-    text: 'Set it up before my coffee went cold.',
-    name: 'Leo M.',
-    role: 'building in public',
-    initials: 'LM',
+    label: 'PR',
+    category: 'Install',
+    title: 'Install by pull request.',
+    body: 'Connect a repository and Zappa opens a small, reviewable pull request. Nothing merges until you merge it.',
   },
 ];
 
 const faqs = [
   {
-    q: 'Is Crease really free?',
-    a: 'Yes. One project is free, and everything is free while Crease is in early access. If paid plans arrive later, existing projects will hear about it well before anything changes.',
+    q: 'Is Zappa really free?',
+    a: 'Yes. Hosted Zappa is free for unlimited projects while it is in early access. If paid plans arrive later, existing projects will hear about it well before anything changes.',
   },
   {
     q: 'Do I have to change my site’s code?',
-    a: 'You add one script tag, or connect your GitHub repository and Crease opens a small, reviewable pull request. Nothing is merged automatically — you review and merge it yourself.',
+    a: 'You add one script tag, or connect your GitHub repository and Zappa opens a small, reviewable pull request. Nothing is merged automatically — you review and merge it yourself.',
   },
   {
     q: 'Does it work with Next.js?',
-    a: 'Yes. Use the @crease/analytics/next component, the plain ESM package, or the standalone crease.js tracker for any HTML site. The docs show all three.',
+    a: 'Yes. Use the @aman-sagar06077/zappa-analytics/next component, the plain ESM package, or the standalone Zappa.js tracker for any HTML site. The docs show all three.',
   },
   {
     q: 'Where does my data live?',
@@ -72,15 +49,15 @@ const faqs = [
   },
   {
     q: 'Do I need a cookie banner?',
-    a: 'Crease is built to collect as little as possible, but compliance depends on where you and your visitors are. The tracker waits for a crease:consent event if you need one, and the docs explain the trade-offs honestly.',
+    a: 'Zappa is built to collect as little as possible, but compliance depends on where you and your visitors are. The tracker waits for a Zappa:consent event if you need one, and the docs explain the trade-offs honestly.',
   },
   {
     q: 'Can I use my own domain?',
-    a: 'Yes. Crease checks the hostname configured for your project and accepts its www counterpart. Your site keeps its own domain; the tracker simply sends events to the collector.',
+    a: 'Yes. Zappa checks the hostname configured for your project and accepts its www counterpart. Your site keeps its own domain; the tracker simply sends events to the collector.',
   },
   {
-    q: 'Who is building Crease?',
-    a: 'Aman, an independent developer. Crease is open source on GitHub, and the roadmap is shaped by the people using it.',
+    q: 'Who is building Zappa?',
+    a: 'Aman, an independent developer. Zappa is open source on GitHub, and the roadmap is shaped by the people using it.',
   },
 ];
 
@@ -104,8 +81,6 @@ function Ghost({ className = '' }: { className?: string }) {
   );
 }
 
-const sideItems = ['Visitors', 'Pages', 'Referrers', 'Countries', 'Events'];
-
 export default function Home() {
   return (
     <div className={s.landing}>
@@ -113,47 +88,29 @@ export default function Home() {
         Skip to content
       </a>
 
-      <div className={s.navWrap}>
-        <nav className={s.nav} aria-label="Main navigation">
-          <Link className={s.brand} href="/">
-            <span className={s.brandMark} aria-hidden="true">
-              ✳
-            </span>
-            crease
-          </Link>
-          <div className={s.navLinks}>
-            <a href="#how">How it works</a>
-            <Link href="/pricing">Pricing</Link>
-            <Link href="/docs">Docs</Link>
-          </div>
-          <div className={s.navEnd}>
-            <ThemeToggle />
-            <Link className={s.navAction} href="/dashboard">
-              Open dashboard
-            </Link>
-          </div>
-        </nav>
-      </div>
+      <LandingNav />
 
       <main id="main">
         <section className={s.hero}>
-          <Ghost className={s.ghostHero} />
+          <p className={s.heroEyebrow}><span aria-hidden="true" />Independent analytics · Open source</p>
           <h1>
             Analytics for the
             <br />
             things you make.
           </h1>
           <p className={s.heroLead}>
-            A quiet analytics workspace for independent developers. Sign in with GitHub,
+            A quiet analytics workspace for independent developers. Create an account,
             connect a site, and see what people actually do — nothing more.
           </p>
           <div className={s.heroActions}>
-            <Link className={`${s.btn} ${s.btnPrimary}`} href="/dashboard">
-              Open dashboard <span aria-hidden="true">↗</span>
+            <Link className={`${s.btn} ${s.btnPrimary}`} href="/sign-up">
+              Start free <span aria-hidden="true">↗</span>
             </Link>
-            <a className={`${s.btn} ${s.btnSecondary}`} href="#how">
-              <span aria-hidden="true">+</span> See how it works
-            </a>
+            <Link className={s.heroTextLink} href="/v0-preview">Preview dashboard</Link>
+          </div>
+          <InstallSnippet />
+          <div className={s.trustRow} aria-label="Product attributes">
+            <span>Free to start</span><span>Self-hostable</span><span>No cookies by default</span>
           </div>
           <div className={s.logoRow}>
             <span>Works with</span>
@@ -167,144 +124,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className={s.mockWrap} aria-label="Crease analytics dashboard preview">
-          <Ghost className={s.ghostMock} />
-          <div className={s.catPerch}>
-            <LivingCat variant="hero" listen />
-          </div>
-          <div className={s.mockPanel}>
-            <div className={s.window}>
-              <div className={s.windowTop}>
-                <div className={s.dots} aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                <span className={s.windowUrl}>amansagar.in / overview</span>
-              </div>
-              <div className={s.mockBody}>
-                <aside className={s.sidebar} aria-hidden="true">
-                  <div className={s.workspace}>
-                    <span>✳</span>
-                    <div>
-                      amansagar.in
-                      <em>personal workspace</em>
-                    </div>
-                  </div>
-                  <ul className={s.sideNav}>
-                    <li className={s.active}>
-                      Overview
-                      <span className={s.count}>01</span>
-                    </li>
-                    {sideItems.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                  <p className={s.sideLabel}>Project</p>
-                  <ul className={s.sideNav}>
-                    <li>Installation</li>
-                    <li>Integrations</li>
-                    <li>Settings</li>
-                  </ul>
-                </aside>
-
-                <div className={s.mockMain} aria-hidden="true">
-                  <div className={s.mockHead}>
-                    <div>
-                      <h3>Overview</h3>
-                      <small>Last 30 days · amansagar.in</small>
-                    </div>
-                    <span className={s.previewChip}>
-                      PREVIEW <strong>02</strong>
-                    </span>
-                  </div>
-
-                  <div className={s.metrics}>
-                    {[
-                      ['Visitors', '1,284', '+18%'],
-                      ['Page views', '3,410', '+22%'],
-                      ['Sessions', '1,902', '+11%'],
-                      ['Events', '5,876', '+31%'],
-                    ].map(([label, value, delta], index) => (
-                      <div className={s.metric} key={label}>
-                        <span>
-                          {label}
-                          <em>0{index + 1}</em>
-                        </span>
-                        <strong>{value}</strong>
-                        <small>{delta} vs last period</small>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className={s.chartCard}>
-                    <div className={s.chartHead}>
-                      <b>Visitors over time</b>
-                      <span>1,284 total</span>
-                    </div>
-                    <div className={s.bars}>
-                      {bars.map((height, index) => (
-                        <span
-                          className={`${s.bar} ${index === bars.length - 1 ? s.barLast : ''}`.trim()}
-                          key={index}
-                          style={{ height: `${height}%` }}
-                        />
-                      ))}
-                    </div>
-                    <div className={s.barLabels}>
-                      <span>Oct 14</span>
-                      <span>Oct 21</span>
-                      <span>Oct 28</span>
-                      <span>Nov 12</span>
-                    </div>
-                  </div>
-
-                  <div className={s.mockLower}>
-                    <div className={s.listCard}>
-                      <h4>Top pages</h4>
-                      <ul>
-                        <li>
-                          <span>/</span>
-                          <strong>612</strong>
-                        </li>
-                        <li>
-                          <span>/writing/quiet-software</span>
-                          <strong>214</strong>
-                        </li>
-                        <li>
-                          <span>/docs</span>
-                          <strong>96</strong>
-                        </li>
-                      </ul>
-                    </div>
-                    <div className={s.listCard}>
-                      <h4>Referrers</h4>
-                      <ul>
-                        <li>
-                          <span>github.com</span>
-                          <strong>402</strong>
-                        </li>
-                        <li>
-                          <span>x.com</span>
-                          <strong>188</strong>
-                        </li>
-                        <li>
-                          <span>google.com</span>
-                          <strong>121</strong>
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className={s.toast}>
-            <i aria-hidden="true" />
-            Tracker installed
-            <Link href="/docs">View docs</Link>
-          </div>
-        </section>
+        <LandingProductPreview />
 
         <section className={`${s.section} ${s.shell}`} id="problem">
           <div className={s.problemGrid}>
@@ -347,31 +167,11 @@ export default function Home() {
               </div>
 
               <div className={s.weekRow}>
-                <p className={s.weekRowLabel}>The week after</p>
-                <div className={s.week}>
-                  {weekDays.map((day, index) => (
-                    <div className={s.weekCard} key={days[index]}>
-                      {day.value ? (
-                        <>
-                          <b>{day.value}</b>
-                          <span>visitors</span>
-                          <div className={s.miniBars} aria-hidden="true">
-                            {day.spark.map((height, barIndex) => (
-                              <i key={barIndex} style={{ height: `${height}%` }} />
-                            ))}
-                          </div>
-                        </>
-                      ) : (
-                        <b aria-hidden="true">—</b>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <p className={s.weekRowLabel}>After tracking starts</p>
+                <div className={s.emptyBrowser}>Real visitor activity appears here once your project is verified.</div>
               </div>
 
-              <p className={s.sectionCaption}>
-                One deploy. A week of quiet questions. Crease answers them.
-              </p>
+              <p className={s.sectionCaption}>Your dashboard uses observed project data—not sample metrics.</p>
             </div>
           </div>
         </section>
@@ -384,7 +184,7 @@ export default function Home() {
           </h2>
           <div className={s.compareGrid}>
             <div className={s.compareCol}>
-              <p>Guessing by hand</p>
+              <p >Guessing by hand</p>
               <div className={s.comparePanel}>
                 <div className={s.browserCard}>
                   <div className={s.browserTabs}>
@@ -405,31 +205,21 @@ export default function Home() {
             </div>
 
             <div className={s.compareCol}>
-              <p>With Crease</p>
+              <p>With Zappa</p>
               <div className={s.comparePanel}>
                 <div className={s.feedCard}>
                   <span className={s.feedBanner}>
-                    <i aria-hidden="true" />8 new answers today
+                    <i aria-hidden="true" />Live activity preview
                   </span>
-                  {[
-                    ['GH', 'github.com → /writing/quiet-software', '42 visitors · India · 4m ago', '38%'],
-                    ['HN', 'news.ycombinator.com → /', '31 visitors · United States · 12m ago', '27%'],
-                    ['X', 'x.com → /docs', '18 visitors · Germany · 26m ago', '16%'],
-                  ].map(([avatar, title, meta, score]) => (
-                    <div className={s.feedRow} key={title}>
-                      <span className={s.feedAvatar}>{avatar}</span>
-                      <div className={s.feedBody}>
-                        <b>{title}</b>
-                        <span>{meta}</span>
-                      </div>
-                      <span className={s.feedScore}>{score}</span>
-                    </div>
-                  ))}
+                  <div className={s.emptyBrowser}>
+                    <b>Live activity</b>
+                    <span>See visits as they arrive in your verified project.</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-          <p className={s.sectionCaption}>
+          <p className={s.sectionCaption} style={{ marginTop: 64 }}>
             Connect your site once. The answers come to you. Your data stays yours.
           </p>
         </section>
@@ -485,7 +275,7 @@ export default function Home() {
                 <h3>
                   <span>2.</span> Connect your repo
                 </h3>
-                <p>Crease inspects the default branch and prepares the change.</p>
+                <p>Zappa inspects the default branch and prepares the change.</p>
               </div>
             </div>
 
@@ -493,7 +283,7 @@ export default function Home() {
               <div className={s.stepPanel}>
                 <div className={s.miniCard}>
                   <div className={s.prHead}>
-                    Add Crease tracking
+                    Add Zappa tracking
                     <span className={s.prDiff}>
                       <span>+2</span>−0
                     </span>
@@ -521,24 +311,8 @@ export default function Home() {
             <div>
               <div className={s.stepPanel}>
                 <div className={s.miniCard}>
-                  <span className={s.miniLabel}>First 30 days</span>
-                  <div className={s.miniMetrics}>
-                    {[
-                      ['Visitors', '1,284', 92],
-                      ['Page views', '3,410', 100],
-                      ['Countries', '14', 42],
-                    ].map(([label, value, width]) => (
-                      <div className={s.miniMetric} key={label as string}>
-                        <div>
-                          <span>{label}</span>
-                          <strong>{value}</strong>
-                        </div>
-                        <div className={s.track}>
-                          <i style={{ width: `${width}%` }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <span className={s.miniLabel}>Your project dashboard</span>
+                  <p className={s.note}>Real visitors, pages and sources appear after tracking is verified.</p>
                 </div>
               </div>
               <div className={s.stepMeta}>
@@ -554,63 +328,28 @@ export default function Home() {
         <section className={`${s.section} ${s.shell} ${s.center}`} id="pricing">
           <Ghost className={s.ghostPricing} />
           <h2 className={s.h2}>
-            Free for one project.
+            Free while it’s early.
             <br />
-            See if it’s useful.
+            Every project, every feature.
           </h2>
           <div className={s.pricingGrid}>
-            <article className={s.priceCard}>
-              <span className={s.priceName}>Free</span>
-              <div className={s.price}>
-                <strong>$0</strong>
-                <span>/ project</span>
-              </div>
-              <p className={s.priceDesc}>For the first site, or the forty-first side project.</p>
-              <div className={s.priceFeatures}>
-                <span>1 project</span>
-                <span>All analytics</span>
-                <span>1–90 day retention</span>
-                <span>GitHub installation PR</span>
-              </div>
-              <Link className={`${s.btn} ${s.btnSecondary}`} href="/dashboard">
-                Start free
-              </Link>
-            </article>
-
             <article className={`${s.priceCard} ${s.priceFeatured}`}>
-              <span className={s.priceName}>Early access</span>
+              <span className={s.priceName}>Hosted · Early access</span>
               <div className={s.price}>
                 <strong>$0</strong>
-                <span>/ month</span>
+                <span>while it’s early</span>
               </div>
-              <p className={s.priceDesc}>Everything Crease can do, while it’s still young.</p>
+              <p className={s.priceDesc}>Every analytics feature, for every project you ship. No trial timer or credit card.</p>
               <div className={s.priceFeatures}>
                 <span>Unlimited projects</span>
                 <span>All analytics</span>
-                <span>Vercel integration</span>
-                <span>A direct line to the founder</span>
+                <span>1–90 day retention</span>
+                <span>GitHub installation PR</span>
+                <span>Open-source Apache-2.0 core</span>
+                <span>Postgres-backed data</span>
               </div>
-              <Link className={`${s.btn} ${s.btnPrimary}`} href="/dashboard">
-                Open dashboard
-              </Link>
-            </article>
-
-            <article className={s.priceCard}>
-              <span className={s.priceName}>Self-host</span>
-              <div className={s.price}>
-                <strong>$0</strong>
-                <span>/ forever</span>
-              </div>
-              <p className={s.priceDesc}>Run the whole thing on your own Postgres.</p>
-              <div className={s.priceFeatures}>
-                <span>FastAPI + Postgres</span>
-                <span>Tracker and npm package</span>
-                <span>No vendor lock-in</span>
-                <span>Apache-2.0 source</span>
-              </div>
-              <a className={`${s.btn} ${s.btnSecondary}`} href={repo}>
-                Read the source
-              </a>
+              <Link className={`${s.btn} ${s.btnPrimary}`} href="/sign-up">Start free</Link>
+              <a className={s.priceSourceLink} href={repo}>Self-host from source ↗</a>
             </article>
           </div>
           <p className={s.footnote}>
@@ -623,33 +362,36 @@ export default function Home() {
           <div className={s.testimonialGrid}>
             <div className={s.testimonialIntro}>
               <Ghost className={s.ghostTestimonial} />
-              <h2 className={s.h2}>What makers are saying.</h2>
+              <h2 className={s.h2}>Built in the open.</h2>
               <p className={s.lead}>
-                Notes from people who connected a site during the first weeks of Crease.
+                A small, honest product: no growth team, no dark patterns, no borrowed logos.
+                Here is what Zappa actually does.
               </p>
               <span className={s.badge}>
                 <i aria-hidden="true" />
-                Early feedback, openly shared
+                Apache-2.0 source
               </span>
               <div className={s.avatars}>
                 <span className={s.avatarStack} aria-hidden="true">
-                  {['MR', 'JK', 'PN', 'SO'].map((initials) => (
-                    <span key={initials}>{initials}</span>
+                  {['DB', 'JS', 'PR'].map((label) => (
+                    <span key={label}>{label}</span>
                   ))}
                 </span>
-                Built by independent developers
+                Independent and self-hostable
               </div>
             </div>
 
             <div className={s.quotes}>
-              {quotes.map((quote) => (
-                <blockquote className={s.quote} key={quote.name}>
-                  <p>“{quote.text}”</p>
+              {principles.map((item) => (
+                <article className={s.quote} key={item.title}>
+                  <p>
+                    <strong>{item.title}</strong> {item.body}
+                  </p>
                   <footer>
-                    <span aria-hidden="true">{quote.initials}</span>
-                    {quote.name} · {quote.role}
+                    <span aria-hidden="true">{item.label}</span>
+                    {item.category}
                   </footer>
-                </blockquote>
+                </article>
               ))}
             </div>
           </div>
@@ -676,7 +418,7 @@ export default function Home() {
           <Ghost className={s.ghostCta} />
           <div className={s.ctaInner}>
             <p className={s.founderNote}>
-              I built Crease because I wanted a quieter way to know if the things I ship are
+              I built Zappa because I wanted a quieter way to know if the things I ship are
               working. No dashboards to configure, no numbers to perform for. Just a clear look
               at what people do when they arrive.
               <span className={s.signature}>— Aman</span>
@@ -687,8 +429,8 @@ export default function Home() {
               See your own data before lunch.
             </h2>
             <div className={s.ctaActions}>
-              <Link className={`${s.btn} ${s.btnPrimary}`} href="/dashboard">
-                Open dashboard <span aria-hidden="true">↗</span>
+              <Link className={`${s.btn} ${s.btnPrimary}`} href="/sign-up">
+                Start free <span aria-hidden="true">↗</span>
               </Link>
               <a className={`${s.btn} ${s.btnGhost}`} href={repo}>
                 Read the source
@@ -703,7 +445,7 @@ export default function Home() {
           <div>
             <Link className={s.footerBrand} href="/">
               <span aria-hidden="true">✳</span>
-              crease
+              Zappa
             </Link>
             <p className={s.footerTagline}>Analytics for the things you make.</p>
           </div>
@@ -731,7 +473,7 @@ export default function Home() {
                 <a href={repo}>GitHub</a>
               </li>
               <li>
-                <a href="https://github.com/AmanSagar0607/crease/issues">Issues</a>
+                <a href="https://github.com/AmanSagar0607/Zappa/issues">Issues</a>
               </li>
               <li>
                 <a href="#faq">FAQ</a>
@@ -740,13 +482,13 @@ export default function Home() {
           </div>
           <div>
             <p className={s.footerLegal}>
-              Crease is an independent project. Your data belongs to you, and you can delete it
+              Zappa is an independent project. Your data belongs to you, and you can delete it
               whenever you like. Built in the open, without a growth team.
             </p>
           </div>
         </div>
         <div className={s.footerBottom}>
-          <span>© 2026 Crease</span>
+          <span>© 2026 Zappa</span>
           <span>Made for the things you make.</span>
         </div>
       </footer>

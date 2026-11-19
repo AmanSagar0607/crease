@@ -5,7 +5,7 @@ export type MascotEventDetail = {
   projectName: string;
 };
 
-const MASCOT_EVENT = 'crease:mascot';
+const MASCOT_EVENT = 'Zappa:mascot';
 
 export function dispatchMascotEvent(detail: MascotEventDetail) {
   if (typeof window === 'undefined') return;

@@ -1,4 +1,4 @@
-﻿"""Crease API. Configure GitHub OAuth and a PostgreSQL URL before deployment."""
+"""Zappa analytics API. Configure Clerk and a PostgreSQL URL before deployment."""
 import asyncio
 import hashlib
 import ipaddress
@@ -15,15 +15,19 @@ from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
+import jwt
+from jwt import PyJWKClient
+from svix.webhooks import Webhook, WebhookVerificationError
 from dotenv import load_dotenv
 from pathlib import Path
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import IntegrityError
 from github_install import create_install_pr, enable_tracking_pr, installation_status
+from payment_adapters import StripeAdapter
 import overview_reporting
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -35,14 +39,16 @@ if DATABASE_URL.startswith('sqlite:'):
     raise RuntimeError('SQLite is disabled; configure DATABASE_URL with the existing PostgreSQL database')
 if DATABASE_URL.startswith('postgresql://'):
     DATABASE_URL = 'postgresql+psycopg://' + DATABASE_URL[len('postgresql://'):]
-if os.getenv('CREASE_WORKER'):
+if os.getenv('Zappa_WORKER'):
     engine = create_engine(DATABASE_URL, connect_args={'ssl_context': False}, poolclass=NullPool)
 else:
     engine = create_engine(DATABASE_URL, connect_args={'check_same_thread': False} if DATABASE_URL.startswith('sqlite') else {}, pool_pre_ping=True)
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000').rstrip('/')
 PUBLIC_API_URL = os.getenv('PUBLIC_API_URL', 'http://localhost:3000').rstrip('/')
-CLIENT_ID = os.getenv('GITHUB_CLIENT_ID', '')
-CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET', '')
+CLERK_ISSUER = os.getenv('CLERK_ISSUER', '').rstrip('/')
+CLERK_JWKS_URL = os.getenv('CLERK_JWKS_URL', '')
+CLERK_AUTHORIZED_PARTIES = tuple(x.strip() for x in os.getenv('CLERK_AUTHORIZED_PARTIES', '').split(',') if x.strip())
+CLERK_WEBHOOK_SECRET = os.getenv('CLERK_WEBHOOK_SECRET', '')
 SECURE = os.getenv('COOKIE_SECURE', 'false').lower() == 'true'
 # Country data is accepted only on the authenticated internal ingestion route. That route
 # validates GEO_FORWARD_SECRET first, so a forwarded country is trusted by default. Set
@@ -54,7 +60,7 @@ GEO_FORWARD_SECRET = os.getenv('GEO_FORWARD_SECRET', '')
 RETENTION_SECRET = os.getenv('RETENTION_SECRET', '')
 RETENTION_INTERVAL_HOURS = float(os.getenv('RETENTION_INTERVAL_HOURS', '24'))
 RETENTION_START_DELAY_SECONDS = float(os.getenv('RETENTION_START_DELAY_SECONDS', '30'))
-retention_log = logging.getLogger('crease.retention')
+retention_log = logging.getLogger('Zappa.retention')
 if not retention_log.handlers:
     _retention_handler = logging.StreamHandler()
     _retention_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s'))
@@ -82,12 +88,13 @@ GITHUB_APP_SLUG = os.getenv('GITHUB_APP_SLUG', '')
 GITHUB_APP_CLIENT_ID = os.getenv('GITHUB_APP_CLIENT_ID', '')
 GITHUB_APP_CLIENT_SECRET = os.getenv('GITHUB_APP_CLIENT_SECRET', '')
 GITHUB_APP_TOKEN_KEY = os.getenv('GITHUB_APP_TOKEN_KEY', '')
-CREASE_PUBLIC_ORIGIN = os.getenv('CREASE_PUBLIC_ORIGIN', '')
+Zappa_PUBLIC_ORIGIN = os.getenv('Zappa_PUBLIC_ORIGIN', '')
+PAYMENT_ENCRYPTION_KEY = os.getenv('PAYMENT_ENCRYPTION_KEY', '')
 VERCEL_INTEGRATION_SLUG = os.getenv('VERCEL_INTEGRATION_SLUG', '')
 VERCEL_INTEGRATION_CLIENT_ID = os.getenv('VERCEL_INTEGRATION_CLIENT_ID', '')
 VERCEL_INTEGRATION_CLIENT_SECRET = os.getenv('VERCEL_INTEGRATION_CLIENT_SECRET', '')
 VERCEL_TOKEN_KEY = os.getenv('VERCEL_TOKEN_KEY', '')
-app = FastAPI(title='Crease API')
+app = FastAPI(title='Zappa API')
 
 @app.get('/health')
 async def health():
@@ -113,7 +120,7 @@ async def health():
 @app.post('/internal/retention')
 async def run_retention(request: Request):
     """Delete expired events for every project. Optional external trigger."""
-    supplied = request.headers.get('x-crease-retention-secret', '')
+    supplied = request.headers.get('x-Zappa-retention-secret', '')
     if not RETENTION_SECRET or not secrets.compare_digest(digest(supplied), digest(RETENTION_SECRET)):
         raise HTTPException(401, 'Unauthorized')
     return await retention_once()
@@ -156,7 +163,7 @@ async def stop_retention_scheduler():
 
 def now(): return datetime.now(timezone.utc)
 def digest(value): return hashlib.sha256(value.encode()).hexdigest()
-def new_write_key(): return 'crease_' + secrets.token_urlsafe(24)
+def new_write_key(): return 'Zappa_' + secrets.token_urlsafe(24)
 def new_verification_token(): return secrets.token_urlsafe(24)
 def stamp(value): return value.isoformat()
 
@@ -249,61 +256,84 @@ class RateLimiter:
         return hits <= limit
 
 limiter = RateLimiter(engine)
-async def session_user(crease_session: str | None = Cookie(default=None)):
-    if not crease_session: raise HTTPException(401, 'Sign in required')
-    with engine.connect() as db:
-        row = db.execute(text('SELECT users.id, users.login, users.github_id FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=:token AND expires_at>:now'), {'token': digest(crease_session), 'now': stamp(now())}).mappings().first()
-    if not row: raise HTTPException(401, 'Session expired')
-    return dict(row)
+def clerk_jwks_url():
+    if CLERK_JWKS_URL:
+        return CLERK_JWKS_URL
+    if CLERK_ISSUER.startswith('https://'):
+        # Clerk's issuer host exposes the standard JWKS endpoint.
+        return CLERK_ISSUER + '/.well-known/jwks.json'
+    return ''
+
+_jwks_client = None
+_jwks_url_cached = None
+
+def verify_clerk_token(token):
+    """Verify a Clerk session JWT; never accept decoded, unsigned claims."""
+    global _jwks_client, _jwks_url_cached
+    if not CLERK_ISSUER or not CLERK_AUTHORIZED_PARTIES:
+        raise HTTPException(503, 'Clerk authentication is not configured')
+    url = clerk_jwks_url()
+    if not url.startswith('https://'):
+        raise HTTPException(503, 'Clerk JWKS is not configured securely')
+    try:
+        if _jwks_client is None or _jwks_url_cached != url:
+            _jwks_client = PyJWKClient(url, timeout=5, cache_jwk_set=True)
+            _jwks_url_cached = url
+        signing_key = _jwks_client.get_signing_key_from_jwt(token)
+        claims = jwt.decode(token, signing_key.key, algorithms=['RS256'], issuer=CLERK_ISSUER,
+                            options={'require': ['sub', 'iss', 'exp', 'nbf', 'azp']})
+        if claims.get('azp') not in CLERK_AUTHORIZED_PARTIES:
+            raise jwt.InvalidTokenError('Unauthorized party')
+        if not isinstance(claims.get('sub'), str) or not claims['sub']:
+            raise jwt.InvalidTokenError('Missing subject')
+        return claims
+    except Exception:
+        # JWKS/network/config failures fail closed and never reveal token or provider details.
+        raise HTTPException(401, 'Invalid or unverifiable Clerk session') from None
+
+async def session_user(request: Request, __session: str | None = Cookie(default=None)):
+    authorization = request.headers.get('authorization', '')
+    token = authorization[7:].strip() if authorization.lower().startswith('bearer ') else __session
+    if not token:
+        raise HTTPException(401, 'Sign in required')
+    claims = verify_clerk_token(token)
+    subject = claims['sub']
+    handle = next((claims.get(k) for k in ('username', 'preferred_username', 'name') if isinstance(claims.get(k), str) and claims[k].strip()), subject)
+    handle = re.sub(r'[^A-Za-z0-9_.@ -]', '', handle).strip()[:255] or subject
+    with engine.begin() as db:
+        db.execute(text('INSERT INTO clerk_profiles (clerk_id, display_handle) VALUES (:id,:handle) ON CONFLICT (clerk_id) DO UPDATE SET display_handle=excluded.display_handle WHERE clerk_profiles.deleted_at IS NULL'), {'id':subject,'handle':handle})
+        profile = db.execute(text('SELECT clerk_id, display_handle, deleted_at FROM clerk_profiles WHERE clerk_id=:id'), {'id':subject}).mappings().first()
+    if not profile or profile['deleted_at'] is not None:
+        raise HTTPException(401, 'Account is unavailable')
+    return {'id': subject, 'clerk_id': subject, 'login': profile['display_handle']}
 
 def owned(db, project_id, user_id):
     row = db.execute(text('SELECT * FROM projects WHERE id=:id AND user_id=:user'), {'id': project_id, 'user': user_id}).mappings().first()
     if not row: raise HTTPException(404, 'Project not found')
     return row
 
-@app.get('/api/auth/github')
-async def github_auth():
-    if not CLIENT_ID or not CLIENT_SECRET: raise HTTPException(503, 'GitHub sign-in is not configured')
-    state = secrets.token_urlsafe(32)
-    with engine.begin() as db: db.execute(text('INSERT INTO oauth_states VALUES (:state,:expires)'), {'state': digest(state), 'expires': stamp(now()+timedelta(minutes=10))})
-    params = urlencode({'client_id': CLIENT_ID, 'redirect_uri': PUBLIC_API_URL + '/api/auth/callback', 'scope': 'read:user', 'state': state})
-    response = RedirectResponse('https://github.com/login/oauth/authorize?' + params, status_code=302)
-    response.set_cookie('crease_oauth', state, httponly=True, secure=SECURE, samesite='lax', max_age=600, path='/')
-    return response
-
-@app.get('/api/auth/callback')
-async def github_callback(code: str, state: str, crease_oauth: str | None = Cookie(default=None)):
-    if not crease_oauth or not secrets.compare_digest(state, crease_oauth): raise HTTPException(400, 'Invalid OAuth state')
-    with engine.begin() as db:
-        result = db.execute(text('DELETE FROM oauth_states WHERE state_hash=:state AND expires_at>:now'), {'state': digest(state), 'now': stamp(now())})
-        if result.rowcount != 1: raise HTTPException(400, 'Expired OAuth state')
+@app.post('/api/clerk-webhook')
+async def clerk_webhook(request: Request):
+    """Verify Clerk/Svix delivery; tombstone deleted identities without deleting data."""
+    if not CLERK_WEBHOOK_SECRET:
+        raise HTTPException(503, 'Clerk webhook is not configured')
+    body = await request.body()
+    headers = {key: request.headers.get(key, '') for key in ('svix-id', 'svix-timestamp', 'svix-signature')}
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            token_response = await client.post('https://github.com/login/oauth/access_token', data={'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET, 'code': code, 'redirect_uri': PUBLIC_API_URL+'/api/auth/callback'}, headers={'Accept': 'application/json'})
-            token = token_response.json().get('access_token')
-            if not token: raise HTTPException(400, 'GitHub authorization failed. Start sign-in again and check the OAuth app configuration.')
-            user_response = await client.get('https://api.github.com/user', headers={'Authorization': 'Bearer '+token, 'Accept': 'application/vnd.github+json'})
-            if user_response.status_code != 200: raise HTTPException(400, 'GitHub user lookup failed')
-            profile = user_response.json()
-    except httpx.RequestError as exc:
-        raise HTTPException(503, 'Could not connect to GitHub. Check the API server network connection, then start sign-in again.') from exc
-    github_id = str(profile['id']); login = profile['login']; new_id = str(uuid4()); session = secrets.token_urlsafe(32)
-    with engine.begin() as db:
-        db.execute(text('INSERT INTO users (id,github_id,login) VALUES (:id,:github,:login) ON CONFLICT (github_id) DO UPDATE SET login=:login'), {'id':new_id,'github':github_id,'login':login})
-        user_id = db.execute(text('SELECT id FROM users WHERE github_id=:github'), {'github': github_id}).scalar_one()
-        db.execute(text('INSERT INTO sessions VALUES (:token,:user,:expires)'), {'token':digest(session), 'user':user_id, 'expires':stamp(now()+timedelta(days=7))})
-    response = RedirectResponse(FRONTEND_URL+'/dashboard', status_code=302)
-    response.set_cookie('crease_session', session, httponly=True, secure=SECURE, samesite='lax', max_age=604800, path='/')
-    response.delete_cookie('crease_oauth', path='/')
-    return response
+        event = Webhook(CLERK_WEBHOOK_SECRET).verify(body, headers)
+    except (WebhookVerificationError, ValueError, TypeError):
+        raise HTTPException(400, 'Invalid Clerk webhook') from None
+    if event.get('type') == 'user.deleted':
+        clerk_id = (event.get('data') or {}).get('id')
+        if not isinstance(clerk_id, str) or not clerk_id:
+            raise HTTPException(400, 'Invalid Clerk deletion event')
+        with engine.begin() as db:
+            db.execute(text('UPDATE clerk_profiles SET deleted_at=:at WHERE clerk_id=:id'), {'at':stamp(now()), 'id':clerk_id})
+    return {'received': True}
 
 @app.get('/api/me')
 async def me(user=Depends(session_user)): return user
 
-@app.post('/api/logout')
-async def logout(response: Response, crease_session: str | None = Cookie(default=None), user=Depends(session_user)):
-    with engine.begin() as db: db.execute(text('DELETE FROM sessions WHERE token_hash=:token'), {'token':digest(crease_session)})
-    response.delete_cookie('crease_session', path='/'); response.delete_cookie('crease_app_token', path='/'); return {'ok':True}
 
 class ProjectInput(BaseModel):
     name: str = Field(min_length=1,max_length=100)
@@ -311,6 +341,28 @@ class ProjectInput(BaseModel):
 
 class RetentionInput(BaseModel):
     retention_days: int = Field(ge=1, le=90)
+
+class WaitlistInput(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    consent: bool = Field(strict=True)
+
+class GoalInput(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    event_name: str = Field(min_length=1, max_length=64)
+    target_count: int = Field(gt=0, le=1000000000, strict=True)
+
+@app.post('/api/waitlist', status_code=202)
+async def join_waitlist(data: WaitlistInput):
+    email = data.email.strip().lower()
+    if not re.fullmatch(r'[^@\s]{1,64}@[^@\s]{1,253}\.[^@\s]{2,63}', email):
+        raise HTTPException(422, 'Enter a valid email address')
+    if not data.consent:
+        raise HTTPException(422, 'Consent is required to join the waitlist')
+    if not limiter.consume('waitlist:' + digest(email), 3, 60):
+        raise HTTPException(429, 'Please wait before trying again')
+    with engine.begin() as db:
+        db.execute(text('INSERT INTO waitlist_signups (email,consented_at) VALUES (:email,:at) ON CONFLICT (email) DO NOTHING'), {'email':email, 'at':now()})
+    return {'accepted': True}
 
 class GitHubInstallInput(BaseModel):
     repository: str = Field(min_length=3, max_length=200)
@@ -324,7 +376,7 @@ class GitRepositoryInput(BaseModel):
 
 def app_cipher():
     if not all((GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET, GITHUB_APP_TOKEN_KEY)):
-        raise HTTPException(503, 'GitHub App is not configured by the Crease administrator')
+        raise HTTPException(503, 'GitHub App is not configured by the Zappa administrator')
     try: return Fernet(GITHUB_APP_TOKEN_KEY.encode())
     except ValueError: raise HTTPException(503, 'GitHub App token key is invalid')
 
@@ -362,7 +414,7 @@ async def github_app_pages(token, path, key):
 @app.get('/api/github-app/status')
 async def github_app_status(user=Depends(session_user)):
     configured = all((GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET, GITHUB_APP_TOKEN_KEY))
-    return {'configured': bool(configured), 'install_url': 'https://github.com/apps/'+GITHUB_APP_SLUG+'/installations/new' if configured else None, 'public_origin_configured': bool(CREASE_PUBLIC_ORIGIN)}
+    return {'configured': bool(configured), 'install_url': 'https://github.com/apps/'+GITHUB_APP_SLUG+'/installations/new' if configured else None, 'public_origin_configured': bool(Zappa_PUBLIC_ORIGIN)}
 
 @app.get('/api/github-app/connect')
 async def github_app_connect(user=Depends(session_user)):
@@ -370,14 +422,14 @@ async def github_app_connect(user=Depends(session_user)):
     state = secrets.token_urlsafe(32)
     params = urlencode({'client_id':GITHUB_APP_CLIENT_ID, 'redirect_uri':PUBLIC_API_URL+'/api/github-app/callback', 'state':state})
     response = RedirectResponse('https://github.com/login/oauth/authorize?'+params, status_code=302)
-    response.set_cookie('crease_app_state', cipher.encrypt(json.dumps({'state':state,'user_id':user['id']}).encode()).decode(), httponly=True, secure=SECURE, samesite='lax', max_age=600, path='/')
+    response.set_cookie('Zappa_app_state', cipher.encrypt(json.dumps({'state':state,'user_id':user['id']}).encode()).decode(), httponly=True, secure=SECURE, samesite='lax', max_age=600, path='/')
     return response
 
 @app.get('/api/github-app/callback')
-async def github_app_callback(code: str, state: str, crease_app_state: str | None = Cookie(default=None), user=Depends(session_user)):
+async def github_app_callback(code: str, state: str, Zappa_app_state: str | None = Cookie(default=None), user=Depends(session_user)):
     cipher = app_cipher()
     try:
-        data = json.loads(cipher.decrypt((crease_app_state or '').encode(), ttl=600))
+        data = json.loads(cipher.decrypt((Zappa_app_state or '').encode(), ttl=600))
         if data['user_id'] != user['id'] or not secrets.compare_digest(data['state'], state): raise ValueError()
     except (InvalidToken, ValueError, KeyError, TypeError): raise HTTPException(400, 'Invalid or expired GitHub connection request')
     try:
@@ -386,7 +438,7 @@ async def github_app_callback(code: str, state: str, crease_app_state: str | Non
         token = result.json().get('access_token')
         if not token: raise HTTPException(400, 'GitHub connection failed; try again')
         profile = await github_app_request(token, '/user')
-        if str(profile['id']) != user['github_id']: raise HTTPException(403, 'Connect the same GitHub account used to sign in')
+        # GitHub repository authorization is independent from Zappa account identity. Project ownership was checked above.
     except httpx.RequestError as exc: raise HTTPException(503, 'Could not connect to GitHub') from exc
     with engine.begin() as db:
         db.execute(text('INSERT INTO github_connections (user_id,encrypted_token) VALUES (:user,:token) ON CONFLICT (user_id) DO UPDATE SET encrypted_token=:token'), {'user':user['id'], 'token':cipher.encrypt(token.encode()).decode()})
@@ -394,13 +446,13 @@ async def github_app_callback(code: str, state: str, crease_app_state: str | Non
     installed = any(item.get('app_slug', '').lower() == GITHUB_APP_SLUG.lower() for item in installations)
     destination = FRONTEND_URL+'/dashboard' if installed else 'https://github.com/apps/'+GITHUB_APP_SLUG+'/installations/new'
     response = RedirectResponse(destination, status_code=302)
-    response.delete_cookie('crease_app_token', path='/')
-    response.delete_cookie('crease_app_state', path='/')
+    response.delete_cookie('Zappa_app_token', path='/')
+    response.delete_cookie('Zappa_app_state', path='/')
     return response
 
 @app.get('/api/github-app/repositories')
-async def github_app_repositories(crease_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
-    token = app_user_token(crease_app_token, user)
+async def github_app_repositories(Zappa_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
+    token = app_user_token(Zappa_app_token, user)
     installations, truncated = await github_app_pages(token, '/user/installations', 'installations')
     repos = []
     for installation in installations:
@@ -411,7 +463,7 @@ async def github_app_repositories(crease_app_token: str | None = Cookie(default=
     return {'repositories': repos, 'installation_count': sum(1 for item in installations if item.get('app_slug', '').lower() == GITHUB_APP_SLUG.lower()), 'available_app_slugs': [item.get('app_slug') for item in installations if item.get('app_slug')], 'truncated': truncated}
 
 @app.get('/api/projects/{project_id}/github-install/status')
-async def github_install_status(project_id: str, response: Response, crease_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
+async def github_install_status(project_id: str, response: Response, Zappa_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
     response.headers['Cache-Control'] = 'no-store'
     with engine.connect() as db:
         owned(db, project_id, user['id'])
@@ -419,7 +471,7 @@ async def github_install_status(project_id: str, response: Response, crease_app_
         event_count = db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':project_id}).scalar_one()
         latest_event = db.execute(text('SELECT MAX(occurred_at) FROM events WHERE project_id=:id'), {'id':project_id}).scalar_one()
     if not repo: raise HTTPException(404, 'Connect a repository first')
-    token = app_user_token(crease_app_token, user)
+    token = app_user_token(Zappa_app_token, user)
     installations, _ = await github_app_pages(token, '/user/installations', 'installations')
     if not any(int(i['id']) == repo['installation_id'] and i.get('app_slug', '').lower() == GITHUB_APP_SLUG.lower() for i in installations):
         raise HTTPException(403, 'The GitHub App no longer has access to this repository. Check the installation.')
@@ -430,20 +482,20 @@ async def github_install_status(project_id: str, response: Response, crease_app_
     return result
 
 @app.post('/api/projects/{project_id}/github-install')
-async def github_install(project_id: str, data: GitHubInstallInput, crease_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
+async def github_install(project_id: str, data: GitHubInstallInput, Zappa_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
     with engine.connect() as db: owned(db, project_id, user['id'])
-    token = app_user_token(crease_app_token, user)
+    token = app_user_token(Zappa_app_token, user)
     result, _ = await github_app_pages(token, f'/user/installations/{data.installation_id}/repositories', 'repositories')
     if not any(repo['full_name'].lower() == data.repository.lower() for repo in result): raise HTTPException(403, 'Repository is not accessible to this account')
-    return await create_install_pr(token, data.repository, data.path, project_id, CREASE_PUBLIC_ORIGIN, data.write_key)
+    return await create_install_pr(token, data.repository, data.path, project_id, Zappa_PUBLIC_ORIGIN, data.write_key)
 
 @app.post('/api/projects/{project_id}/github-install/enable-tracking')
-async def enable_github_tracking(project_id: str, crease_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
+async def enable_github_tracking(project_id: str, Zappa_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
     with engine.connect() as db:
         owned(db, project_id, user['id'])
         repo = db.execute(text('SELECT full_name FROM project_repositories WHERE project_id=:id'), {'id':project_id}).mappings().first()
     if not repo: raise HTTPException(404, 'Connect a repository first')
-    token = app_user_token(crease_app_token, user)
+    token = app_user_token(Zappa_app_token, user)
     return await enable_tracking_pr(token, repo['full_name'], project_id)
 
 @app.get('/api/projects/{project_id}/git')
@@ -454,9 +506,9 @@ async def get_project_git(project_id: str, user=Depends(session_user)):
         return {'repository': dict(row) if row else None}
 
 @app.put('/api/projects/{project_id}/git')
-async def connect_project_git(project_id: str, data: GitRepositoryInput, crease_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
+async def connect_project_git(project_id: str, data: GitRepositoryInput, Zappa_app_token: str | None = Cookie(default=None), user=Depends(session_user)):
     with engine.connect() as db: owned(db, project_id, user['id'])
-    token = app_user_token(crease_app_token, user)
+    token = app_user_token(Zappa_app_token, user)
     installations, _ = await github_app_pages(token, '/user/installations', 'installations')
     if not any(int(item['id']) == data.installation_id and item.get('app_slug', '').lower() == GITHUB_APP_SLUG.lower() for item in installations):
         raise HTTPException(403, 'This GitHub App installation is not accessible to this account')
@@ -507,14 +559,18 @@ async def rotate_write_key(project_id: str, user=Depends(session_user)):
         db.execute(text('UPDATE projects SET write_key_hash=:key_hash WHERE id=:id'), {'key_hash':digest(write_key),'id':project_id})
     return {'write_key': write_key}
 
-def verification_record(token): return 'crease-site-verification=' + token
+def verification_record(token): return 'Zappa-site-verification=' + token
 
 async def dns_has_token(domain, token):
-    # Only the exact challenge counts; user-controlled web pages are never fetched.
-    expected = verification_record(token)
+    # Accept current Zappa challenges plus exact pre-rebrand Crease records.
+    expected_by_name = {
+        f'_Zappa-verification.{domain}': {verification_record(token)},
+        f'_crease-verification.{domain}': {'crease-site-verification=' + token},
+        domain: {verification_record(token), 'crease-site-verification=' + token},
+    }
     try:
         async with httpx.AsyncClient(timeout=6) as client:
-            for name in (f'_crease-verification.{domain}', domain):
+            for name, expected_values in expected_by_name.items():
                 response = await client.get('https://cloudflare-dns.com/dns-query', params={'name':name,'type':'TXT'}, headers={'Accept':'application/dns-json'})
                 if response.status_code != 200:
                     continue
@@ -523,7 +579,7 @@ async def dns_has_token(domain, token):
                         continue
                     # DNS JSON represents each TXT segment as a quoted string.
                     segments = re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', str(answer.get('data', '')))
-                    if segments and ''.join(segments) == expected:
+                    if segments and ''.join(segments) in expected_values:
                         return True
     except (httpx.RequestError, ValueError, AttributeError, TypeError):
         return False
@@ -533,7 +589,7 @@ async def dns_has_token(domain, token):
 async def get_verification(project_id: str, user=Depends(session_user)):
     with engine.connect() as db:
         row = owned(db, project_id, user['id'])
-    return {'token':row['verification_token'],'verified':bool(row['verified_at']),'verified_at':row['verified_at'],'record':verification_record(row['verification_token']),'dns_name':f'_crease-verification.{row["domain"]}'}
+    return {'token':row['verification_token'],'verified':bool(row['verified_at']),'verified_at':row['verified_at'],'record':verification_record(row['verification_token']),'dns_name':f'_Zappa-verification.{row["domain"]}'}
 
 @app.post('/api/projects/{project_id}/verification/check')
 async def check_verification(project_id: str, user=Depends(session_user)):
@@ -599,16 +655,30 @@ class Batch(BaseModel):
 @app.middleware('http')
 async def limits(request: Request, call_next):
     origin = request.headers.get('origin')
+    payment_webhook = bool(re.fullmatch(r'/api/payment-webhooks/stripe/[0-9a-f-]{36}', request.url.path))
+    clerk_webhook_request = request.url.path == '/api/clerk-webhook'
     if request.url.path == '/api/events' and request.method == 'OPTIONS':
-        return Response(status_code=204, headers={'Access-Control-Allow-Origin': origin or 'null', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Crease-Key', 'Vary': 'Origin'})
-    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events', '/internal/retention') and origin != FRONTEND_URL:
+        return Response(status_code=204, headers={'Access-Control-Allow-Origin': origin or 'null', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Zappa-Key', 'Vary': 'Origin'})
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events', '/internal/retention', '/api/clerk-webhook') and not payment_webhook and origin != FRONTEND_URL:
         return Response(status_code=403)
+    if payment_webhook or clerk_webhook_request:
+        peer = request.client.host if request.client else 'unknown'
+        if not limiter.consume('webhook-ip:' + peer, RATE_LIMIT_PROJECT_PER_MINUTE):
+            return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
+        length = request.headers.get('content-length')
+        if length and (not length.isdigit() or int(length) > 262144): return Response(status_code=413)
+        chunks, size = [], 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > 262144: return Response(status_code=413)
+            chunks.append(chunk)
+        request._body = b''.join(chunks)
     if request.url.path in ('/api/events', '/internal/events'):
         if request.url.path == '/internal/events':
             peer = request.client.host if request.client else 'unknown'
             if not limiter.consume('forward-peer:' + peer, RATE_LIMIT_PROJECT_PER_MINUTE):
                 return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
-            supplied_secret = request.headers.get('x-crease-forward-secret', '')
+            supplied_secret = request.headers.get('x-Zappa-forward-secret', '')
             if not GEO_FORWARD_SECRET or not secrets.compare_digest(digest(supplied_secret), digest(GEO_FORWARD_SECRET)):
                 return Response(status_code=401)
         length = request.headers.get('content-length')
@@ -628,7 +698,7 @@ async def limits(request: Request, call_next):
             project_id = None
         client_key = request.client.host if request.client else 'unknown'
         if request.url.path == '/internal/events':
-            forwarded_ip = request.headers.get('x-crease-client-ip', '')
+            forwarded_ip = request.headers.get('x-Zappa-client-ip', '')
             try:
                 client_key = str(ipaddress.ip_address(forwarded_ip))
             except ValueError:
@@ -638,6 +708,8 @@ async def limits(request: Request, call_next):
         if isinstance(project_id, str) and 0 < len(project_id) <= 36 and not limiter.consume('project:' + project_id, RATE_LIMIT_PROJECT_PER_MINUTE):
             return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
     response = await call_next(request)
+    if request.url.path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'no-store'
     if request.url.path == '/api/events' and origin:
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Vary'] = 'Origin'
@@ -648,7 +720,7 @@ async def limits(request: Request, call_next):
 async def ingest(data: Batch, request: Request):
     country = None
     if request.url.path == '/internal/events':
-        forwarded_country = request.headers.get('x-crease-country')
+        forwarded_country = request.headers.get('x-Zappa-country')
         if forwarded_country is not None:
             if forwarded_country not in ISO_COUNTRIES:
                 raise HTTPException(422, 'Invalid country code')
@@ -658,7 +730,7 @@ async def ingest(data: Batch, request: Request):
     with engine.begin() as db:
         project = db.execute(text('SELECT domain, write_key_hash, verified_at FROM projects WHERE id=:id'), {'id':data.projectId}).mappings().first()
         if not project: raise HTTPException(404, 'Project not found')
-        supplied = request.headers.get('x-crease-key', '')
+        supplied = request.headers.get('x-Zappa-key', '')
         if not supplied and request.headers.get('authorization', '').lower().startswith('bearer '):
             supplied = request.headers['authorization'][7:].strip()
         if not project['write_key_hash'] or not supplied or not secrets.compare_digest(digest(supplied), project['write_key_hash']):
@@ -713,6 +785,82 @@ async def ingest(data: Batch, request: Request):
                       pageview_count=analytics_sessions.pageview_count+excluded.pageview_count
                 '''), {'project':data.projectId,'session':session_id,'visitor':e.visitorId,'at':stamp(event_time),'path':e.path,'pageview':1 if e.name == 'pageview' else 0})
     return {'accepted': inserted}
+
+def payment_cipher():
+    if not PAYMENT_ENCRYPTION_KEY:
+        raise HTTPException(503, 'Payment integration encryption is not configured')
+    try:
+        return Fernet(PAYMENT_ENCRYPTION_KEY.encode())
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(503, 'Payment integration encryption is invalid') from exc
+
+
+class StripeConnection(BaseModel):
+    signing_secret: str = Field(min_length=16, max_length=255, pattern=r'^whsec_[A-Za-z0-9]+$')
+    live_mode: bool
+
+
+@app.post('/api/projects/{project_id}/payment-integrations/stripe', status_code=201)
+async def connect_stripe(project_id: str, data: StripeConnection, user=Depends(session_user)):
+    cipher = payment_cipher()
+    integration_id = str(uuid4())
+    with engine.begin() as db:
+        owned(db, project_id, user['id'])
+        exists = db.execute(text("SELECT 1 FROM payment_integrations WHERE project_id=:project AND provider='stripe'"), {'project':project_id}).first()
+        if exists: raise HTTPException(409, 'Disconnect the existing Stripe integration first')
+        try:
+            db.execute(text("INSERT INTO payment_integrations (id,project_id,provider,live_mode,encrypted_signing_secret,created_at) VALUES (:id,:project,'stripe',:live,:secret,:at)"), {'id':integration_id,'project':project_id,'live':data.live_mode,'secret':cipher.encrypt(data.signing_secret.encode()).decode(),'at':now()})
+        except IntegrityError as exc:
+            raise HTTPException(409, 'Stripe integration already exists') from exc
+    return {'id':integration_id,'provider':'stripe','live_mode':data.live_mode,'status':'awaiting_webhook','webhook_url':PUBLIC_API_URL + '/api/payment-webhooks/stripe/' + integration_id}
+
+
+@app.get('/api/projects/{project_id}/payment-integrations/stripe')
+async def stripe_status(project_id: str, user=Depends(session_user)):
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        row = db.execute(text("SELECT id,live_mode,last_verified_event_at FROM payment_integrations WHERE project_id=:project AND provider='stripe'"), {'project':project_id}).mappings().first()
+    if not row: return {'connected':False}
+    return {'connected':True,'live_mode':row['live_mode'],'status':'receiving' if row['last_verified_event_at'] else 'awaiting_webhook','last_verified_event_at':row['last_verified_event_at'],'webhook_url':PUBLIC_API_URL + '/api/payment-webhooks/stripe/' + row['id']}
+
+
+@app.delete('/api/projects/{project_id}/payment-integrations/stripe')
+async def disconnect_stripe(project_id: str, user=Depends(session_user)):
+    with engine.begin() as db:
+        owned(db, project_id, user['id'])
+        db.execute(text("DELETE FROM payment_integrations WHERE project_id=:project AND provider='stripe'"), {'project':project_id})
+    return {'connected':False}
+
+
+@app.post('/api/payment-webhooks/stripe/{integration_id}')
+async def stripe_webhook(integration_id: str, request: Request):
+    with engine.begin() as db:
+        row = db.execute(text("SELECT i.*, p.retention_days FROM payment_integrations i JOIN projects p ON p.id=i.project_id WHERE i.id=:id AND i.provider='stripe' FOR UPDATE OF i"), {'id':integration_id}).mappings().first()
+        if not row: raise HTTPException(404, 'Integration not found')
+        try:
+            secret = payment_cipher().decrypt(row['encrypted_signing_secret'].encode()).decode()
+            event = StripeAdapter().verify(await request.body(), request.headers.get('stripe-signature', ''), secret)
+        except (InvalidToken, UnicodeDecodeError) as exc:
+            raise HTTPException(503, 'Integration credentials are unavailable') from exc
+        except ValueError as exc:
+            raise HTTPException(400, 'Invalid Stripe webhook') from exc
+        if event.live_mode != row['live_mode']: raise HTTPException(400, 'Webhook mode does not match integration')
+        inserted = db.execute(text('''INSERT INTO payment_webhook_events (integration_id,provider_event_id,event_type,received_at)
+            VALUES (:integration,:event,:type,:at) ON CONFLICT DO NOTHING RETURNING provider_event_id'''), {'integration':integration_id,'event':event.event_id,'type':event.event_type,'at':now()}).first()
+        if not inserted: return {'received':True,'duplicate':True}
+        if event.payment and event.payment.occurred_at >= now() - timedelta(days=row['retention_days']):
+            payment = event.payment
+            result = db.execute(text('''INSERT INTO payments
+                (project_id,provider,live_mode,provider_transaction_id,provider_customer_id,amount_minor,refunded_minor,currency,occurred_at)
+                VALUES (:project,'stripe',:live,:transaction,:customer,:amount,:refunded,:currency,:occurred)
+                ON CONFLICT (project_id,provider,live_mode,provider_transaction_id) DO UPDATE SET
+                  refunded_minor=GREATEST(payments.refunded_minor,excluded.refunded_minor),
+                  provider_customer_id=COALESCE(payments.provider_customer_id,excluded.provider_customer_id)
+                WHERE payments.currency=excluded.currency AND payments.amount_minor=excluded.amount_minor
+                RETURNING provider_transaction_id'''), {'project':row['project_id'],'live':event.live_mode,'transaction':payment.transaction_id,'customer':payment.customer_id,'amount':payment.amount_minor,'refunded':payment.refunded_minor,'currency':payment.currency,'occurred':payment.occurred_at}).first()
+            if not result: raise HTTPException(409, 'Conflicting payment data requires reconciliation')
+        db.execute(text('UPDATE payment_integrations SET last_verified_event_at=:at WHERE id=:id'), {'at':now(),'id':integration_id})
+    return {'received':True,'duplicate':False}
 
 
 def report_window(days, start_date, end_date):
@@ -884,6 +1032,68 @@ async def project_events(project_id: str, days: int = 30, start: date | None = N
         rows = db.execute(text(f"SELECT e.id, e.name, e.occurred_at, e.path, e.visitor_id, e.session_id, e.country, e.device, e.referrer, e.properties FROM {source} WHERE " + ' AND '.join(where) + ' ORDER BY e.occurred_at DESC LIMIT :limit'), params).mappings().all()
     return [{'id':row['id'],'name':row['name'],'occurred_at':row['occurred_at'],'path':row['path'],'visitor_id':row['visitor_id'],'session_id':row['session_id'],'country':row['country'],'device':row['device'],'referrer':row['referrer'],'properties':json.loads(row['properties'])} for row in rows]
 
+
+@app.get('/api/events/stream')
+async def live_event_stream(request: Request, projectId: str = Query(min_length=1, max_length=36), after: int | None = Query(default=None, ge=0), user=Depends(session_user)):
+    """Stream newly ingested events for one owned project using a durable DB cursor."""
+    header_cursor = request.headers.get('last-event-id')
+    if after is None and header_cursor:
+        try:
+            after = int(header_cursor)
+        except ValueError:
+            raise HTTPException(400, 'Invalid Last-Event-ID cursor') from None
+        if after < 0:
+            raise HTTPException(400, 'Invalid Last-Event-ID cursor')
+
+    with engine.connect() as db:
+        owned(db, projectId, user['id'])
+        latest = int(db.execute(text('SELECT COALESCE(MAX(ingest_seq),0) FROM events WHERE project_id=:id'), {'id':projectId}).scalar_one())
+    if after is not None and after > latest:
+        raise HTTPException(400, 'Live event cursor is ahead of this project')
+    cursor = latest if after is None else after
+
+    async def stream():
+        started = time.monotonic()
+        last_heartbeat = started
+        yield f'event: ready\nid: {cursor}\ndata: {json.dumps({"cursor": cursor})}\n\n'
+        while time.monotonic() - started < 3000:
+            if await request.is_disconnected():
+                break
+            await asyncio.sleep(2)
+            try:
+                rows = await asyncio.to_thread(_read_live_events, projectId, cursor)
+            except Exception:
+                logging.getLogger('Zappa.live').exception('Live event poll failed')
+                yield 'event: stream-error\ndata: {"retry":true}\n\n'
+                break
+            for row in rows:
+                cursor = int(row['ingest_seq'])
+                payload = {
+                    'id': row['id'], 'name': row['name'], 'occurred_at': row['occurred_at'],
+                    'path': row['path'], 'country': row['country'], 'device': row['device'],
+                    'ingest_seq': cursor,
+                }
+                yield f'id: {cursor}\nevent: analytics-event\ndata: {json.dumps(payload, separators=(",", ":"))}\n\n'
+            current = time.monotonic()
+            if current - last_heartbeat >= 15:
+                yield ': keep-alive\n\n'
+                last_heartbeat = current
+
+    return StreamingResponse(stream(), media_type='text/event-stream', headers={
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+    })
+
+
+def _read_live_events(project_id: str, cursor: int):
+    with engine.connect() as db:
+        return db.execute(text('''
+            SELECT ingest_seq,id,name,occurred_at,path,country,device
+            FROM events WHERE project_id=:id AND ingest_seq>:cursor
+            ORDER BY ingest_seq ASC LIMIT 100
+        '''), {'id':project_id, 'cursor':cursor}).mappings().all()
+
 @app.get('/api/projects/{project_id}/funnel')
 async def funnel(project_id: str, first: str = Query(min_length=1, max_length=64), second: str = Query(min_length=1, max_length=64), days: int = 30, start: date | None = None, end: date | None = None, user=Depends(session_user)):
     if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
@@ -910,7 +1120,133 @@ async def funnel(project_id: str, first: str = Query(min_length=1, max_length=64
     second_count = int(row['second_count'] or 0)
     return {'first':first,'second':second,'first_count':first_count,'second_count':second_count,'conversion':round(second_count/first_count, 4) if first_count else 0,'days':days}
 
-# Vercel access is per Crease account, encrypted at rest, and never sent to the browser.
+
+@app.get('/api/projects/{project_id}/funnel/multi')
+async def multi_funnel(project_id: str, steps: list[str] = Query(min_length=2, max_length=5), days: int = 30, start: date | None = None, end: date | None = None, user=Depends(session_user)):
+    if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
+    if any(not step.strip() or len(step) > 64 for step in steps): raise HTTPException(422, 'Each funnel event must contain 1 to 64 characters')
+    start_at, end_at, days = report_window(days, start, end)
+    params = {'id':project_id, 'since':stamp(start_at), 'until':stamp(end_at)}
+    ctes = []
+    for index, event_name in enumerate(steps):
+        step_number = index + 1
+        params[f'event_{step_number}'] = event_name.strip()
+        if index == 0:
+            ctes.append(f'''step_{step_number} AS (
+                SELECT session_id,MIN(occurred_at) AS at FROM events
+                WHERE project_id=:id AND name=:event_{step_number} AND occurred_at>=:since AND occurred_at<:until
+                    AND session_id IS NOT NULL
+                GROUP BY session_id
+            )''')
+        else:
+            previous = step_number - 1
+            ctes.append(f'''step_{step_number} AS (
+                SELECT p.session_id,MIN(e.occurred_at) AS at FROM step_{previous} p
+                JOIN events e ON e.project_id=:id AND e.session_id=p.session_id
+                    AND e.name=:event_{step_number} AND e.occurred_at>=p.at
+                    AND e.occurred_at>=:since AND e.occurred_at<:until
+                GROUP BY p.session_id
+            )''')
+    count_columns = ','.join(f'(SELECT COUNT(*) FROM step_{i}) AS count_{i}' for i in range(1, len(steps) + 1))
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        counts = db.execute(text(f"WITH {','.join(ctes)} SELECT {count_columns}"), params).mappings().one()
+    output = []
+    previous_count = None
+    for index, event_name in enumerate(steps, start=1):
+        count = int(counts[f'count_{index}'] or 0)
+        conversion = None if previous_count is None else (round(count / previous_count, 4) if previous_count else 0)
+        output.append({'event_name':event_name.strip(), 'count':count, 'conversion_from_previous':conversion})
+        previous_count = count
+    return {'steps':output,'days':days,'start':start_at.date().isoformat(),'end':(end_at-timedelta(microseconds=1)).date().isoformat()}
+
+
+def validate_goal_event(db, project_id, event_name):
+    exists = db.execute(text('SELECT 1 FROM events WHERE project_id=:id AND name=:name LIMIT 1'), {'id':project_id, 'name':event_name}).first()
+    if not exists:
+        raise HTTPException(422, 'Choose an event that has been observed for this project')
+
+
+@app.get('/api/projects/{project_id}/goal-events')
+async def project_goal_events(project_id: str, user=Depends(session_user)):
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        rows = db.execute(text('''
+            SELECT name AS label,COUNT(*) AS count
+            FROM events WHERE project_id=:id
+            GROUP BY name ORDER BY count DESC,name LIMIT 100
+        '''), {'id':project_id}).mappings().all()
+    return [{'label':row['label'],'count':int(row['count'])} for row in rows]
+
+
+@app.get('/api/projects/{project_id}/goals')
+async def project_goals(project_id: str, days: int = 30, start: date | None = None, end: date | None = None, user=Depends(session_user)):
+    if days not in (7,30,90): raise HTTPException(422, 'Unsupported date range')
+    if (start is None) != (end is None): raise HTTPException(422, 'start and end must be provided together')
+    start_at, end_at, days = report_window(days, start, end)
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        rows = db.execute(text('''
+            SELECT g.id,g.name,g.event_name,g.target_count,g.created_at,
+                   COUNT(e.id) AS current_count
+            FROM project_goals g
+            LEFT JOIN events e ON e.project_id=g.project_id AND e.name=g.event_name
+                AND e.occurred_at>=:since AND e.occurred_at<:until
+            WHERE g.project_id=:id
+            GROUP BY g.id,g.name,g.event_name,g.target_count,g.created_at
+            ORDER BY g.created_at DESC,g.name
+        '''), {'id':project_id, 'since':stamp(start_at), 'until':stamp(end_at)}).mappings().all()
+    return [{'id':row['id'],'name':row['name'],'event_name':row['event_name'],'target_count':int(row['target_count']),
+             'current_count':int(row['current_count'] or 0),'progress':min(1, int(row['current_count'] or 0) / int(row['target_count'])),
+             'created_at':row['created_at'],'start':start_at.date().isoformat(),'end':(end_at-timedelta(microseconds=1)).date().isoformat()}
+            for row in rows]
+
+
+@app.post('/api/projects/{project_id}/goals', status_code=201)
+async def create_project_goal(project_id: str, data: GoalInput, user=Depends(session_user)):
+    name = data.name.strip()
+    event_name = data.event_name.strip()
+    if not name or not event_name: raise HTTPException(422, 'Goal name and event are required')
+    goal_id = str(uuid4())
+    created_at = stamp(now())
+    try:
+        with engine.begin() as db:
+            owned(db, project_id, user['id'])
+            validate_goal_event(db, project_id, event_name)
+            db.execute(text('INSERT INTO project_goals (id,project_id,name,event_name,target_count,created_at) VALUES (:id,:project,:name,:event,:target,:created)'),
+                       {'id':goal_id,'project':project_id,'name':name,'event':event_name,'target':data.target_count,'created':created_at})
+    except IntegrityError as exc:
+        raise HTTPException(409, 'A goal with this name already exists for the project') from exc
+    return {'id':goal_id,'name':name,'event_name':event_name,'target_count':data.target_count,'current_count':0,'progress':0,'created_at':created_at}
+
+
+@app.patch('/api/projects/{project_id}/goals/{goal_id}')
+async def update_project_goal(project_id: str, goal_id: str, data: GoalInput, user=Depends(session_user)):
+    name = data.name.strip()
+    event_name = data.event_name.strip()
+    if not name or not event_name: raise HTTPException(422, 'Goal name and event are required')
+    try:
+        with engine.begin() as db:
+            owned(db, project_id, user['id'])
+            validate_goal_event(db, project_id, event_name)
+            result = db.execute(text('UPDATE project_goals SET name=:name,event_name=:event,target_count=:target WHERE id=:goal AND project_id=:project'),
+                                {'name':name,'event':event_name,'target':data.target_count,'goal':goal_id,'project':project_id})
+            if result.rowcount == 0: raise HTTPException(404, 'Goal not found')
+    except IntegrityError as exc:
+        raise HTTPException(409, 'A goal with this name already exists for the project') from exc
+    return {'id':goal_id,'name':name,'event_name':event_name,'target_count':data.target_count}
+
+
+@app.delete('/api/projects/{project_id}/goals/{goal_id}', status_code=204)
+async def delete_project_goal(project_id: str, goal_id: str, user=Depends(session_user)):
+    with engine.begin() as db:
+        owned(db, project_id, user['id'])
+        result = db.execute(text('DELETE FROM project_goals WHERE id=:goal AND project_id=:project'), {'goal':goal_id,'project':project_id})
+        if result.rowcount == 0: raise HTTPException(404, 'Goal not found')
+    return Response(status_code=204)
+
+
+# Vercel access is per Zappa account, encrypted at rest, and never sent to the browser.
 def vercel_cipher():
     if not all((VERCEL_INTEGRATION_SLUG, VERCEL_INTEGRATION_CLIENT_ID, VERCEL_INTEGRATION_CLIENT_SECRET, VERCEL_TOKEN_KEY)):
         raise HTTPException(503, 'Vercel integration is not configured')
@@ -949,11 +1285,11 @@ async def vercel_connect(user=Depends(session_user)):
     cipher = vercel_cipher(); state = secrets.token_urlsafe(32)
     with engine.begin() as db: db.execute(text('INSERT INTO oauth_states VALUES (:state,:expires)'), {'state':digest(state),'expires':stamp(now()+timedelta(minutes=10))})
     response = RedirectResponse('https://vercel.com/integrations/'+VERCEL_INTEGRATION_SLUG+'/new?'+urlencode({'state':state}), status_code=302)
-    response.set_cookie('crease_vercel_state', cipher.encrypt(json.dumps({'state':state,'user_id':user['id']}).encode()).decode(), httponly=True, secure=SECURE, samesite='lax', max_age=600, path='/')
+    response.set_cookie('Zappa_vercel_state', cipher.encrypt(json.dumps({'state':state,'user_id':user['id']}).encode()).decode(), httponly=True, secure=SECURE, samesite='lax', max_age=600, path='/')
     return response
 
 @app.get('/api/vercel/callback')
-async def vercel_callback(code: str, state: str, next: str | None = None, crease_vercel_state: str | None = Cookie(default=None), user=Depends(session_user)):
+async def vercel_callback(code: str, state: str, next: str | None = None, Zappa_vercel_state: str | None = Cookie(default=None), user=Depends(session_user)):
     cipher = vercel_cipher()
     target = FRONTEND_URL+'/dashboard'
     if next:
@@ -962,7 +1298,7 @@ async def vercel_callback(code: str, state: str, next: str | None = None, crease
             raise HTTPException(400, 'Invalid Vercel completion URL')
         target = next + ('&' if parsed.query else '?') + urlencode({'state':state})
     try:
-        data = json.loads(cipher.decrypt((crease_vercel_state or '').encode(), ttl=600))
+        data = json.loads(cipher.decrypt((Zappa_vercel_state or '').encode(), ttl=600))
         if data['user_id'] != user['id'] or not secrets.compare_digest(data['state'], state): raise ValueError()
     except (InvalidToken, ValueError, KeyError, TypeError): raise HTTPException(400, 'Invalid or expired Vercel connection request')
     with engine.begin() as db:
@@ -979,7 +1315,7 @@ async def vercel_callback(code: str, state: str, next: str | None = None, crease
         db.execute(text('DELETE FROM project_vercel WHERE user_id=:user'), {'user':user['id']})
         db.execute(text('INSERT INTO vercel_connections (user_id,encrypted_token,team_id) VALUES (:user,:token,:team) ON CONFLICT (user_id) DO UPDATE SET encrypted_token=:token,team_id=:team'), {'user':user['id'],'token':cipher.encrypt(token.encode()).decode(),'team':team})
     response = RedirectResponse(target, status_code=302)
-    response.delete_cookie('crease_vercel_state', path='/')
+    response.delete_cookie('Zappa_vercel_state', path='/')
     return response
 
 @app.post('/api/vercel/disconnect')

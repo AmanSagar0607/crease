@@ -1,11 +1,5 @@
-import type { Metadata } from 'next';
-import LoginView from './LoginView';
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = {
-  title: 'Sign in — Crease',
-  description: 'Sign in to Crease with GitHub to open your analytics workspace.',
-};
-
-export default function LoginPage() {
-  return <LoginView />;
+export default function LegacyLoginPage() {
+  redirect('/sign-in');
 }

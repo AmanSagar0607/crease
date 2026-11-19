@@ -4,19 +4,25 @@ The FastAPI service exposes its interactive OpenAPI reference at `/docs` and the
 
 ## Ingest events
 
-`POST /api/events` accepts a JSON batch of up to 20 events. Send `Content-Type: application/json` and `X-Crease-Key: <project write key>`. The collector checks the write key, verified project domain, allowed origin, payload shape, and event timestamp. The project ID is public and is not an authentication credential.
+`POST /api/events` accepts a JSON batch of up to 20 events. Send `Content-Type: application/json` and `X-Zappa-Key: <project write key>`. The collector checks the write key, verified project domain, allowed origin, payload shape, and event timestamp. The project ID is public and is not an authentication credential.
 
 Each event contains `id`, `name`, `timestamp`, `path`, optional `visitorId`, optional `sessionId`, `referrer`, and numeric or boolean `properties`. Reusing an event ID within one project is idempotent. Event paths exclude query strings and fragments. The SDK sends `schemaVersion: 1`; older clients may omit it. `sessionId` is accepted for compatibility but the collector assigns the authoritative session server-side.
 
 The collector responds with `{ "accepted": n }`, where `n` is the number of newly stored events. It may return 401 for an invalid write key, 403 for an unverified project or rejected origin, 404 for an unknown project, 413 for an oversized request, 422 for an invalid event, or 429 when a configured shared database rate limit is reached. Transient delivery remains best effort; SDKs retry network errors and server/rate-limit responses.
 
-For cross-origin browser requests, the preflight allows `Content-Type` and `X-Crease-Key`. Origin checks reduce accidental cross-site use but do not authenticate a visitor and do not make public browser events unforgeable.
+For cross-origin browser requests, the preflight allows `Content-Type` and `X-Zappa-Key`. Origin checks reduce accidental cross-site use but do not authenticate a visitor and do not make public browser events unforgeable.
 
-Country is unknown by default. Public `/api/events` never trusts country headers. The Vercel server route forwards a country to `/internal/events` using `GEO_FORWARD_SECRET`; the backend authenticates it and checks ISO 3166-1 alpha-2. See the deployment instructions in the README before enabling `TRUST_VERCEL_GEO`.
+Country is accepted only on `/internal/events`, which authenticates `GEO_FORWARD_SECRET` first. Forwarded values must be ISO 3166-1 alpha-2 and are stored when `TRUST_VERCEL_GEO` is true (the default). Public `/api/events` never trusts country headers. Missing, disabled, or unrecognized country is stored as unknown; malformed values are rejected with 422.
+
+Requests whose `User-Agent` matches a known crawler, uptime monitor, or automation client are acknowledged with `{ "accepted": 0, "filtered": "bot" }` and are not stored. Set `FILTER_BOTS=false` only while debugging.
+
+## Retention job
+
+`POST /internal/retention` deletes events, session summaries, touchpoints, event properties, and (when those tables exist) expired payment rows for every project according to its `retention_days`. It requires `X-Zappa-Retention-Secret` to match `RETENTION_SECRET`; when the secret is unset the route returns 401. The response reports `projects`, `events`, and `sessions` totals. The API also runs retention in-process 30 seconds after startup and every `RETENTION_INTERVAL_HOURS` (default 24), which covers hosts without a cron service. Set `RETENTION_INTERVAL_HOURS=0` to disable the loop and schedule `python backend/expire.py` yourself.
 
 ## Project APIs
 
-Authenticated project routes require the Crease session cookie and check project ownership server-side. The current routes include project CRUD, `/api/projects/{id}/summary?days=7|30|90`, `/api/projects/{id}/properties`, `/api/projects/{id}/events`, `/api/projects/{id}/funnel?first=&second=&days=7|30|90`, write-key rotation, retention configuration, domain verification, GitHub repository installation, and Vercel integration settings. See the OpenAPI schema for request and response details from the running version.
+Authenticated project routes require the Zappa session cookie and check project ownership server-side. The current routes include project CRUD, `/api/projects/{id}/summary?days=7|30|90`, `/api/projects/{id}/properties`, `/api/projects/{id}/events`, `/api/projects/{id}/funnel`, `/api/projects/{id}/funnel/multi`, project-scoped goals, write-key rotation, retention configuration, domain verification, GitHub repository installation, and Vercel integration settings. See the OpenAPI schema for request and response details from the running version.
 
 ## Property filters
 
@@ -26,7 +32,15 @@ Ingested numeric and boolean properties are indexed in `event_properties` and ea
 
 ## Funnels
 
-`GET /api/projects/{id}/funnel?first=<event>&second=<event>&days=7|30|90` counts sessions that contain the first event and then the second event at the same or a later timestamp within the range. Both event names are required. The response includes `first_count`, `second_count`, `conversion` (second divided by first, rounded to four decimals), and the selected names and range. A session that performs the second event before the first does not count toward the second step. Summary responses also include `event_names`, a bounded list of event names and counts used to populate the dashboard funnel selectors.
+`GET /api/projects/{id}/funnel?first=<event>&second=<event>&days=7|30|90` remains available for two-step clients. It counts sessions that contain the first event and then the second at the same or a later timestamp within the range. The response includes `first_count`, `second_count`, `conversion` (second divided by first, rounded to four decimals), and the selected names and range.
+
+`GET /api/projects/{id}/funnel/multi?steps=<event>&steps=<event>[&steps=<event>...]` powers the dashboard and accepts 2–5 repeated `steps` parameters, plus either `days=7|30|90` or both `start` and `end` dates. Each step counts distinct sessions that completed the preceding sequence in timestamp order; counts cannot exceed the prior step. The response includes `steps` entries with `event_name`, `count`, and `conversion_from_previous`, as well as the resolved date range. Event names are parameterized and limited to 64 characters. The session must belong to the requested project. Summary responses also include a bounded `event_names` list for funnel selectors.
+
+## Event goals
+
+`GET /api/projects/{id}/goal-events` lists up to 100 event names already observed for the owned project. Goal definitions use `GET` and `POST /api/projects/{id}/goals`; `PATCH` and `DELETE /api/projects/{id}/goals/{goal_id}` update or remove one definition. Create/update bodies contain `name` (1–80 characters), `event_name` (an event already observed for this project), and positive integer `target_count` (maximum 1,000,000,000). Names are unique per project. Unobserved events and invalid targets return 422; duplicate names return 409.
+
+Goal progress is the raw occurrence count of that event within the selected reporting window—not unique visitors or inferred conversions. The goal list accepts `days=7|30|90` or both `start` and `end` dates, returns each goal with its current count and capped progress ratio, and applies the selected dates in UTC. All goal reads and writes are scoped to the project owner.
 
 ## Session interpretation
 

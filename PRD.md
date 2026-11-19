@@ -1,8 +1,8 @@
-# Crease: product requirements
+# Zappa: product requirements
 
 ## Product
 
-Crease is a free, developer-focused analytics platform. A developer creates an account, connects a website, installs a small tracking script, and views that site's traffic and product events. Each account can manage multiple projects. The platform owns its tracking SDK, ingestion pipeline, data, and dashboard; it does not embed a hosted analytics product.
+Zappa is a free, developer-focused analytics platform. A developer creates an account, connects a website, installs a small tracking script, and views that site's traffic and product events. Each account can manage multiple projects. The platform owns its tracking SDK, ingestion pipeline, data, and dashboard; it does not embed a hosted analytics product.
 
 The first release targets indie developers with sites hosted anywhere, including Vercel. Country reporting is approximate IP-based geolocation, not a record of a visitor's precise location. The service is free to users, subject to published usage and retention limits that keep operating costs sustainable.
 

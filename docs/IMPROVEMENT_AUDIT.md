@@ -1,10 +1,10 @@
 # Improvement audit
 
-Audit and implementation record for the Crease backend and dashboard. The audit started from the working tree on 2026-11-13; all implementation work below is on `deploy/crease-mvp` as of 2026-11-16.
+Audit and implementation record for the Zappa backend and dashboard. The audit started from the working tree on 2026-11-13; all implementation work below is on `deploy/Zappa-mvp` as of 2026-11-16.
 
 ## Scope and method
 
-- Reviewed `backend/main.py`, `backend/expire.py`, the Alembic migration directory, `backend/test_api.py`, the dashboard under `app/dashboard/`, the browser SDK (`sdk/crease.js`, `public/crease.js`), and the npm client (`packages/crease-analytics/index.js`).
+- Reviewed `backend/main.py`, `backend/expire.py`, the Alembic migration directory, `backend/test_api.py`, the dashboard under `app/dashboard/`, the browser SDK (`sdk/Zappa.js`, `public/Zappa.js`), and the npm client (`packages/zappa-analytics/index.js`).
 - Ran the backend suite against a local PostgreSQL instance (port 5433) because the API intentionally rejects SQLite, the SDK suite with `node --test`, and the dashboard with `npx tsc --noEmit` and `npm run build`.
 - Verified the API and dashboard against a seeded local database, including property filters, the funnel, retention cleanup, and the migration backfill.
 - Kept the consent-gated design. No cookies, fingerprinting, or session replay were added. The SDK sources remain byte-identical.
@@ -31,7 +31,7 @@ Each item was developed on its own branch and merged locally with `--no-ff`. `gh
 ### Backend
 
 1. **Authenticated event writes** — `feat/event-write-keys`, commit `7f7e3e1`, merge `c4f9ed1`.
-   - Adds a hashed per-project write key, requires `X-Crease-Key` on ingestion, supports rotation, and keeps the public project ID non-secret.
+   - Adds a hashed per-project write key, requires `X-Zappa-Key` on ingestion, supports rotation, and keeps the public project ID non-secret.
    - Tests cover missing, invalid, rotated, and cross-project keys.
    - Risk: a browser-embedded write key is visible to visitors and cannot prevent forged events from that origin; it only scopes writes to a project.
 
@@ -104,8 +104,8 @@ Each item was developed on its own branch and merged locally with `--no-ff`. `gh
 
 | Command | Result |
 | --- | --- |
-| `cd backend; python -m unittest test_api` with `TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:5433/crease_test` | 29 tests pass |
-| `node --test sdk/crease.test.cjs` | 5 tests pass |
+| `cd backend; python -m unittest test_api` with `TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:5433/Zappa_test` | 29 tests pass |
+| `node --test sdk/Zappa.test.cjs` | 5 tests pass |
 | `npx tsc --noEmit` | passes |
 | `npm run build` | passes |
 | `alembic upgrade head` on a fresh SQLite file | passes |
@@ -136,7 +136,7 @@ Each item was developed on its own branch and merged locally with `--no-ff`. `gh
 ## Open risks and follow-ups
 
 - **Production rollout is pending.** The Alembic baseline, `0002_property_filters`, and the retention job have not been applied or scheduled against production. Stamp the existing production database with `alembic stamp 0001_baseline` before `alembic upgrade head`.
-- **PRs were not opened.** `gh` is unavailable in this environment, so the work exists as local branches and commits on `deploy/crease-mvp`. Push the branches and open PRs manually.
+- **PRs were not opened.** `gh` is unavailable in this environment, so the work exists as local branches and commits on `deploy/Zappa-mvp`. Push the branches and open PRs manually.
 - **Geolocation depends on deployment topology.** `TRUST_VERCEL_GEO=true` is safe only when every request passes through a Vercel deployment that overwrites `X-Vercel-IP-Country`.
 - **Session boundaries are UTC.** Customers who need local-day reporting will see sessions split at UTC midnight.
 - **Funnels are minimal.** Two ordered steps, no property filters, and no time-to-convert breakdown.
@@ -144,3 +144,13 @@ Each item was developed on its own branch and merged locally with `--no-ff`. `gh
 - **Retention needs an external scheduler.** The repository provides the job and logging but not the schedule.
 - **Rate limiting is fixed-window.** Boundary bursts are possible, and the counters add database load.
 - **The browser write key is not a secret.** It scopes writes to a project but cannot make public browser events unforgeable; origin checks are only a deterrent.
+
+## Local MVP continuation — 2026-11-18
+
+- Added project-scoped event-count goals using the existing FastAPI/Postgres service: `GET /goal-events`, `GET /goals`, `POST /goals`, `PATCH /goals/{goal_id}`, and `DELETE /goals/{goal_id}` under `/api/projects/{project_id}`. Every route checks project ownership; event names must already exist for that project; goal targets are positive bounded integers; duplicate names return `409`.
+- Added Alembic revision `0005_project_goals`. Progress counts observed occurrences of the selected event inside the requested UTC date window and is capped at the target for display. Revenue is not inferred.
+- Added the Goals dashboard section with create/edit/delete, loading/error/empty states, responsive overflow handling, and observed-event choices.
+- Removed hardcoded sample analytics values and charts from the landing and sign-in previews; they now explain that project values only appear after tracking is verified.
+- The linked Neon integration is connected, but its reported schema contains only Neon Auth tables. It does not match the existing Zappa API database, so this change uses the established API database boundary and does not create parallel analytics tables in the linked integration.
+- Verification at this checkpoint: `npx tsc --noEmit`, Python syntax compilation, and `git diff --check` passed. Backend integration tests could not run because this workspace has neither `TEST_DATABASE_URL` nor a local PostgreSQL listener. Revision `0005_project_goals` is source only; no production migration, push, or deploy was performed.
+- Continued funnel work: added `GET /api/projects/{id}/funnel/multi` for two to five ordered event steps per session. The legacy two-step endpoint remains intact. Each step counts distinct sessions that completed the preceding sequence; query values are parameterized and constrained to 2–5 event names. Saved funnels, step-level property filters, and funnel tests against PostgreSQL remain pending.

@@ -13,24 +13,47 @@ from sqlalchemy import text
 
 from main import engine, now, stamp
 
-logger = logging.getLogger('crease.retention')
+logger = logging.getLogger('Zappa.retention')
+
+
+def table_exists(db, name):
+    """Return True when the optional table is present in the current schema."""
+    if db.dialect.name != 'postgresql':
+        return db.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name=:name"),
+            {'name': name},
+        ).scalar() is not None
+    return db.execute(text('SELECT to_regclass(:name)'), {'name': name}).scalar() is not None
 
 
 def enforce_retention(db_engine=engine, log=logger):
     """Delete expired events and session summaries, logging counts per project."""
     totals = {'projects': 0, 'events': 0, 'sessions': 0}
     with db_engine.begin() as db:
+        # The deployable API can run without the payment foundation migration, and a
+        # self-hosted database may lag behind. Only touch tables that actually exist.
+        present = {
+            name: table_exists(db, name)
+            for name in ('payment_integrations', 'payment_webhook_events', 'payments',
+                         'attribution_touchpoints', 'event_properties')
+        }
         projects = db.execute(text('SELECT id, name, retention_days FROM projects ORDER BY id')).mappings().all()
         for project in projects:
             cutoff = stamp(now() - timedelta(days=project['retention_days']))
-            db.execute(
-                text('DELETE FROM attribution_touchpoints WHERE project_id=:id AND occurred_at<:cutoff'),
-                {'id': project['id'], 'cutoff': now() - timedelta(days=project['retention_days'])},
-            )
-            db.execute(
-                text('DELETE FROM event_properties WHERE project_id=:id AND event_id IN (SELECT id FROM events WHERE project_id=:id AND occurred_at<:cutoff)'),
-                {'id': project['id'], 'cutoff': cutoff},
-            )
+            if present['payment_webhook_events'] and present['payment_integrations']:
+                db.execute(text('DELETE FROM payment_webhook_events WHERE integration_id IN (SELECT id FROM payment_integrations WHERE project_id=:id) AND received_at<:cutoff'), {'id':project['id'], 'cutoff': now() - timedelta(days=project['retention_days'])})
+            if present['payments']:
+                db.execute(text('DELETE FROM payments WHERE project_id=:id AND occurred_at<:cutoff'), {'id':project['id'], 'cutoff': now() - timedelta(days=project['retention_days'])})
+            if present['attribution_touchpoints']:
+                db.execute(
+                    text('DELETE FROM attribution_touchpoints WHERE project_id=:id AND occurred_at<:cutoff'),
+                    {'id': project['id'], 'cutoff': now() - timedelta(days=project['retention_days'])},
+                )
+            if present['event_properties']:
+                db.execute(
+                    text('DELETE FROM event_properties WHERE project_id=:id AND event_id IN (SELECT id FROM events WHERE project_id=:id AND occurred_at<:cutoff)'),
+                    {'id': project['id'], 'cutoff': cutoff},
+                )
             events = db.execute(
                 text('DELETE FROM events WHERE project_id=:id AND occurred_at<:cutoff'),
                 {'id': project['id'], 'cutoff': cutoff},

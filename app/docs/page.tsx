@@ -6,27 +6,43 @@ const Code = ({ children }: { children: string }) => <pre style={{ overflowX: 'a
 export default function Docs() {
   return <main style={{ maxWidth: 780, margin: '0 auto', padding: '72px 24px', fontFamily: 'var(--font)', lineHeight: 1.55 }}>
     <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-      <Link href="/">✳ Crease</Link>
+      <Link href="/">✳ Zappa</Link>
       <ThemeToggle />
     </header>
-    <p style={{ fontSize: 12, letterSpacing: '.1em', marginTop: 48 }}>CREASE ANALYTICS / NPM</p>
+    <p style={{ fontSize: 12, letterSpacing: '.1em', marginTop: 48 }}>Zappa ANALYTICS / GET STARTED</p>
     <h1 style={{ fontSize: 42, letterSpacing: '-.05em' }}>Get started.</h1>
-    <p>Count page views and send custom events from Next.js, React, and any JavaScript site.</p>
-    <h2>1. Install the package</h2>
-    <Code>npm i @crease/analytics</Code>
-    <h2>2. Add the Next.js component</h2>
-    <Code>{`import { Analytics } from '@crease/analytics/next';
-
-export default function RootLayout({ children }) {
-  return <html><body>{children}<Analytics projectId="YOUR_PROJECT_ID" writeKey="crease_YOUR_PROJECT_WRITE_KEY" /></body></html>;
-}`}</Code>
-    <h2>3. Deploy and visit your site</h2>
-    <p>Deploy the change, visit your site, then open your Crease project to see page views. Content blockers can prevent browser analytics from loading.</p>
+    <p>Count page views and send custom events from any JavaScript site, including Next.js and React.</p>
+    <h2>1. Add the tracker</h2>
+    <Code>{`<script src="https://www.zappa.in/Zappa.js" defer></script>
+<script>
+  // Dispatch Zappa:consent once your consent policy allows analytics.
+  window.addEventListener('Zappa:consent', function () {
+    Zappa.init({
+      projectId: 'YOUR_PROJECT_ID',
+      writeKey: 'Zappa_YOUR_PROJECT_WRITE_KEY',
+      endpoint: 'https://www.zappa.in/api/events'
+    });
+  }, { once: true });
+</script>`}</Code>
+    <p>
+      The dashboard shows the same snippet with your project ID and write key filled in.
+      Zappa only records page views after <code>Zappa:consent</code> fires.
+    </p>
+    <h2>2. Deploy and visit your site</h2>
+    <p>Deploy the change, visit your site, then open your Zappa project to see page views. Content blockers can prevent browser analytics from loading.</p>
     <h2>Custom events</h2>
-    <Code>{`import { init } from '@crease/analytics';
+    <Code>{`window.Zappa.capture('signup_completed', { plan: 1, trial: true });`}</Code>
+    <p>Property values must be numbers or booleans, with at most 20 properties per event. Pages and referrers are recorded automatically.</p>
+    <h2>Next.js and npm</h2>
+    <p>Install <code>@aman-sagar06077/zappa-analytics</code> with <code>npm install @aman-sagar06077/zappa-analytics</code>. Then add its component to your app and pass the project ID and public write key shown in Installation.</p>
+    <p>Copy the project-specific <code>NEXT_PUBLIC_ZAPPA_*</code> values from your project’s Installation setup and add them to <code>.env.local</code> (and your hosting provider for production).</p>
+    <Code>{`import { Analytics } from '@aman-sagar06077/zappa-analytics/next';
 
-const analytics = init({ projectId: 'YOUR_PROJECT_ID', writeKey: 'crease_YOUR_PROJECT_WRITE_KEY' });
-analytics.track('signup_completed', { plan: 'free' });`}</Code>
-    <p>Only initialize analytics when your consent policy permits it.</p>
+<Analytics
+  projectId={process.env.NEXT_PUBLIC_ZAPPA_PROJECT_ID!}
+  writeKey={process.env.NEXT_PUBLIC_ZAPPA_WRITE_KEY!}
+  endpoint={process.env.NEXT_PUBLIC_ZAPPA_ORIGIN + '/api/events'}
+  enabled={consentGranted}
+/>`}</Code>
   </main>;
 }

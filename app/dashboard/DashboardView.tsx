@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useAuth, useClerk } from '@clerk/nextjs';
 import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
@@ -10,10 +11,26 @@ import VerifiedBadge from './VerifiedBadge';
 import ProjectOnboarding from './ProjectOnboarding';
 import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import LivingCat from '../mascot/living-cat';
-import AnalyticsCharts from './AnalyticsCharts';
 import OverviewV1 from './OverviewV1';
-import { dispatchMascotEvent } from '../mascot/mascot-events';
+import ReportToolbar from './ReportToolbar';
+import AcquisitionSection from './AcquisitionSection';
+import CampaignsSection from './CampaignsSection';
+import PagesSection from './PagesSection';
+import GoalsSection from './GoalsSection';
+import UnavailableSection from './UnavailableSection';
+import LiveActivity from './LiveActivity';
+import useOverviewReport from './useOverviewReport';
+import { appendFunnelStep, buildFunnelRequest, normalizeFunnelSteps, selectFunnelStep } from './funnel-api';
+import {
+  LEGACY_HASHES,
+  NAV_GROUPS,
+  PROJECT_ICONS,
+  PROJECT_NAV,
+  isAnalyticsSection,
+  type AnalyticsSection,
+  type Tab,
+} from './navigation';
+import { dateRange, type AttributionModel, type Preset, type Range } from './reporting';
 import s from './dashboard.module.css';
 
 function ProjectNavigation({ children }: { children: ReactNode }) {
@@ -23,10 +40,19 @@ function ProjectNavigation({ children }: { children: ReactNode }) {
       className={s.projectSidebar}
       aria-label="Project navigation"
       onClick={(event) => {
-        if (isMobile && (event.target as Element).closest('a')) setOpenMobile(false);
+        if (isMobile && (event.target as Element).closest('a, button')) setOpenMobile(false);
       }}
       onChange={(event) => {
         if (isMobile && (event.target as Element).matches('select')) setOpenMobile(false);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        const items = Array.from(event.currentTarget.querySelectorAll<HTMLAnchorElement>('nav a[href]'));
+        const current = items.indexOf(document.activeElement as HTMLAnchorElement);
+        if (current < 0 || !items.length) return;
+        event.preventDefault();
+        const next = (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        items[next]?.focus();
       }}
     >
       {children}
@@ -92,20 +118,14 @@ type Summary = {
   days: number;
   filter?: { property: string | null; value: string | null };
 };
-type Funnel = {
-  first: string;
-  second: string;
-  first_count: number;
-  second_count: number;
-  conversion: number;
-  days: number;
+type FunnelStep = {
+  event_name: string;
+  count: number;
+  conversion_from_previous: number | null;
 };
-type Delta = { label: string; dir: 'up' | 'down' | 'flat' };
-
-const firstPageviewSeen = new Set<string>();
-
+type Funnel = { steps: FunnelStep[]; days: number; start: string; end: string };
 function writeKeyStorage(projectId: string) {
-  return `crease-write-key:${projectId}`;
+  return `Zappa-write-key:${projectId}`;
 }
 
 function readWriteKey(projectId: string) {
@@ -125,31 +145,8 @@ function saveWriteKey(projectId: string, key: string) {
   }
 }
 
-function celebrateFirstPageview(projectId: string, summary: Summary, project?: Project) {
-  if (!project || summary.metrics.pageviews <= 0 || !project.last_event_at) return;
-
-  const lastEvent = new Date(project.last_event_at).getTime();
-  if (!Number.isFinite(lastEvent) || Date.now() - lastEvent > 10 * 60 * 1000) return;
-  if (firstPageviewSeen.has(projectId)) return;
-  firstPageviewSeen.add(projectId);
-
-  try {
-    const key = `crease-mascot-first-pageview:${projectId}`;
-    if (window.localStorage.getItem(key)) return;
-    window.localStorage.setItem(key, String(Date.now()));
-  } catch {
-    // Storage can be unavailable; the in-memory guard still prevents repeats.
-  }
-
-  dispatchMascotEvent({ kind: 'first-pageview', projectName: project.name });
-}
-
 const SESSION_DEFINITION = 'Sessions end after 30 min idle or at UTC midnight';
 const NO_BREAKDOWNS: Breakdown[] = [];
-const TABS = ['analytics', 'installation', 'integrations', 'settings'] as const;
-type Tab = (typeof TABS)[number];
-const ANALYTICS_SECTIONS = ['overview', 'visitors', 'pages', 'referrers', 'countries', 'funnel', 'events'] as const;
-type AnalyticsSection = (typeof ANALYTICS_SECTIONS)[number];
 
 class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -193,28 +190,6 @@ function Svg({ children, className }: { children: ReactNode; className?: string 
     </svg>
   );
 }
-
-const UsersIcon = ({ className }: { className?: string }) => (
-  <Svg className={className}>
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-    <circle cx="9" cy="7" r="4" />
-    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-  </Svg>
-);
-
-const EyeIcon = ({ className }: { className?: string }) => (
-  <Svg className={className}>
-    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
-    <circle cx="12" cy="12" r="3" />
-  </Svg>
-);
-
-const ActivityIcon = ({ className }: { className?: string }) => (
-  <Svg className={className}>
-    <path d="M22 12h-4l-3 8-6-16-3 8H2" />
-  </Svg>
-);
 
 const ZapIcon = ({ className }: { className?: string }) => (
   <Svg className={className}>
@@ -268,13 +243,6 @@ const AlertIcon = ({ className }: { className?: string }) => (
   <Svg className={className}>
     <circle cx="12" cy="12" r="9" />
     <path d="M12 8v5M12 16h.01" />
-  </Svg>
-);
-
-const RefreshIcon = ({ className }: { className?: string }) => (
-  <Svg className={className}>
-    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-    <path d="M21 3v6h-6" />
   </Svg>
 );
 
@@ -339,50 +307,6 @@ function relativeWhen(iso?: string | null) {
   const days = Math.round(hours / 24);
   if (days < 30) return `${days}d ago`;
   return `${Math.round(days / 30)}mo ago`;
-}
-
-function getDelta(current?: number, previous?: number): Delta | null {
-  if (current === undefined || previous === undefined) return null;
-  if (previous === 0) return current === 0 ? { label: '0%', dir: 'flat' } : { label: 'New', dir: 'up' };
-  const pct = ((current - previous) / previous) * 100;
-  const dir: Delta['dir'] = pct > 0.05 ? 'up' : pct < -0.05 ? 'down' : 'flat';
-  return { label: `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`, dir };
-}
-
-function deltaClass(dir: Delta['dir']) {
-  return dir === 'up' ? s.deltaUp : dir === 'down' ? s.deltaDown : s.deltaFlat;
-}
-
-/* ---------- Chart geometry ---------- */
-
-function pointsFor(values: number[], width: number, height: number, padTop: number, padBottom: number) {
-  const max = Math.max(1, ...values);
-  const inner = height - padTop - padBottom;
-  return values.map((value, index) => {
-    const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width;
-    return [x, padTop + inner - (value / max) * inner] as const;
-  });
-}
-
-function linePath(points: ReadonlyArray<readonly [number, number]>) {
-  return points.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
-}
-
-function areaPath(points: ReadonlyArray<readonly [number, number]>, height: number) {
-  if (!points.length) return '';
-  const last = points[points.length - 1];
-  const first = points[0];
-  return `${linePath(points)} L${last[0].toFixed(1)} ${height} L${first[0].toFixed(1)} ${height} Z`;
-}
-
-function Sparkline({ values }: { values: number[] }) {
-  const points = pointsFor(values.length ? values : [0, 0], 120, 36, 3, 3);
-  return (
-    <svg className={s.spark} viewBox="0 0 120 36" preserveAspectRatio="none" aria-hidden="true">
-      <path d={areaPath(points, 36)} fill="rgba(17,17,17,.05)" />
-      <path d={linePath(points)} fill="none" stroke="currentColor" strokeWidth="1.4" vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
 }
 
 /* ---------- Small building blocks ---------- */
@@ -451,41 +375,25 @@ function BreakdownCard({
   );
 }
 
-function Kpi({
-  id,
-  label,
-  icon,
-  value,
-  delta,
-  hint,
-  series,
-}: {
-  id?: string;
-  label: string;
-  icon: ReactNode;
-  value?: number;
-  delta: Delta | null;
-  hint: string;
-  series: number[];
-}) {
-  return (
-    <article className={s.kpi} id={id}>
-      <div className={s.kpiTop}>
-        <span className={s.kpiIcon}>{icon}</span>
-        <span>{label}</span>
-        {delta && <span className={`${s.kpiDelta} ${deltaClass(delta.dir)}`}>{delta.label}</span>}
-      </div>
-      <strong className={s.kpiValue}>{value === undefined ? '—' : compact(value)}</strong>
-      <span className={s.kpiHint}>{hint}</span>
-      <Sparkline values={series} />
-    </article>
-  );
-}
-
 /* ---------- Main component ---------- */
 
 export default function DashboardView({ projectId }: { projectId?: string }) {
   const router = useRouter();
+  const { signOut } = useClerk();
+  const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
+  const handleUnauthorized = useCallback((setMessage: (message: string) => void) => {
+    if (clerkLoaded && !isSignedIn) {
+      const signInUrl = new URL('/sign-in', window.location.origin);
+      signInUrl.searchParams.set('redirect_url', window.location.href);
+      router.replace(`${signInUrl.pathname}${signInUrl.search}`);
+      return;
+    }
+    setMessage(
+      clerkLoaded
+        ? `You’re signed in, but Zappa’s production API rejected the session (401). The API needs the same Clerk production issuer as this site and ${window.location.origin} in CLERK_AUTHORIZED_PARTIES. Update those settings on the API host, then redeploy it.`
+        : 'Could not verify your sign-in yet. Refresh after Clerk finishes loading.',
+    );
+  }, [clerkLoaded, isSignedIn, router]);
   const [user, setUser] = useState<User | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState('');
@@ -501,14 +409,21 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [domain, setDomain] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [reportRange, setReportRange] = useState<{ start: string; end: string } | null>(null);
+  const [reportRange, setReportRange] = useState<Range>(() => dateRange('30'));
+  const [preset, setPreset] = useState<Preset>('30');
+  const [draftRange, setDraftRange] = useState<Range>(() => dateRange('30'));
+  const [model, setModel] = useState<AttributionModel>('first_touch');
+  const [conversionEvent, setConversionEvent] = useState('');
+  const [acquisitionQuery, setAcquisitionQuery] = useState('');
   const days = reportRange ? Math.round((Date.parse(reportRange.end) - Date.parse(reportRange.start)) / 86400000) + 1 : 30;
   const rangeQuery = reportRange ? `&start=${reportRange.start}&end=${reportRange.end}` : '';
   const [retention, setRetention] = useState(30);
   const [settingsBusy, setSettingsBusy] = useState(false);
+  const [deletingProjectId, setDeletingProjectId] = useState('');
   const [settingsMessage, setSettingsMessage] = useState('');
   const [keyNotice, setKeyNotice] = useState('');
   const [writeKey, setWriteKey] = useState('');
+  const [showWriteKey, setShowWriteKey] = useState(false);
   const [verification, setVerification] = useState<Verification | null>(null);
   const [verificationBusy, setVerificationBusy] = useState(false);
   const [verificationNotice, setVerificationNotice] = useState('');
@@ -520,15 +435,15 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [eventsBusy, setEventsBusy] = useState(false);
   const [propertyKey, setPropertyKey] = useState('');
   const [propertyValue, setPropertyValue] = useState('');
-  const [funnelFirst, setFunnelFirst] = useState('');
-  const [funnelSecond, setFunnelSecond] = useState('');
+  const [funnelSteps, setFunnelSteps] = useState<string[]>([]);
   const [funnel, setFunnel] = useState<Funnel | null>(null);
   const [funnelBusy, setFunnelBusy] = useState(false);
-  const [origin, setOrigin] = useState('');
+  const [funnelError, setFunnelError] = useState('');
   const [tab, setTab] = useState<Tab>('analytics');
   const [activeSection, setActiveSection] = useState<AnalyticsSection>('overview');
   const project = showProjects ? undefined : projects.find((item) => item.id === selected);
   const projectRef = useRef<Project | undefined>(undefined);
+  const loadVersion = useRef(0);
   projectRef.current = project;
   const activeProperty = properties.find((item) => item.name === propertyKey);
   const activeFilter = propertyKey && propertyValue ? { property: propertyKey, value: propertyValue } : null;
@@ -539,25 +454,39 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     : '';
   const eventNames = summary?.event_names ?? NO_BREAKDOWNS;
 
+  const overviewReport = useOverviewReport({
+    projectId: selected,
+    range: reportRange,
+    model,
+    conversionEvent,
+    refresh: acquisitionRefresh,
+  });
+
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
+    setBusy(true);
+    setError('');
     try {
       const current = await api<User>('/api/me');
+      if (version !== loadVersion.current) return;
       setUser(current);
       const list = await api<Project[]>('/api/projects');
+      if (version !== loadVersion.current) return;
       setProjects(list);
       const viewingProjects = !projectId && new URLSearchParams(window.location.search).get('view') === 'projects';
       setShowProjects(viewingProjects);
       setSelected(projectId ? (list.some((project) => project.id === projectId) ? projectId : '') : !viewingProjects && list.length === 1 ? list[0].id : '');
     } catch (e) {
+      if (version !== loadVersion.current) return;
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        handleUnauthorized(setError);
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load your workspace.');
     } finally {
-      setBusy(false);
+      if (version === loadVersion.current) setBusy(false);
     }
-  }, [projectId, router]);
+  }, [projectId, handleUnauthorized]);
 
   useEffect(() => {
     void load();
@@ -585,17 +514,16 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     try {
       const result = await api<Summary>(`/api/projects/${encodeURIComponent(selected)}/summary?days=30${rangeQuery}${filterQuery}`);
       setSummary(result);
-      celebrateFirstPageview(selected, result, projectRef.current);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        handleUnauthorized(setSummaryError);
         return;
       }
       setSummaryError(e instanceof Error ? e.message : 'Could not load analytics.');
     } finally {
       setSummaryBusy(false);
     }
-  }, [selected, rangeQuery, filterQuery, router]);
+  }, [selected, rangeQuery, filterQuery, handleUnauthorized]);
 
   useEffect(() => {
     void loadSummary();
@@ -617,14 +545,14 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        handleUnauthorized(setSetupNotice);
         return;
       }
       setSetupNotice(e instanceof Error ? e.message : 'Could not check for events.');
     } finally {
       setSetupChecking(false);
     }
-  }, [selected, loadSummary, router]);
+  }, [selected, loadSummary, handleUnauthorized]);
 
   useEffect(() => {
     if ((tab !== 'installation' && !onboarding) || !project || project.last_event_at) return;
@@ -644,12 +572,12 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setProperties(await api<PropertyKey[]>(`/api/projects/${encodeURIComponent(selected)}/properties`));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        handleUnauthorized(setError);
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load custom properties.');
     }
-  }, [selected, router]);
+  }, [selected, handleUnauthorized]);
 
   useEffect(() => {
     void loadProperties();
@@ -670,14 +598,14 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setEvents(await api<EventRow[]>(`/api/projects/${encodeURIComponent(selected)}/events?${params.toString()}`));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        handleUnauthorized(setError);
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load events.');
     } finally {
       setEventsBusy(false);
     }
-  }, [selected, reportRange, filterProperty, filterValue, router]);
+  }, [selected, reportRange, filterProperty, filterValue, handleUnauthorized]);
 
   useEffect(() => {
     void loadEvents();
@@ -685,34 +613,52 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   useEffect(() => {
     const names = eventNames.map((item) => item.label);
-    if (!names.length) {
-      setFunnelFirst('');
-      setFunnelSecond('');
-      return;
-    }
-    setFunnelFirst((current) => (names.includes(current) ? current : names[0]));
-    setFunnelSecond((current) => (names.includes(current) ? current : names[1] ?? names[0]));
+    setFunnelSteps((current) => normalizeFunnelSteps(current, names));
   }, [eventNames]);
 
   const loadFunnel = useCallback(async () => {
-    if (!selected || !funnelFirst || !funnelSecond) {
+    if (!selected) {
       setFunnel(null);
+      setFunnelError('');
+      return;
+    }
+    if (funnelSteps.length < 2 || funnelSteps.some((step) => !step) || new Set(funnelSteps).size !== funnelSteps.length) {
+      setFunnel(null);
+      setFunnelError(eventNames.length < 2 ? 'Track at least two distinct events before building a funnel.' : 'Choose at least two funnel steps to continue.');
       return;
     }
     setFunnelBusy(true);
+    setFunnelError('');
     try {
-      const params = new URLSearchParams({ first: funnelFirst, second: funnelSecond, days: '30', ...(reportRange || {}) });
-      setFunnel(await api<Funnel>(`/api/projects/${encodeURIComponent(selected)}/funnel?${params.toString()}`));
+      const resultPath = buildFunnelRequest(selected, reportRange, funnelSteps);
+      if (funnelSteps.length === 2) {
+        const result = await api<{ first: string; second: string; first_count: number; second_count: number; conversion: number; days: number }>(resultPath);
+        setFunnel({
+          days: result.days,
+          start: reportRange?.start ?? '',
+          end: reportRange?.end ?? '',
+          steps: [
+            { event_name: result.first, count: result.first_count, conversion_from_previous: null },
+            { event_name: result.second, count: result.second_count, conversion_from_previous: result.conversion },
+          ],
+        });
+      } else {
+        setFunnel(await api<Funnel>(resultPath));
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        handleUnauthorized(setFunnelError);
         return;
       }
-      setError(e instanceof Error ? e.message : 'Could not load the funnel.');
+      if (e instanceof ApiError && e.status === 404 && funnelSteps.length > 2) {
+        setFunnelError('This backend build supports two-step funnels. Redeploy the analytics API to enable 3–5 steps.');
+      } else {
+        setError(e instanceof Error ? e.message : 'Could not load the funnel.');
+      }
     } finally {
       setFunnelBusy(false);
     }
-  }, [selected, reportRange, funnelFirst, funnelSecond, router]);
+  }, [selected, reportRange, funnelSteps, eventNames.length, handleUnauthorized]);
 
   useEffect(() => {
     void loadFunnel();
@@ -738,14 +684,14 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   }
 
   useEffect(() => {
-    setOrigin(window.location.origin);
     setOnboarding(new URLSearchParams(window.location.search).get('onboarding') === '1');
     const read = () => {
       const candidate = window.location.hash.slice(1);
-      if (ANALYTICS_SECTIONS.includes(candidate as AnalyticsSection)) {
+      const mapped = LEGACY_HASHES[candidate] ?? candidate;
+      if (isAnalyticsSection(mapped)) {
         setTab('analytics');
-        setActiveSection(candidate as AnalyticsSection);
-      } else if (TABS.includes(candidate as Tab)) {
+        setActiveSection(mapped);
+      } else if ((PROJECT_NAV as readonly string[]).includes(candidate)) {
         setTab(candidate as Tab);
       } else {
         setTab('analytics');
@@ -765,6 +711,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setSettingsMessage('');
     setKeyNotice('');
     setWriteKey(selected ? readWriteKey(selected) : '');
+    setShowWriteKey(false);
     setVerification(null);
     setVerificationNotice('');
     setSetupChecking(false);
@@ -774,9 +721,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setEvents([]);
     setPropertyKey('');
     setPropertyValue('');
-    setFunnelFirst('');
-    setFunnelSecond('');
+    setFunnelSteps([]);
     setFunnel(null);
+    setFunnelError('');
     setSummaryError('');
   }, [selected]);
 
@@ -793,12 +740,12 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       );
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace('/login');
+        handleUnauthorized(setError);
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load domain verification status.');
     }
-  }, [selected, router]);
+  }, [selected, handleUnauthorized]);
 
   useEffect(() => {
     void loadVerification();
@@ -832,6 +779,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   async function generateWriteKey() {
     if (!project) return;
+    const rotating = Boolean(project.has_write_key || writeKey);
+    if (rotating && !window.confirm('Rotate this project write key? The current key will stop working immediately. Update every deployed site and environment variable with the replacement.')) return;
     setError('');
     setKeyNotice('');
     try {
@@ -841,10 +790,13 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       );
       saveWriteKey(project.id, result.write_key);
       setWriteKey(result.write_key);
+      setShowWriteKey(true);
       setProjects((list) =>
         list.map((item) => (item.id === project.id ? { ...item, has_write_key: true } : item)),
       );
-      setKeyNotice('New write key generated. Update every deployed copy of the snippet; the old key no longer works.');
+      setKeyNotice(rotating
+        ? 'Write key rotated. The previous key stopped working immediately; update every deployed site and environment variable.'
+        : 'Write key generated. This key is public browser configuration and appears in your installation snippet.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not generate a write key.');
     }
@@ -859,7 +811,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         method: 'POST',
         body: JSON.stringify({ name, domain }),
       });
-      const isFirstProject = projects.length === 0;
       setProjects((list) => [...list, created]);
       setSelected(created.id);
       setName('');
@@ -867,9 +818,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       saveWriteKey(created.id, created.write_key ?? '');
       setWriteKey(created.write_key ?? '');
       setKeyNotice(created.write_key ? 'Write key created. Copy the installation code now; it is also stored in this browser.' : '');
-      if (isFirstProject) {
-        dispatchMascotEvent({ kind: 'project-created', projectName: created.name });
-      }
       setOnboarding(true);
       router.push(`/dashboard/projects/${encodeURIComponent(created.id)}?onboarding=1`);
     } catch (e) {
@@ -880,12 +828,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   }
 
   async function logout() {
-    try {
-      await api('/api/logout', { method: 'POST' });
-      router.replace('/login');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not sign out.');
-    }
+    await signOut({ redirectUrl: '/sign-in' });
   }
 
   async function updateRetention(event: FormEvent<HTMLFormElement>) {
@@ -927,12 +870,28 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     }
   }
 
-  const collector = process.env.NEXT_PUBLIC_COLLECTOR_URL || (origin ? `${origin}/api/events` : '');
-  const snippet = `<script src="${origin}/crease.js" defer></script>
+  async function deleteProjectFromList(item: Project) {
+    if (!window.confirm(`Delete “${item.name}” and all its analytics data? This cannot be undone.`)) return;
+    setError('');
+    setDeletingProjectId(item.id);
+    try {
+      await api(`/api/projects/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+      setProjects((list) => list.filter((projectItem) => projectItem.id !== item.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Could not delete ${item.name}.`);
+    } finally {
+      setDeletingProjectId('');
+    }
+  }
+
+  const collectorOrigin = process.env.NEXT_PUBLIC_ZAPPA_ORIGIN || 'https://www.zappa.in';
+  const collector = `${collectorOrigin}/api/events`;
+  const snippet = `<script src="${collectorOrigin}/Zappa.js" defer></script>
 <script>
-  window.addEventListener('load', function () {
-    crease.init({ projectId: '${project?.id || ''}', writeKey: '${writeKey}', endpoint: '${collector}' });
-  });
+  // Dispatch Zappa:consent after any required consent has been granted.
+  window.addEventListener('Zappa:consent', function () {
+    Zappa.init({ projectId: '${project?.id || ''}', writeKey: '${writeKey}', endpoint: '${collector}' });
+  }, { once: true });
 </script>`;
 
   async function copySnippet() {
@@ -955,20 +914,28 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     window.history.replaceState(null, '', `#${next}`);
   }
 
+  function changePreset(next: Preset) {
+    setPreset(next);
+    if (next !== 'custom') {
+      const value = dateRange(next);
+      setDraftRange(value);
+      setReportRange(value);
+    }
+  }
+
   function selectAnalyticsSection(section: AnalyticsSection) {
     setTab('analytics');
     setActiveSection(section);
     window.history.replaceState(null, '', `#${section}`);
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
       const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
-      document.getElementById(section)?.scrollIntoView({ behavior, block: 'start' });
+      const main = document.getElementById('main');
+      if (main) window.scrollTo({ top: main.getBoundingClientRect().top + window.scrollY, behavior });
     }));
   }
 
   const series = summary?.series ?? [];
-  const totalEvents = summary?.metrics.events ?? 0;
-  const hasEvents = totalEvents > 0;
-  const showCharts = !summary || hasEvents;
+  const hasEvents = (summary?.metrics.events ?? 0) > 0;
   const rangeLabel = reportRange ? `${reportRange.start} ? ${reportRange.end} UTC` : 'Last 30 days';
   const isLive = Boolean(project?.last_event_at) && Date.now() - new Date(project?.last_event_at ?? 0).getTime() < 7 * 864e5;
 
@@ -978,7 +945,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       domain={project.domain}
       projectId={project.id}
       writeKey={writeKey}
-      origin={origin}
+      origin={collectorOrigin}
       endpoint={collector}
       verified={project.verified === true}
       verification={verification}
@@ -995,49 +962,91 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   return (
     <TooltipProvider>
-    <SidebarProvider className={s.sidebarProvider} style={{ '--sidebar-width': '218px' } as CSSProperties}>
+    <SidebarProvider defaultOpen={false} className={s.sidebarProvider} style={{ '--sidebar-width': '64px', '--sidebar-width-icon': '64px' } as CSSProperties}>
     <div className={`${s.dashboard} ${project ? s.analyticsDashboard : ''}`}>
       <a className={s.skip} href="#main">
         Skip to content
       </a>
 
       {project && (
-        <Sidebar className={s.sidebar16}>
+        <Sidebar collapsible="icon" className={s.sidebar16}>
         <ProjectNavigation>
-          <Link className={s.sidebarBrand} href="/">
-            <span aria-hidden="true">✳</span> crease.
-          </Link>
-          <div className={s.sidebarProject}>
-            <span className={s.sidebarProjectMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
-            <span className={s.sidebarProjectText}><strong className={s.verifiedName}><span>{project.domain}</span>{project.verified === true && <VerifiedBadge />}</strong><small>personal workspace</small></span>
+          <div className={s.sidebarTop}>
+            <div className={s.sidebarBrandRow}>
+              <SidebarTrigger className={s.sidebarCollapse} aria-label="Collapse or expand sidebar" />
+            </div>
+            <label className={s.sidebarSwitcher}>
+              <span className={s.srOnly}>Switch website</span>
+              <span className={s.sidebarSwitcherMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
+              <select
+                value={selected}
+                onChange={(event) => {
+                  if (event.target.value === '__all__') {
+                    setShowProjects(true);
+                    setSelected('');
+                    router.push('/dashboard?view=projects');
+                  } else {
+                    router.push(`/dashboard/projects/${encodeURIComponent(event.target.value)}`);
+                  }
+                }}
+              >
+                <option value="__all__">All websites…</option>
+                {projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}
+              </select>
+              <ChevronIcon />
+            </label>
           </div>
-          <label className={s.sidebarSwitcher}>
-            <span className={s.srOnly}>Switch project</span>
-            <select value={selected} onChange={(event) => router.push(`/dashboard/projects/${encodeURIComponent(event.target.value)}`)}>
-              {projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}
-            </select>
-            <ChevronIcon />
-          </label>
-          <Link className={s.sidebarAllProjects} href="/dashboard?view=projects" onClick={() => { setShowProjects(true); setSelected(''); }}><ArrowLeftIcon className={s.iconSm} /> All projects</Link>
-          <nav className={s.sidebarNav} aria-label="Analytics sections">
-            {ANALYTICS_SECTIONS.map((section) => (
-              <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-current={tab === 'analytics' && activeSection === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectAnalyticsSection(section); }}>
-                {section[0].toUpperCase() + section.slice(1)}
-              </a>
-            ))}
-          </nav>
-          <span className={s.sidebarCaption}>PROJECT</span>
+          <div className={s.sidebarNavScroll}>
+          {NAV_GROUPS.map((group) => (
+            <div className={s.sidebarGroup} key={group.label}>
+              <span className={s.sidebarCaption}>{group.label}</span>
+              <nav className={s.sidebarNav} aria-label={`${group.label} sections`}>
+                {group.items.map((item) => (
+                  <a
+                    key={item.id}
+                    href={`#${item.id}`}
+                    className={s.sidebarNavItem}
+                    aria-label={item.label}
+                    title={item.label}
+                    aria-current={tab === 'analytics' && activeSection === item.id ? 'page' : undefined}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      selectAnalyticsSection(item.id);
+                    }}
+                  >
+                    <item.icon className={s.navIcon} aria-hidden="true" />
+                    <span>{item.label}</span>
+                  </a>
+                ))}
+              </nav>
+            </div>
+          ))}
+          <div className={s.sidebarGroup}>
+          <span className={s.sidebarCaption}>Project</span>
           <nav className={s.sidebarNav} aria-label="Project settings">
-            {(['installation', 'integrations', 'settings'] as const).map((section) => (
-              <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-current={tab === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectTab(section); }}>
-                {section[0].toUpperCase() + section.slice(1)}
-              </a>
-            ))}
+            {PROJECT_NAV.map((section) => {
+              const Icon = PROJECT_ICONS[section];
+              return (
+                <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-label={section[0].toUpperCase() + section.slice(1)} title={section[0].toUpperCase() + section.slice(1)} aria-current={tab === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectTab(section); }}>
+                  <Icon className={s.navIcon} aria-hidden="true" />
+                  <span>{section[0].toUpperCase() + section.slice(1)}</span>
+                </a>
+              );
+            })}
           </nav>
-          <div className={s.sidebarAccount}>
-            {user && <span className={s.sidebarUser}><span className={s.avatar} aria-hidden="true">{user.login.slice(0, 1).toUpperCase()}</span><span>{user.login}</span></span>}
-            <button className={s.signOut} type="button" onClick={logout}>Sign out</button>
           </div>
+          </div>
+          <details className={s.sidebarAccount}>
+            <summary className={s.sidebarAccountSummary} aria-label="Open account menu">
+              <span className={s.avatar} aria-hidden="true">{user?.login.slice(0, 1).toUpperCase() ?? 'A'}</span>
+              <span className={s.sidebarUserName}>{user?.login ?? 'Account'}</span>
+              <ChevronIcon />
+            </summary>
+            <div className={s.sidebarAccountMenu}>
+              <Link href="/account">Account settings</Link>
+              <button className={s.signOut} type="button" onClick={logout}>Sign out</button>
+            </div>
+          </details>
         </ProjectNavigation>
         </Sidebar>
       )}
@@ -1045,11 +1054,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       <header className={`${s.header} ${project ? s.analyticsHeader : ''}`}>
         <div className={s.headerInner}>
           <div className={s.headerIdentity}>
-            {project && <SidebarTrigger aria-label="Toggle project navigation" />}
-            <Link className={s.brand} href="/">
-              <span className={s.brandMark}>✳</span>
-              crease.
-            </Link>
+            <Link className={s.brand} href="/">Zappa</Link>
             <span className={s.headerDivider} aria-hidden="true" />
             {!project && user && (
               <span className={s.userChip}>
@@ -1058,28 +1063,27 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
               </span>
             )}
           </div>
-          <nav className={s.breadcrumb} aria-label="Breadcrumb">
-            <Link
-              href="/dashboard?view=projects"
-              onClick={() => {
-                setShowProjects(true);
-                setSelected('');
-              }}
-            >
-              Projects
-            </Link>
-            {project && (
-              <>
-                <span aria-hidden="true">/</span>
-                <strong>{project.name}</strong>
-              </>
-            )}
-          </nav>
+          {project && (
+            <nav className={s.breadcrumb} aria-label="Breadcrumb">
+              <Link
+                className={s.crumbRoot}
+                href="/dashboard?view=projects"
+                onClick={() => {
+                  setShowProjects(true);
+                  setSelected('');
+                }}
+              >
+                Projects
+              </Link>
+            </nav>
+          )}
           <div className={s.account}>
-            <ThemeToggle />
+            <ThemeToggle iconOnly />
             <Link className={s.headerLink} href="/docs">
               Docs
             </Link>
+            {user && <Link className={`${s.headerLink} ${s.headerPrimary}`} href="/dashboard?view=projects#add-website" onClick={() => { setShowProjects(true); setSelected(''); }}>+ Website</Link>}
+            {!project && <Link className={s.headerLink} href="/account">Account</Link>}
             {!project && user && (
               <button className={s.signOut} type="button" onClick={logout}>
                 Sign out
@@ -1089,10 +1093,55 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         </div>
       </header>
 
-      <main className={s.main} id="main">
-        <div className={s.dashboardCat}>
-          <LivingCat variant="dashboard" listen />
+      {project && (
+        <div className={s.projectTopNavWrap}>
+          <div className={s.projectTopNav}>
+            <label className={s.topProjectSwitcher}>
+              <span className={s.srOnly}>Switch website</span>
+              <span className={s.sidebarSwitcherMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
+              <select
+                value={selected}
+                onChange={(event) => router.push(`/dashboard/projects/${encodeURIComponent(event.target.value)}`)}
+              >
+                {projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}
+              </select>
+              <ChevronIcon />
+            </label>
+            <nav className={s.projectTopNavLinks} aria-label="Project analytics">
+              {NAV_GROUPS.flatMap((group) => group.items).map((item) => (
+                <a
+                  key={item.id}
+                  href={`#${item.id}`}
+                  aria-current={tab === 'analytics' && activeSection === item.id ? 'page' : undefined}
+                  onClick={(event) => { event.preventDefault(); selectAnalyticsSection(item.id); }}
+                >
+                  <item.icon aria-hidden="true" />
+                  <span>{item.label}</span>
+                </a>
+              ))}
+            </nav>
+            <nav className={s.projectTopNavTools} aria-label="Project tools">
+              {PROJECT_NAV.map((section) => {
+                const Icon = PROJECT_ICONS[section];
+                const label = section[0].toUpperCase() + section.slice(1);
+                return (
+                  <a
+                    key={section}
+                    href={`#${section}`}
+                    aria-current={tab === section ? 'page' : undefined}
+                    onClick={(event) => { event.preventDefault(); selectTab(section); }}
+                  >
+                    <Icon aria-hidden="true" />
+                    <span>{label}</span>
+                  </a>
+                );
+              })}
+            </nav>
+          </div>
         </div>
+      )}
+
+      <main className={s.main} id="main">
         {busy ? (
           <div className={s.loadingPage} role="status" aria-label="Loading your workspace">
             <span className={s.loadingBar} style={{ width: '22%' }} />
@@ -1112,7 +1161,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
             <p className={s.eyebrow}>SIGNED OUT</p>
             <h1>Taking you to sign in…</h1>
             <p>
-              If nothing happens, <Link href="/login">open the sign-in page</Link>.
+              If nothing happens, <Link href="/sign-in">open the sign-in page</Link>.
             </p>
           </div>
         ) : (
@@ -1181,48 +1230,24 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                   </div>
                 </section>
 
-                <nav className={s.tabs} aria-label="Project sections">
-                  {TABS.map((item) => (
-                    <a
-                      key={item}
-                      className={s.tab}
-                      href={`#${item}`}
-                      aria-current={tab === item ? 'page' : undefined}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        selectTab(item);
-                      }}
-                    >
-                      {item === 'analytics' ? 'Analytics' : item === 'installation' ? 'Installation' : item[0].toUpperCase() + item.slice(1)}
-                    </a>
-                  ))}
-                </nav>
-
-                <div className={s.tabPanel} key={tab}>
+                <div className={s.tabPanel} key={`${tab}-${tab === 'analytics' ? activeSection : ''}`}>
                   {tab === 'analytics' && (
                     <>
-                      <OverviewV1 key={selected} projectId={selected} refresh={acquisitionRefresh} filtered={Boolean(activeFilter)} onRangeChange={setReportRange} />
-                      <div className={s.analyticsBar} tabIndex={-1}>
-                        <div>
-                          <h2>Detailed analytics</h2>
-                          <p>
-                            {rangeLabel} · {project.domain} · {SESSION_DEFINITION}
-                            {activeFilter ? ` · ${activeFilter.property} = ${activeFilter.value}` : ''}
-                          </p>
-                        </div>
-                        <div className={s.controls}>
-                          <button
-                            className={s.refresh}
-                            type="button"
-                            onClick={refreshAnalytics}
-                            disabled={summaryBusy}
-                            aria-label="Refresh analytics"
-                          >
-                            <RefreshIcon className={`${s.icon} ${summaryBusy ? s.spinning : ''}`} />
-                          </button>
-                          <span className={s.updated}>Updated {relativeWhen(project.last_event_at)}</span>
-                        </div>
-                      </div>
+                      <ReportToolbar
+                        preset={preset}
+                        range={reportRange}
+                        draft={draftRange}
+                        model={model}
+                        conversionEvent={conversionEvent}
+                        onPresetChange={changePreset}
+                        onDraftChange={setDraftRange}
+                        onApplyRange={() => setReportRange(draftRange)}
+                        onModelChange={setModel}
+                        onConversionEventChange={setConversionEvent}
+                        onRefresh={refreshAnalytics}
+                        refreshing={summaryBusy}
+                        updatedLabel={`Last event ${relativeWhen(project.last_event_at)}`}
+                      />
 
                       {project.verified === false && (
                         <div className={s.statePanel} data-tone="warn" role="status">
@@ -1230,7 +1255,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           <div className={s.statePanelBody}>
                             <strong>Domain not verified</strong>
                             <p>
-                              Crease rejects events until {project.domain} proves ownership. Finish verification to
+                              Zappa rejects events until {project.domain} proves ownership. Finish verification to
                               start collecting.
                             </p>
                           </div>
@@ -1261,7 +1286,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         </div>
                       )}
 
-                      {!summaryError && !summaryBusy && summary && !hasEvents && (
+                      {!summaryError && !summaryBusy && summary && !hasEvents && activeSection !== 'journeys' && activeSection !== 'revenue' && activeSection !== 'customers' && (
                         <div className={s.statePanel} data-tone="empty" role="status">
                           <ZapIcon className={s.icon} />
                           <div className={s.statePanelBody}>
@@ -1282,6 +1307,215 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         </div>
                       )}
 
+                      {activeSection === 'overview' && (
+                        <>
+                          <OverviewV1
+                            key={selected}
+                            report={overviewReport.report}
+                            loading={overviewReport.loading}
+                            error={overviewReport.error}
+                            onRetry={overviewReport.retry}
+                            model={model}
+                            conversionEvent={conversionEvent}
+                            filtered={Boolean(activeFilter)}
+                            onNavigate={selectAnalyticsSection}
+                          />
+                          <div className={s.breakdownGrid} aria-label="Audience breakdowns">
+                            <BreakdownCard
+                              title="Devices"
+                              icon={<MonitorIcon />}
+                              rows={summary?.devices ?? []}
+                              total={summary?.metrics.pageviews ?? 0}
+                              empty="No device data yet."
+                            />
+                            <BreakdownCard
+                              title="Countries"
+                              icon={<GlobeIcon />}
+                              rows={summary?.countries ?? []}
+                              total={summary?.metrics.pageviews ?? 0}
+                              empty="No country data yet."
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {activeSection === 'acquisition' && (
+                        <>
+                          <AcquisitionSection
+                            projectId={selected}
+                            range={reportRange}
+                            model={model}
+                            conversionEvent={conversionEvent}
+                            refresh={acquisitionRefresh}
+                            report={overviewReport.report}
+                            loading={overviewReport.loading}
+                            error={overviewReport.error}
+                            onRetry={overviewReport.retry}
+                            query={acquisitionQuery}
+                            onQueryChange={setAcquisitionQuery}
+                          />
+                          <BreakdownCard
+                            id="referrers"
+                            title="Referrers"
+                            icon={<LinkIcon />}
+                            rows={summary?.referrers ?? []}
+                            total={summary?.metrics.pageviews ?? 0}
+                            empty="No referrer data yet."
+                          />
+                        </>
+                      )}
+
+                      {activeSection === 'campaigns' && (
+                        <CampaignsSection
+                          range={reportRange}
+                          report={overviewReport.report}
+                          loading={overviewReport.loading}
+                          error={overviewReport.error}
+                          onRetry={overviewReport.retry}
+                          onInspect={(campaign) => {
+                            setAcquisitionQuery(campaign);
+                            selectAnalyticsSection('acquisition');
+                          }}
+                        />
+                      )}
+
+                      {activeSection === 'journeys' && (
+                        <UnavailableSection variant="journeys" onNavigate={selectAnalyticsSection} />
+                      )}
+
+                      {activeSection === 'pages' && (
+                        <PagesSection
+                          range={reportRange}
+                          report={overviewReport.report}
+                          loading={overviewReport.loading}
+                          error={overviewReport.error}
+                          onRetry={overviewReport.retry}
+                          pageRows={summary?.pages ?? []}
+                          series={series}
+                          metrics={summary?.metrics ?? { events: 0, pageviews: 0, visitors: 0, sessions: 0 }}
+                          hasEvents={hasEvents}
+                        />
+                      )}
+
+                      {activeSection === 'live' && <LiveActivity projectId={selected} range={reportRange} />}
+
+                      {activeSection === 'revenue' && (
+                        <UnavailableSection variant="revenue" onNavigate={selectAnalyticsSection} />
+                      )}
+
+                      {activeSection === 'customers' && (
+                        <UnavailableSection variant="customers" onNavigate={selectAnalyticsSection} />
+                      )}
+
+                      {activeSection === 'goals' && selected && (
+                        <GoalsSection projectId={selected} range={reportRange} />
+                      )}
+
+                      {activeSection === 'funnels' && (
+                        <section className={s.funnelSection} id="funnel">
+                          <div className={s.sectionHead}>
+                            <div>
+                              <h2>Funnel</h2>
+                              <p>Ordered session steps · {rangeLabel}.</p>
+                            </div>
+                            <span className={s.updated}>
+                              {funnel?.steps[0]?.count
+                                ? `${Math.round(((funnel.steps[funnel.steps.length - 1]?.count ?? 0) / funnel.steps[0].count) * 100)}% complete`
+                                : `${funnelSteps.length || 2} steps`}
+                            </span>
+                          </div>
+                          <p className={s.funnelLimit}>
+                            Choose 2–5 observed events. A session advances when each event occurs in order; each session counts once per step. Saved funnels and property filters are not available yet.
+                          </p>
+                          <div className={s.funnelControls}>
+                            {funnelSteps.map((step, index) => (
+                              <div className={s.funnelControl} key={`funnel-step-${index}`}>
+                                {index > 0 && <span className={s.funnelArrow} aria-hidden="true">→</span>}
+                                <label className={s.filterField}>
+                                  <span className={s.srOnly}>Funnel step {index + 1}</span>
+                                  <select
+                                    value={step}
+                                    onChange={(event) => setFunnelSteps((current) => selectFunnelStep(current, index, event.target.value))}
+                                    disabled={!eventNames.length}
+                                  >
+                                    {eventNames.length ? eventNames
+                                      .filter((item) => item.label === step || !funnelSteps.some((selectedName, selectedIndex) => selectedIndex !== index && selectedName === item.label))
+                                      .map((item) => (
+                                      <option key={item.label} value={item.label}>{item.label}</option>
+                                    )) : <option value="">No events yet</option>}
+                                  </select>
+                                  <ChevronIcon />
+                                </label>
+                                {index > 1 && (
+                                  <button
+                                    className={s.filterClear}
+                                    type="button"
+                                    aria-label={`Remove funnel step ${index + 1}`}
+                                    onClick={() => setFunnelSteps((current) => current.filter((_, stepIndex) => stepIndex !== index))}
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                            <button
+                              className={s.filterClear}
+                              type="button"
+                              disabled={funnelSteps.length >= 5 || new Set(eventNames.map((item) => item.label)).size < 2 || !eventNames.some((item) => !funnelSteps.includes(item.label))}
+                              onClick={() => setFunnelSteps((current) => appendFunnelStep(current, eventNames.map((item) => item.label)))}
+                            >
+                              Add step
+                            </button>
+                          </div>
+                          {funnelError && (
+                            <div className={s.statePanel} data-tone="warn" role="status">
+                              <AlertIcon className={s.icon} />
+                              <div className={s.statePanelBody}>
+                                <strong>Funnel unavailable</strong>
+                                <p>{funnelError}</p>
+                              </div>
+                            </div>
+                          )}
+                          {funnelBusy ? (
+                            <div className={s.funnelSteps} aria-busy="true" role="status">
+                              <span className={s.skeleton} style={{ height: 52 }} />
+                            </div>
+                          ) : funnel && funnel.steps[0]?.count > 0 ? (
+                            <div className={s.funnelSteps} aria-label="Funnel session counts">
+                              {funnel.steps.map((step, index) => {
+                                const firstCount = funnel.steps[0].count;
+                                const previousCount = index > 0 ? funnel.steps[index - 1].count : null;
+                                const completion = previousCount ? Math.round((step.count / previousCount) * 100) : 100;
+                                const width = Math.round((step.count / firstCount) * 100);
+                                return (
+                                  <div className={s.funnelStep} key={`${step.event_name}-${index}`}>
+                                    <span className={s.funnelStepLabel}>Step {index + 1} · {step.event_name}</span>
+                                    <strong>{compact(step.count)}</strong>
+                                    <span className={s.funnelStepConversion}>
+                                      {index === 0 ? 'Starting sessions' : `${completion}% from previous step`}
+                                    </span>
+                                    <span className={s.funnelBar}>
+                                      <i style={{ width: `${width}%` }} />
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className={s.emptyBlock}>
+                              <strong>{eventNames.length ? 'No sessions reached the first step' : 'No events to build a funnel'}</strong>
+                              <span>
+                                {eventNames.length
+                                  ? 'Try another event sequence or a longer date range.'
+                                  : 'Install the tracker and send named events first.'}
+                              </span>
+                            </div>
+                          )}
+                        </section>
+                      )}
+
+                      {activeSection === 'events' && (
+                        <>
                       <div className={s.filterBar} role="group" aria-label="Custom property filter">
                         <span className={s.filterLabel}>Filter events</span>
                         <label className={s.filterField}>
@@ -1320,170 +1554,11 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         <span className={s.filterHint}>
                           {properties.length
                             ? activeFilter
-                              ? `Showing ${activeFilter.property} = ${activeFilter.value}`
-                              : 'Filter metrics and events by an observed property.'
+                              ? `Filters this list, top pages and audience breakdowns by ${activeFilter.property} = ${activeFilter.value}.`
+                              : 'Filter this list, top pages and audience breakdowns by an observed property.'
                             : 'Property filters appear after events with properties arrive.'}
                         </span>
                       </div>
-
-                      <div className={s.kpiGrid} id="visitors">
-                        <Kpi
-                          id="visitor-metric"
-                          label="Visitors"
-                          icon={<UsersIcon />}
-                          value={summary?.metrics.visitors}
-                          delta={getDelta(summary?.metrics.visitors, summary?.previous?.visitors)}
-                          hint={`Unique visitors · vs previous ${days} days`}
-                          series={series.map((point) => point.visitors)}
-                        />
-                        <Kpi
-                          label="Page views"
-                          icon={<EyeIcon />}
-                          value={summary?.metrics.pageviews}
-                          delta={getDelta(summary?.metrics.pageviews, summary?.previous?.pageviews)}
-                          hint={`Pageview events · vs previous ${days} days`}
-                          series={series.map((point) => point.pageviews)}
-                        />
-                        <Kpi
-                          label="Sessions"
-                          icon={<ActivityIcon />}
-                          value={summary?.metrics.sessions}
-                          delta={getDelta(summary?.metrics.sessions, summary?.previous?.sessions)}
-                          hint={`Server-assigned · 30 min idle or UTC day · vs previous ${days} days`}
-                          series={series.map((point) => point.sessions)}
-                        />
-                        <Kpi
-                          label="Events"
-                          icon={<ZapIcon />}
-                          value={summary?.metrics.events}
-                          delta={getDelta(summary?.metrics.events, summary?.previous?.events)}
-                          hint={`All tracked events · vs previous ${days} days`}
-                          series={series.map((point) => point.events)}
-                        />
-                      </div>
-
-                      {showCharts && (
-                        <AnalyticsCharts
-                          series={series}
-                          metrics={summary?.metrics ?? { events: 0, pageviews: 0, visitors: 0, sessions: 0 }}
-                        />
-                      )}
-
-                      <div className={s.breakdownGrid}>
-                        <BreakdownCard
-                          id="pages"
-                          title="Top pages"
-                          icon={<FileIcon />}
-                          rows={summary?.pages ?? []}
-                          total={summary?.metrics.pageviews ?? 0}
-                          empty="Pages will appear once events arrive."
-                        />
-                        <BreakdownCard
-                          id="referrers"
-                          title="Referrers"
-                          icon={<LinkIcon />}
-                          rows={summary?.referrers ?? []}
-                          total={summary?.metrics.pageviews ?? 0}
-                          empty="No referrer data yet."
-                        />
-                        <BreakdownCard
-                          title="Devices"
-                          icon={<MonitorIcon />}
-                          rows={summary?.devices ?? []}
-                          total={summary?.metrics.pageviews ?? 0}
-                          empty="No device data yet."
-                        />
-                        <BreakdownCard
-                          id="countries"
-                          title="Countries"
-                          icon={<GlobeIcon />}
-                          rows={summary?.countries ?? []}
-                          total={summary?.metrics.pageviews ?? 0}
-                          empty="No country data yet."
-                        />
-                      </div>
-
-                      <section className={s.funnelSection} id="funnel">
-                        <div className={s.sectionHead}>
-                          <div>
-                            <h2>Funnel</h2>
-                            <p>Ordered sessions ? {rangeLabel}.</p>
-                          </div>
-                          <span className={s.updated}>
-                            {funnel ? `${Math.round(funnel.conversion * 100)}% conversion` : 'Two steps'}
-                          </span>
-                        </div>
-                        <div className={s.funnelControls}>
-                          <label className={s.filterField}>
-                            <span className={s.srOnly}>First step</span>
-                            <select value={funnelFirst} onChange={(event) => setFunnelFirst(event.target.value)}>
-                              {eventNames.length ? (
-                                eventNames.map((item) => (
-                                  <option key={item.label} value={item.label}>
-                                    {item.label}
-                                  </option>
-                                ))
-                              ) : (
-                                <option value="">No events yet</option>
-                              )}
-                            </select>
-                            <ChevronIcon />
-                          </label>
-                          <span className={s.funnelArrow} aria-hidden="true">
-                            →
-                          </span>
-                          <label className={s.filterField}>
-                            <span className={s.srOnly}>Second step</span>
-                            <select value={funnelSecond} onChange={(event) => setFunnelSecond(event.target.value)}>
-                              {eventNames.length ? (
-                                eventNames.map((item) => (
-                                  <option key={item.label} value={item.label}>
-                                    {item.label}
-                                  </option>
-                                ))
-                              ) : (
-                                <option value="">No events yet</option>
-                              )}
-                            </select>
-                            <ChevronIcon />
-                          </label>
-                        </div>
-                        {funnelBusy ? (
-                          <div className={s.funnelSteps} aria-busy="true">
-                            <span className={s.skeleton} style={{ height: 52 }} />
-                          </div>
-                        ) : funnel && funnel.first_count > 0 ? (
-                          <div className={s.funnelSteps}>
-                            <div className={s.funnelStep}>
-                              <span className={s.funnelStepLabel}>Step 1 · {funnel.first}</span>
-                              <strong>{compact(funnel.first_count)}</strong>
-                              <span className={s.funnelBar}>
-                                <i style={{ width: '100%' }} />
-                              </span>
-                            </div>
-                            <div className={s.funnelStep}>
-                              <span className={s.funnelStepLabel}>Step 2 · {funnel.second}</span>
-                              <strong>{compact(funnel.second_count)}</strong>
-                              <span className={s.funnelBar}>
-                                <i
-                                  style={{
-                                    width: `${Math.round((funnel.second_count / funnel.first_count) * 100)}%`,
-                                  }}
-                                />
-                              </span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className={s.emptyBlock}>
-                            <strong>{eventNames.length ? 'No sessions completed step 1' : 'No events to build a funnel'}</strong>
-                            <span>
-                              {eventNames.length
-                                ? 'Try another pair of events or a longer range.'
-                                : 'Install the tracker and send named events first.'}
-                            </span>
-                          </div>
-                        )}
-                      </section>
 
                       <section className={s.eventsSection} id="events">
                         <div className={s.sectionHead}>
@@ -1535,6 +1610,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           </div>
                         )}
                       </section>
+                        </>
+                      )}
                     </>
                   )}
 
@@ -1550,22 +1627,25 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         </p>
                         {!writeKey ? (
                           <div className={s.keyNotice} role="status">
-                            <strong>Generate a write key</strong>
+                            <strong>{project.has_write_key ? 'Key is stored in another browser' : 'Generate a write key'}</strong>
                             <p>
-                              Crease rejects events without a valid per-project write key. Generate one before copying
-                              the installation code.
+                              {project.has_write_key
+                                ? 'Reveal a key here by rotating it. The current key will stop working immediately, so update all installed copies.'
+                                : 'Zappa rejects events without a valid per-project write key. Generate one before copying the installation code.'}
                             </p>
                             <button className={`${s.btn} ${s.btnSecondary}`} type="button" onClick={generateWriteKey}>
-                              Generate write key
+                              {project.has_write_key ? 'Rotate & reveal key' : 'Generate write key'}
                             </button>
                           </div>
                         ) : (
-                          <p className={s.keyStatus}>
-                            Write key ready. It is stored in this browser and embedded in the snippet.{' '}
-                            <button className={s.keyRotate} type="button" onClick={generateWriteKey}>
-                              Rotate key
-                            </button>
-                          </p>
+                          <div className={s.keyStatus}>
+                            <p>Write key ready. This is public browser configuration embedded in your site.</p>
+                            <code>{showWriteKey ? writeKey : `${writeKey.slice(0, 9)}${'•'.repeat(18)}`}</code>{' '}
+                            <button className={s.keyRotate} type="button" onClick={() => setShowWriteKey((value) => !value)}>
+                              {showWriteKey ? 'Hide key' : 'Reveal key'}
+                            </button>{' '}
+                            <button className={s.keyRotate} type="button" onClick={generateWriteKey}>Rotate key</button>
+                          </div>
                         )}
                         {keyNotice && (
                           <p className={s.keyStatus} role="status">
@@ -1579,7 +1659,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             <p>
                               {project.last_event_at
                                 ? `Events are arriving. Last event ${relativeWhen(project.last_event_at)}.`
-                                : 'Keep this tab open. Crease checks for events every 10 seconds.'}
+                                : 'Keep this tab open. Zappa checks for events every 10 seconds.'}
                             </p>
                             {setupCheckAt && <small>Last checked {relativeWhen(setupCheckAt)}</small>}
                             {!project.last_event_at && setupNotice && <small>{setupNotice}</small>}
@@ -1626,13 +1706,13 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           </div>
                           <p className={s.verifyCopy}>
                             {verification?.verified
-                              ? 'Crease accepts events for this domain. Keep your verification record in place.'
-                              : 'Crease rejects events until the domain proves ownership. Add the TXT record at your DNS provider, then check again.'}
+                              ? 'Zappa accepts events for this domain. Keep your verification record in place.'
+                              : 'Zappa rejects events until the domain proves ownership. Add the TXT record at your DNS provider, then check again.'}
                           </p>
                           {!verification?.verified && verification && (
                             <div className={s.verifyRows}>
                               <div className={s.verifyRow}>
-                                <span>TXT name: _crease-verification.{project.domain}</span>
+                                <span>TXT name: _Zappa-verification.{project.domain}</span>
                                 <code>{verification.record}</code>
                               </div>
                             </div>
@@ -1764,12 +1844,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                     <h1>Your projects.</h1>
                     <p>Every site you track, in one place. Open a project to read its analytics or finish setup.</p>
                   </div>
-                  <div className={s.pageActions}>
-                    <Link className={`${s.btn} ${s.btnSecondary}`} href="/docs">
-                      Read the docs
-                      <ArrowUpRightIcon className={s.iconSm} />
-                    </Link>
-                  </div>
                 </div>
 
                 <div className={s.sectionHead}>
@@ -1787,7 +1861,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                     {projects.map((item) => {
                       const live = Boolean(item.last_event_at) && Date.now() - new Date(item.last_event_at!).getTime() < 7 * 864e5;
                       return (
-                        <Link className={s.projectCard} key={item.id} href={`/dashboard/projects/${encodeURIComponent(item.id)}`}>
+                        <div className={s.projectCardShell} key={item.id}>
+                        <Link className={s.projectCard} href={`/dashboard/projects/${encodeURIComponent(item.id)}`}>
                           <span className={s.projectCardTop}>
                             <span className={s.projectCardMark} aria-hidden="true">
                               {item.name.slice(0, 1).toUpperCase()}
@@ -1821,6 +1896,17 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             <span>{item.retention_days}d retention</span>
                           </span>
                         </Link>
+                        <button
+                          className={s.projectDeleteButton}
+                          type="button"
+                          aria-label={`Delete project ${item.name}`}
+                          title={`Delete ${item.name}`}
+                          disabled={Boolean(deletingProjectId)}
+                          onClick={() => void deleteProjectFromList(item)}
+                        >
+                          {deletingProjectId === item.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -1843,7 +1929,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                       workspace.
                     </p>
                   </div>
-                  <form className={s.createForm} onSubmit={createProject}>
+                  <form className={s.createForm} id="add-website" onSubmit={createProject}>
                     <label>
                       Project name
                       <input required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="My website" />
@@ -1873,10 +1959,10 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
       <footer className={s.footer}>
         <div className={s.footerInner}>
-          <span>CREASE / YOUR WORK, UNDERSTOOD</span>
+          <span>ZAPPA / YOUR WORK, UNDERSTOOD</span>
           <div className={s.footerLinks}>
             <Link href="/docs">DOCS</Link>
-            <a href="https://github.com/AmanSagar0607/crease">OPEN SOURCE</a>
+            <a href="https://github.com/AmanSagar0607/Zappa">OPEN SOURCE</a>
           </div>
         </div>
       </footer>
