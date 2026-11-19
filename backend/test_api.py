@@ -641,6 +641,31 @@ class ApiTest(unittest.TestCase):
         self.assertTrue(listing[p['id']]['has_write_key'])
         self.assertNotIn('write_key', listing[p['id']])
 
+    def test_live_stream_replays_from_cursor_and_enforces_project_ownership(self):
+        self.client.cookies.set('__session', 'token')
+        project = self.client.post('/api/projects', json={'name':'Live site','domain':'example.com'}, headers={'origin':main.FRONTEND_URL}).json()
+        self.verify_project(project['id'])
+        event = {'id':'live-stream-event','name':'pageview','timestamp':main.stamp(main.now()),'path':'/live','visitorId':'live-visitor'}
+        accepted = self.client.post('/api/events', json={'projectId':project['id'],'events':[event]}, headers={'origin':'https://example.com','x-Zappa-key':project['write_key']})
+        self.assertEqual(accepted.json()['accepted'], 1)
+
+        with self.client.stream('GET', f"/api/events/stream?projectId={project['id']}&after=0") as response:
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.headers['content-type'].startswith('text/event-stream'))
+            lines = iter(response.iter_lines())
+            self.assertEqual(next(lines), 'event: ready')
+            self.assertEqual(next(lines), 'id: 0')
+            while next(lines) != 'event: analytics-event':
+                pass
+            self.assertTrue(next(lines).startswith('id: '))
+            payload = json.loads(next(lines).removeprefix('data: '))
+            self.assertEqual((payload['id'], payload['path'], payload['name']), ('live-stream-event', '/live', 'pageview'))
+            self.assertGreater(payload['ingest_seq'], 0)
+
+        self.client.cookies.set('__session', 'token-u2')
+        denied = self.client.get(f"/api/events/stream?projectId={project['id']}")
+        self.assertEqual(denied.status_code, 404)
+
     def test_domain_verification_pending_failed_and_passed(self):
         headers = {'origin':main.FRONTEND_URL}
         self.client.cookies.set('__session', 'token')
