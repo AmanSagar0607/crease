@@ -20,7 +20,7 @@ export default function Docs() {
     Zappa.init({
       projectId: 'YOUR_PROJECT_ID',
       writeKey: 'Zappa_YOUR_PROJECT_WRITE_KEY',
-      endpoint: 'https://Zappa-bice.vercel.app/api/events'
+      endpoint: 'https://YOUR_ZAPPA_ORIGIN/api/events'
     });
   }, { once: true });
 </script>`}</Code>
@@ -34,7 +34,7 @@ export default function Docs() {
     <Code>{`window.Zappa.capture('signup_completed', { plan: 1, trial: true });`}</Code>
     <p>Property values must be numbers or booleans, with at most 20 properties per event. Pages and referrers are recorded automatically.</p>
     <h2>Next.js and npm</h2>
-    <p>When published, install <code>@aman-sagar06077/zappa-analytics</code> package with <code>npm install @aman-sagar06077/zappa-analytics</code>. Then add its component to your app and pass the project ID and public write key shown in Installation.</p>
+    <p>Install <code>@aman-sagar06077/zappa-analytics</code> with <code>npm install @aman-sagar06077/zappa-analytics</code>. Then add its component to your app and pass the project ID and public write key shown in Installation.</p>
     <Code>{`import { Analytics } from '@aman-sagar06077/zappa-analytics/next';
 
 <Analytics projectId="YOUR_PROJECT_ID" writeKey="Zappa_YOUR_PROJECT_WRITE_KEY" enabled={consentGranted} />`}</Code>

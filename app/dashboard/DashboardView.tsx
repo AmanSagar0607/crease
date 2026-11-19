@@ -882,9 +882,10 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const collector = process.env.NEXT_PUBLIC_COLLECTOR_URL || (origin ? `${origin}/api/events` : '');
   const snippet = `<script src="${origin}/Zappa.js" defer></script>
 <script>
-  window.addEventListener('load', function () {
+  // Dispatch Zappa:consent after any required consent has been granted.
+  window.addEventListener('Zappa:consent', function () {
     Zappa.init({ projectId: '${project?.id || ''}', writeKey: '${writeKey}', endpoint: '${collector}' });
-  });
+  }, { once: true });
 </script>`;
 
   async function copySnippet() {
@@ -955,7 +956,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   return (
     <TooltipProvider>
-    <SidebarProvider className={s.sidebarProvider} style={{ '--sidebar-width': '248px', '--sidebar-width-icon': '64px' } as CSSProperties}>
+    <SidebarProvider defaultOpen={false} className={s.sidebarProvider} style={{ '--sidebar-width': '64px', '--sidebar-width-icon': '64px' } as CSSProperties}>
     <div className={`${s.dashboard} ${project ? s.analyticsDashboard : ''}`}>
       <a className={s.skip} href="#main">
         Skip to content
@@ -1047,7 +1048,6 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       <header className={`${s.header} ${project ? s.analyticsHeader : ''}`}>
         <div className={s.headerInner}>
           <div className={s.headerIdentity}>
-            {project && <SidebarTrigger aria-label="Toggle project navigation" />}
             <Link className={s.brand} href="/">Zappa</Link>
             <span className={s.headerDivider} aria-hidden="true" />
             {!project && user && (
@@ -1086,6 +1086,54 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           </div>
         </div>
       </header>
+
+      {project && (
+        <div className={s.projectTopNavWrap}>
+          <div className={s.projectTopNav}>
+            <label className={s.topProjectSwitcher}>
+              <span className={s.srOnly}>Switch website</span>
+              <span className={s.sidebarSwitcherMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
+              <select
+                value={selected}
+                onChange={(event) => router.push(`/dashboard/projects/${encodeURIComponent(event.target.value)}`)}
+              >
+                {projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}
+              </select>
+              <ChevronIcon />
+            </label>
+            <nav className={s.projectTopNavLinks} aria-label="Project analytics">
+              {NAV_GROUPS.flatMap((group) => group.items).map((item) => (
+                <a
+                  key={item.id}
+                  href={`#${item.id}`}
+                  aria-current={tab === 'analytics' && activeSection === item.id ? 'page' : undefined}
+                  onClick={(event) => { event.preventDefault(); selectAnalyticsSection(item.id); }}
+                >
+                  <item.icon aria-hidden="true" />
+                  <span>{item.label}</span>
+                </a>
+              ))}
+            </nav>
+            <nav className={s.projectTopNavTools} aria-label="Project tools">
+              {PROJECT_NAV.map((section) => {
+                const Icon = PROJECT_ICONS[section];
+                const label = section[0].toUpperCase() + section.slice(1);
+                return (
+                  <a
+                    key={section}
+                    href={`#${section}`}
+                    aria-current={tab === section ? 'page' : undefined}
+                    onClick={(event) => { event.preventDefault(); selectTab(section); }}
+                  >
+                    <Icon aria-hidden="true" />
+                    <span>{label}</span>
+                  </a>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
+      )}
 
       <main className={s.main} id="main">
         {busy ? (
