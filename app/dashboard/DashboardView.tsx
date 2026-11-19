@@ -26,6 +26,7 @@ import GoalsSection from './GoalsSection';
 import UnavailableSection from './UnavailableSection';
 import LiveActivity from './LiveActivity';
 import useOverviewReport from './useOverviewReport';
+import DesignLabView from './design-lab/DesignLabView';
 import { appendFunnelStep, buildFunnelRequest, normalizeFunnelSteps, selectFunnelStep } from './funnel-api';
 import {
   LEGACY_HASHES,
@@ -67,7 +68,7 @@ function ProjectNavigation({ children }: { children: ReactNode }) {
 }
 
 type User = { id: string; login: string };
-type Project = {
+export type Project = {
   id: string;
   name: string;
   domain: string;
@@ -111,7 +112,7 @@ type EventRow = {
   referrer: string | null;
   properties: Record<string, number | boolean>;
 };
-type Summary = {
+export type Summary = {
   metrics: Metrics;
   previous: Metrics;
   series: SeriesPoint[];
@@ -123,6 +124,7 @@ type Summary = {
   event_names: Breakdown[];
   days: number;
   filter?: { property: string | null; value: string | null };
+  average_session_duration_seconds?: number;
 };
 type FunnelStep = {
   event_name: string;
@@ -391,7 +393,10 @@ function BreakdownCard({
 
 /* ---------- Main component ---------- */
 
-export default function DashboardView({ projectId }: { projectId?: string }) {
+type DashboardViewProps = { projectId?: string; mode?: 'standard' | 'design-lab' };
+
+export default function DashboardView({ projectId, mode = 'standard' }: DashboardViewProps) {
+  const isDesignLab = mode === 'design-lab';
   const router = useRouter();
   const { signOut } = useClerk();
   const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
@@ -487,9 +492,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       const list = await api<Project[]>('/api/projects');
       if (version !== loadVersion.current) return;
       setProjects(list);
-      const viewingProjects = !projectId && new URLSearchParams(window.location.search).get('view') === 'projects';
+      const viewingProjects = !projectId && !isDesignLab && new URLSearchParams(window.location.search).get('view') === 'projects';
       setShowProjects(viewingProjects);
-      setSelected(projectId ? (list.some((project) => project.id === projectId) ? projectId : '') : !viewingProjects && list.length === 1 ? list[0].id : '');
+      setSelected(projectId ? (list.some((project) => project.id === projectId) ? projectId : '') : isDesignLab ? (list[0]?.id ?? '') : !viewingProjects && list.length === 1 ? list[0].id : '');
     } catch (e) {
       if (version !== loadVersion.current) return;
       if (e instanceof ApiError && e.status === 401) {
@@ -500,7 +505,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     } finally {
       if (version === loadVersion.current) setBusy(false);
     }
-  }, [projectId, handleUnauthorized]);
+  }, [projectId, handleUnauthorized, isDesignLab]);
 
   useEffect(() => {
     void load();
@@ -997,7 +1002,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   return (
     <TooltipProvider>
     <SidebarProvider defaultOpen={false} className={s.sidebarProvider} style={{ '--sidebar-width': '64px', '--sidebar-width-icon': '64px' } as CSSProperties}>
-    <div className={`${s.dashboard} ${project ? s.analyticsDashboard : ''}`}>
+    <div className={`${s.dashboard} ${project || isDesignLab ? s.analyticsDashboard : ''}`}>
       <a className={s.skip} href="#main">
         Skip to content
       </a>
@@ -1085,6 +1090,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         </Sidebar>
       )}
 
+      {!isDesignLab && (
       <header className={`${s.header} ${project ? s.analyticsHeader : ''}`}>
         <div className={s.headerInner}>
           <div className={s.headerIdentity}>
@@ -1126,8 +1132,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           </div>
         </div>
       </header>
+      )}
 
-      {project && (
+      {project && !isDesignLab && (
         <div className={s.projectTopNavWrap}>
           <div className={s.projectTopNav}>
             <label className={s.topProjectSwitcher}>
@@ -1175,8 +1182,18 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         </div>
       )}
 
-      <main className={s.main} id="main">
-        {busy ? (
+      <main className={isDesignLab ? `${s.main} ${s.designLabMain}` : s.main} id="main">
+        {isDesignLab ? (
+          <DesignLabView
+            project={project ?? null}
+            projects={projects}
+            selectedProjectId={selected}
+            summary={summary}
+            report={overviewReport.report}
+            loading={busy || summaryBusy || overviewReport.loading}
+            error={error || summaryError || overviewReport.error}
+          />
+        ) : busy ? (
           <div className={s.loadingPage} role="status" aria-label="Loading your workspace">
             <span className={s.loadingBar} style={{ width: '22%' }} />
             <span className={s.loadingBar} style={{ width: '46%', height: 34 }} />
@@ -2005,6 +2022,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
         )}
       </main>
 
+      {!isDesignLab && (
       <footer className={s.footer}>
         <div className={s.footerInner}>
           <span>ZAPPA / YOUR WORK, UNDERSTOOD</span>
@@ -2014,6 +2032,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           </div>
         </div>
       </footer>
+      )}
     </div>
     </SidebarProvider>
     </TooltipProvider>

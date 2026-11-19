@@ -4429,3 +4429,13 @@
 @media (prefers-reduced-motion: reduce) {
   .analyticsDashboard .sidebar16 .sidebarNavItem::after { transition: none; }
 }
+
+/* Design lab route: retain the dashboard shell but let the new report fill its main canvas. */
+.analyticsDashboard .designLabMain,
+.designLabMain {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  background: #1f1f1f;
+}
