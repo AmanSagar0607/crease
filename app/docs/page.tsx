@@ -13,14 +13,14 @@ export default function Docs() {
     <h1 style={{ fontSize: 42, letterSpacing: '-.05em' }}>Get started.</h1>
     <p>Count page views and send custom events from any JavaScript site, including Next.js and React.</p>
     <h2>1. Add the tracker</h2>
-    <Code>{`<script src="https://YOUR_ZAPPA_ORIGIN/Zappa.js" defer></script>
+    <Code>{`<script src="https://www.zappa.in/Zappa.js" defer></script>
 <script>
   // Dispatch Zappa:consent once your consent policy allows analytics.
   window.addEventListener('Zappa:consent', function () {
     Zappa.init({
       projectId: 'YOUR_PROJECT_ID',
       writeKey: 'Zappa_YOUR_PROJECT_WRITE_KEY',
-      endpoint: 'https://YOUR_ZAPPA_ORIGIN/api/events'
+      endpoint: 'https://www.zappa.in/api/events'
     });
   }, { once: true });
 </script>`}</Code>

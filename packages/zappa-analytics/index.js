@@ -1,4 +1,4 @@
-const DEFAULT_ENDPOINT = 'https://Zappa-bice.vercel.app/api/events';
+const DEFAULT_ENDPOINT = 'https://www.zappa.in/api/events';
 const VISITOR_KEY = 'Zappa_visitor';
 const SESSION_KEY = 'Zappa_session';
 const IDLE_MS = 30 * 60 * 1000;

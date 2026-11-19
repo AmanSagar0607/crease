@@ -1,6 +1,6 @@
 {
   "name": "@aman-sagar06077/zappa-analytics",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Privacy-aware website analytics for Zappa projects.",
   "license": "MIT",
   "type": "module",

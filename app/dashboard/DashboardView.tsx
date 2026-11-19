@@ -390,7 +390,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     }
     setMessage(
       clerkLoaded
-        ? `Clerk shows an active session, but the analytics API rejected it (401). Check that CLERK_ISSUER matches this Clerk instance, CLERK_AUTHORIZED_PARTIES includes ${window.location.origin}, and the session token reaches the API.`
+        ? `You’re signed in, but Zappa’s production API rejected the session (401). The API needs the same Clerk production issuer as this site and ${window.location.origin} in CLERK_AUTHORIZED_PARTIES. Update those settings on the API host, then redeploy it.`
         : 'Could not verify your sign-in yet. Refresh after Clerk finishes loading.',
     );
   }, [clerkLoaded, isSignedIn, router]);
