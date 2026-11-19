@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { toast } from 'sonner';
 import styles from './onboarding.module.css';
 
 type Method = 'script' | 'npm' | 'wordpress' | 'shopify' | 'agent';
@@ -51,8 +52,12 @@ Inspect the framework and router before editing. For Next.js App Router, import 
 
 Make the smallest changes needed, then run the relevant typecheck or build if available. Report the files changed and how I can verify the first event. Do not deploy or commit/push.`;
   async function copy(value: string, label: string) {
-    try { await navigator.clipboard.writeText(value); setCopied(label); setCopyError(''); }
-    catch { setCopyError('Could not copy automatically. Select and copy the text instead.'); }
+    try { await navigator.clipboard.writeText(value); setCopied(label); setCopyError(''); toast.success('Copied to clipboard'); }
+    catch { setCopyError('Could not copy automatically. Select and copy the text instead.'); toast.error('Could not copy. Select the text and copy it manually.'); }
+  }
+  function checkEvents() {
+    props.onCheckEvents();
+    toast.info('Checking for your first event', { description: 'Keep this page open while Zappa checks the latest project activity.' });
   }
   const steps = [ ['verify', 'Verify domain'], ['install', 'Install tracker'], ['events', 'First event'] ] as const;
   return (
@@ -60,7 +65,7 @@ Make the smallest changes needed, then run the relevant typecheck or build if av
       <header className={styles.header}><span className={styles.brand}><span>?</span> Zappa.</span><button type="button" className={styles.exit} onClick={props.onFinish}>Go to dashboard <span aria-hidden="true">?</span></button></header>
       <main className={styles.main}>
         <div className={styles.intro}><span className={styles.eyebrow}>YOUR SITE, CONNECTED</span><h1>Let’s get {props.name} set up.</h1><p>Connect <strong>{props.domain}</strong> to Zappa in a few simple steps.</p></div>
-        <nav className={styles.steps} aria-label="Setup steps">{steps.map(([id, label], index) => <button key={id} type="button" aria-current={step === id ? 'step' : undefined} onClick={() => setStep(id)}><span className={styles.stepNumber} data-complete={(index === 0 && props.verified) || (index === 2 && props.eventReceived) ? 'true' : undefined}>{(index === 0 && props.verified) || (index === 2 && props.eventReceived) ? '?' : `0${index + 1}`}</span><span>{label}</span></button>)}</nav>
+        <nav className={styles.steps} aria-label="Setup steps">{steps.map(([id, label], index) => <button key={id} type="button" aria-current={step === id ? 'step' : undefined} onClick={() => setStep(id)}><span className={styles.stepNumber} data-complete={(index === 0 && props.verified) || (index === 2 && props.eventReceived) ? 'true' : undefined}>{(index === 0 && props.verified) || (index === 2 && props.eventReceived) ? '✓' : `0${index + 1}`}</span><span>{label}</span></button>)}</nav>
         <section className={styles.card}>
           {step === 'verify' && <>
             <div className={styles.cardHead}><div><span className={styles.kicker}>STEP 01 / OWNERSHIP</span><h2>Verify your domain</h2><p>Prove you control this site before Zappa accepts events. Add this TXT record at your DNS provider.</p></div><span className={styles.status} data-ready={props.verified}>{props.verified ? 'Verified' : 'Not verified'}</span></div>
@@ -114,7 +119,8 @@ Make the smallest changes needed, then run the relevant typecheck or build if av
             <div className={styles.cardHead}><div><span className={styles.kicker}>STEP 03 / FIRST EVENT</span><h2>{props.eventReceived ? 'Your site is connected.' : 'Waiting for your first event'}</h2><p>{props.eventReceived ? 'Zappa has received an event from this project.' : 'Publish your changes, grant any required consent, then visit your website to send a page view.'}</p></div><span className={styles.status} data-ready={props.eventReceived}>{props.eventReceived ? 'Receiving events' : 'Waiting'}</span></div>
             <div className={styles.checklist}><div><span>01</span><p>Confirm <strong>{props.domain}</strong> is verified.</p></div><div><span>02</span><p>Publish the tracker to your live site.</p></div><div><span>03</span><p>Visit your site after granting any required consent.</p></div></div>
             {props.eventNotice && <p className={styles.message} role="status">{props.eventNotice}</p>}
-            <div className={styles.actions}><button className={styles.secondary} type="button" onClick={() => setStep('install')}>? Installation</button><button className={styles.secondary} type="button" onClick={props.onCheckEvents} disabled={props.eventChecking}>{props.eventChecking ? 'Checking…' : 'Check for events'}</button><button className={styles.primary} type="button" onClick={props.onFinish}>Open dashboard <span>?</span></button></div>
+            {!props.eventReceived && <p className={styles.eventHint}>To receive your first event: publish the tracker, open <strong>{props.domain}</strong>, and allow analytics consent if your site asks for it. Then check again here.</p>}
+            <div className={styles.actions}><button className={styles.secondary} type="button" onClick={() => setStep('install')}>Installation</button><button className={styles.secondary} type="button" onClick={checkEvents} disabled={props.eventChecking}>{props.eventChecking ? 'Checking…' : 'Check for events'}</button><button className={styles.primary} type="button" onClick={props.onFinish}>Open dashboard <span>→</span></button></div>
           </>}
         </section>
         <p className={styles.help}>Need a hand? <a href="/docs">Read the installation guide ?</a></p>

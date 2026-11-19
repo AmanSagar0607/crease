@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { CalendarDays, ChevronDown, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { Activity, CalendarDays, ChevronDown, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { invalidCustomRange, type AttributionModel, type Preset, type Range } from './reporting';
 import s from './sections.module.css';
 
@@ -17,6 +17,7 @@ type Props = {
   onModelChange: (model: AttributionModel) => void;
   onConversionEventChange: (value: string) => void;
   onRefresh?: () => void;
+  onLiveActivity?: () => void;
   refreshing?: boolean;
   updatedLabel?: string;
 };
@@ -49,6 +50,7 @@ export default function ReportToolbar({
   onModelChange,
   onConversionEventChange,
   onRefresh,
+  onLiveActivity,
   refreshing = false,
   updatedLabel,
 }: Props) {
@@ -151,6 +153,11 @@ export default function ReportToolbar({
         {onRefresh && (
           <button className={s.refreshIconButton} type="button" onClick={onRefresh} disabled={refreshing} aria-label="Refresh analytics" title="Refresh analytics">
             <RefreshCw aria-hidden="true" className={refreshing ? s.spinning : undefined} />
+          </button>
+        )}
+        {onLiveActivity && (
+          <button className={s.liveActivityButton} type="button" onClick={onLiveActivity}>
+            <Activity aria-hidden="true" /> <span>Live events</span>
           </button>
         )}
         {updatedLabel && <span className={s.updatedStatus}>{updatedLabel}</span>}

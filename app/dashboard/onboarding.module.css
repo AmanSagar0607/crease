@@ -61,12 +61,12 @@
 .exit span { display: none; }
 
 .main {
-  width: min(700px, calc(100% - 40px));
-  margin: clamp(42px, 8vh, 76px) auto 64px;
+  width: min(760px, calc(100% - 40px));
+  margin: clamp(36px, 6vh, 64px) auto 64px;
   flex: 1;
 }
 
-.intro { margin: 0 0 28px; text-align: center; }
+.intro { margin: 0 0 32px; text-align: center; }
 .eyebrow,
 .kicker {
   color: var(--muted, #6f6d65);
@@ -93,15 +93,15 @@
 .steps {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 .steps button {
   display: flex;
   align-items: center;
   gap: 9px;
-  min-height: 48px;
-  padding: 0 10px;
+  min-height: 52px;
+  padding: 0 14px;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
@@ -144,9 +144,9 @@
 .stepNumber[data-complete='true']::after { content: '✓'; font-size: 13px; }
 
 .card {
-  padding: clamp(22px, 4vw, 32px);
+  padding: clamp(24px, 4vw, 36px);
   border: 1px solid var(--setup-line);
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--setup-card);
   box-shadow: 0 14px 42px rgb(34 31 24 / 7%), 0 2px 6px rgb(34 31 24 / 3%);
 }
@@ -155,7 +155,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 22px;
+  margin-bottom: 28px;
 }
 .cardHead h2 {
   margin: 8px 0 7px;
@@ -233,7 +233,7 @@
   line-height: 1.65;
 }
 .message { color: #7d291c; font-size: 13px; line-height: 1.5; }
-.actions { display: flex; align-items: center; gap: 9px; margin-top: 24px; }
+.actions { display: flex; align-items: center; gap: 10px; margin-top: 28px; }
 .primary,
 .secondary {
   display: inline-flex;
@@ -364,10 +364,12 @@
 .docsLink { margin: 12px 0 0; font-size: 13px; }
 .docsLink a { color: var(--blue, #b85436); text-decoration: underline; text-underline-offset: 3px; }
 .checklist { border-top: 1px solid var(--setup-line); }
-.checklist > div { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--setup-line); }
+.checklist > div { display: flex; align-items: center; gap: 18px; min-height: 48px; padding: 13px 0; border-bottom: 1px solid var(--setup-line); }
 .checklist span { color: var(--blue, #b85436); font-size: 12px; font-weight: 650; }
-.checklist p { margin: 0; color: var(--setup-muted); font-size: 13px; }
+.checklist p { margin: 0; color: var(--setup-muted); font-size: 13px; line-height: 1.55; }
 .checklist strong { color: var(--setup-ink); font-weight: 600; }
+.eventHint { margin: 18px 0 0; padding: 13px 15px; border: 1px solid var(--setup-line); border-radius: 10px; background: var(--paper, #f7f5ef); color: var(--setup-muted); font-size: 13px; line-height: 1.65; }
+.eventHint strong { color: var(--setup-ink); font-weight: 600; }
 .help { margin-top: 20px; text-align: center; }
 .help a { display: inline-flex; align-items: center; gap: 5px; color: var(--blue, #b85436); text-decoration: underline; text-underline-offset: 3px; }
 .help a:hover { color: #873a27; }
@@ -391,20 +393,21 @@
   .header,
   .footer { width: calc(100% - 32px); }
   .header { min-height: 62px; }
-  .main { width: calc(100% - 28px); margin-top: 38px; }
+  .main { width: calc(100% - 28px); margin-top: 30px; }
   .intro { margin-bottom: 22px; }
   .intro h1 { font-size: 30px; }
-  .steps { gap: 5px; }
-  .steps button { justify-content: center; flex-direction: column; gap: 4px; min-height: 66px; padding: 7px 3px; font-size: 11px; text-align: center; }
+  .steps { gap: 5px; margin-bottom: 12px; }
+  .steps button { justify-content: center; flex-direction: column; gap: 5px; min-height: 72px; padding: 7px 3px; font-size: 11px; text-align: center; }
   .stepNumber { width: 25px; height: 25px; }
-  .card { padding: 20px 16px; }
+  .card { padding: 22px 18px; }
   .cardHead { flex-direction: column; gap: 10px; }
   .records > div { grid-template-columns: 1fr auto; gap: 8px; }
   .records > div > span { grid-column: 1 / -1; }
   .records > div:first-child { grid-template-columns: 1fr; }
   .records > div:first-child span { grid-column: auto; }
-  .actions { flex-wrap: wrap; }
-  .actions .primary { min-width: 100%; order: -1; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .actions .primary { min-width: 100%; grid-column: 1 / -1; grid-row: 1; }
+  .actions .secondary { min-width: 0; padding-inline: 10px; }
   .tabs button { font-size: 11px; }
   .npmGuide { padding: 14px; }
   .npmGuideHead { align-items: flex-start; flex-direction: column; }

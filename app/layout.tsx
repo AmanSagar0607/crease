@@ -3,6 +3,7 @@ import Script from 'next/script';
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import ThemeProvider from './theme-provider';
+import { Toaster } from '@/components/ui/sonner';
 
 export const metadata: Metadata = {
   title: 'Zappa — Calm analytics for independent developers',
@@ -42,7 +43,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body>
         <ClerkProvider appearance={clerkAppearance}>
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>{children}<Toaster /></ThemeProvider>
         </ClerkProvider>
       </body>
     </html>

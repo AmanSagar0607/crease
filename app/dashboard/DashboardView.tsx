@@ -1245,6 +1245,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         onModelChange={setModel}
                         onConversionEventChange={setConversionEvent}
                         onRefresh={refreshAnalytics}
+                        onLiveActivity={() => selectAnalyticsSection('live')}
                         refreshing={summaryBusy}
                         updatedLabel={`Last event ${relativeWhen(project.last_event_at)}`}
                       />

@@ -922,6 +922,9 @@
 .refreshIconButton:hover:not(:disabled) { background: var(--soft); color: var(--ink); }
 .refreshIconButton:disabled { opacity: .6; cursor: wait; }
 .refreshIconButton svg { width: 18px; height: 18px; }
+.liveActivityButton { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: none; min-height: 44px; padding: 0 13px; border: 1px solid var(--lineStrong); border-radius: 8px; background: var(--paper); color: var(--ink2); font-size: 13px; font-weight: 600; cursor: pointer; }
+.liveActivityButton:hover { background: var(--soft); color: var(--ink); }
+.liveActivityButton svg { width: 16px; height: 16px; color: #23784d; }
 .spinning { animation: report-spin 800ms linear infinite; }
 @keyframes report-spin { to { transform: rotate(360deg); } }
 .updatedStatus, .rangeStatus { overflow: hidden; color: var(--muted); font-size: .8125rem; text-overflow: ellipsis; white-space: nowrap; }
