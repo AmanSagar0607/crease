@@ -53,7 +53,7 @@ export default function WaitlistForm() {
           <div className={s.inputRow}>
             <Input className={s.emailInput} id="waitlist-email" name="email" type="email" autoComplete="email" placeholder="you@example.com" required maxLength={254} disabled={state === 'submitting'} />
             <Button className={s.submit} type="submit" disabled={state === 'submitting'}>
-              {state === 'submitting' ? <LoaderCircle className={s.spinner} aria-hidden="true" /> : <>Request an invite <ArrowRight data-icon="inline-end" aria-hidden="true" /></>}
+              {state === 'submitting' ? <LoaderCircle className={s.spinner} aria-hidden="true" /> : <>Join waitlist <ArrowRight data-icon="inline-end" aria-hidden="true" /></>}
             </Button>
           </div>
         </Field>

@@ -49,9 +49,10 @@ export async function POST(request: Request) {
   url.search = '';
 
   try {
+    const origin = request.headers.get('origin');
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) },
       body,
       redirect: 'error',
       cache: 'no-store',
