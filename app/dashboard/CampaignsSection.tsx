@@ -57,7 +57,7 @@ export default function CampaignsSection({ range, report, loading, error, onRetr
     const url = URL.createObjectURL(new Blob([contents], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = `crease-campaigns-${range.start}-${range.end}.csv`;
+    link.download = `Zappa-campaigns-${range.start}-${range.end}.csv`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }

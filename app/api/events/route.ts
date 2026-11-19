@@ -4,7 +4,7 @@ function cors(request: Request): HeadersInit {
   return {
     'Access-Control-Allow-Origin': request.headers.get('origin') || 'null',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Crease-Key, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Zappa-Key, Authorization',
     'Vary': 'Origin',
     'Cache-Control': 'no-store',
   };
@@ -52,18 +52,18 @@ export async function POST(request: Request) {
   url.pathname = secret ? '/internal/events' : '/api/events';
   url.search = '';
   const forwarded = new Headers({ 'content-type': 'application/json' });
-  for (const name of ['origin', 'x-crease-key', 'authorization', 'user-agent']) {
+  for (const name of ['origin', 'x-Zappa-key', 'authorization', 'user-agent']) {
     const value = request.headers.get(name);
     if (value) forwarded.set(name, value);
   }
   if (secret) {
-    forwarded.set('x-crease-forward-secret', secret);
+    forwarded.set('x-Zappa-forward-secret', secret);
     // Only Vercel's trusted edge may supply these headers; never copy client forwarding headers.
     if (process.env.VERCEL === '1') {
       const country = request.headers.get('x-vercel-ip-country');
       const ip = request.headers.get('x-vercel-forwarded-for');
-      if (country) forwarded.set('x-crease-country', country);
-      if (ip) forwarded.set('x-crease-client-ip', ip);
+      if (country) forwarded.set('x-Zappa-country', country);
+      if (ip) forwarded.set('x-Zappa-client-ip', ip);
     }
   }
   try {

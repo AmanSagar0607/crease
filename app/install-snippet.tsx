@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import s from './landing.module.css';
 
-const installCommand = 'npm install @crease/analytics';
+const installCommand = 'npm install @Zappa/analytics';
 
 export default function InstallSnippet() {
   const [copied, setCopied] = useState(false);

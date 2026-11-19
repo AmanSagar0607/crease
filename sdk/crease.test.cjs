@@ -25,49 +25,49 @@ function setup(overrides = {}) {
   };
   Object.assign(window, overrides);
   function setUrl(value) { const url = new URL(value, window.location.href); window.location.href = url.href; window.location.pathname = url.pathname; window.location.search = url.search; window.location.origin = url.origin; }
-  vm.runInNewContext(fs.readFileSync(__dirname + '/crease.js', 'utf8'), { window, URL, Date, Event, isFinite });
+  vm.runInNewContext(fs.readFileSync(__dirname + '/Zappa.js', 'utf8'), { window, URL, Date, Event, isFinite });
   return { window, calls, listeners };
 }
 
 test('only sends after activation and excludes query strings and sensitive properties', () => {
   const { window, calls } = setup();
-  window.crease.capture('before');
-  window.crease.init({ projectId: 'p', writeKey: 'crease_0123456789abcdef', endpoint: 'https://collector.example/events' });
-  window.crease.capture('signup', { count: 1, email: 'person@example.com', token: 2, label: 'private' });
-  window.crease.flush();
+  window.Zappa.capture('before');
+  window.Zappa.init({ projectId: 'p', writeKey: 'Zappa_0123456789abcdef', endpoint: 'https://collector.example/events' });
+  window.Zappa.capture('signup', { count: 1, email: 'person@example.com', token: 2, label: 'private' });
+  window.Zappa.flush();
   assert.equal(calls.length, 1);
   assert.equal(calls[0].body.events.length, 2);
   assert.equal(calls[0].body.events[0].path, '/path');
   assert.deepEqual(calls[0].body.events[1].properties, { count: 1 });
-  assert.equal(calls[0].headers['X-Crease-Key'], 'crease_0123456789abcdef');
+  assert.equal(calls[0].headers['X-Zappa-Key'], 'Zappa_0123456789abcdef');
 });
 
 test('does not start without a write key', () => {
   const { window, calls } = setup();
-  window.crease.init({ projectId: 'p', endpoint: 'https://collector.example/events' });
-  window.crease.capture('after');
-  window.crease.flush();
+  window.Zappa.init({ projectId: 'p', endpoint: 'https://collector.example/events' });
+  window.Zappa.capture('after');
+  window.Zappa.flush();
   assert.equal(calls.length, 0);
 });
 
 test('opt out removes identifiers and prevents further collection', () => {
   const { window, calls, listeners } = setup();
-  window.crease.init({ projectId: 'p', writeKey: 'crease_0123456789abcdef', endpoint: 'https://collector.example/events' });
-  window.crease.optOut();
-  window.crease.capture('after'); window.crease.flush();
+  window.Zappa.init({ projectId: 'p', writeKey: 'Zappa_0123456789abcdef', endpoint: 'https://collector.example/events' });
+  window.Zappa.optOut();
+  window.Zappa.capture('after'); window.Zappa.flush();
   assert.equal(calls.length, 0);
-  assert.equal(window.localStorage.getItem('crease_visitor'), undefined);
+  assert.equal(window.localStorage.getItem('Zappa_visitor'), undefined);
   assert.equal(listeners.popstate, undefined);
 });
 
 test('tracks pushState, replaceState, back navigation, and query-only route changes once each', () => {
   const { window, calls } = setup();
-  window.crease.init({ projectId: 'p', writeKey: 'crease_0123456789abcdef', endpoint: 'https://collector.example/events' });
+  window.Zappa.init({ projectId: 'p', writeKey: 'Zappa_0123456789abcdef', endpoint: 'https://collector.example/events' });
   window.history.pushState({}, '', '/next');
   window.history.pushState({}, '', '/next?tab=one');
   window.history.replaceState({}, '', '/next?tab=two');
   window.dispatchEvent(new Event('popstate'));
-  window.crease.flush();
+  window.Zappa.flush();
   assert.deepEqual(calls[0].body.events.map(event => event.path), ['/path', '/next', '/next', '/next']);
   assert.equal(new Set(calls[0].body.events.map(event => event.sessionId)).size, 1);
   assert.equal(calls[0].body.events[0].visitorId, calls[0].body.events[3].visitorId);
@@ -75,10 +75,10 @@ test('tracks pushState, replaceState, back navigation, and query-only route chan
 
 test('repeated initialization does not duplicate initial page views', () => {
   const { window, calls } = setup();
-  const config = { projectId: 'p', writeKey: 'crease_0123456789abcdef', endpoint: 'https://collector.example/events' };
-  window.crease.init(config);
-  window.crease.init(config);
-  window.crease.flush();
+  const config = { projectId: 'p', writeKey: 'Zappa_0123456789abcdef', endpoint: 'https://collector.example/events' };
+  window.Zappa.init(config);
+  window.Zappa.init(config);
+  window.Zappa.flush();
   assert.equal(calls[0].body.events.length, 1);
 });
 
@@ -90,8 +90,8 @@ test('sends one web_vitals event per page on hide and starts a new one after rou
     observe({ type }) { observers[type] = this.callback; }
   };
   const emit = (type, entries) => observers[type]?.({ getEntries: () => entries });
-  const config = { projectId: 'p', writeKey: 'crease_0123456789abcdef', endpoint: 'https://collector.example/events' };
-  window.crease.init(config);
+  const config = { projectId: 'p', writeKey: 'Zappa_0123456789abcdef', endpoint: 'https://collector.example/events' };
+  window.Zappa.init(config);
   emit('largest-contentful-paint', [{ startTime: 1234.5 }]);
   emit('layout-shift', [{ value: 0.05, hadRecentInput: false }, { value: 0.2, hadRecentInput: true }]);
   emit('event', [{ duration: 80 }, { duration: 240 }]);
@@ -104,7 +104,7 @@ test('sends one web_vitals event per page on hide and starts a new one after rou
 
   window.document.visibilityState = 'hidden';
   listeners['doc:visibilitychange']();
-  window.crease.flush();
+  window.Zappa.flush();
   assert.equal(vitalsEvents().length, 1);
 
   window.document.visibilityState = 'visible';
@@ -120,21 +120,21 @@ test('sends one web_vitals event per page on hide and starts a new one after rou
 test('does not collect web vitals before consent or without PerformanceObserver', () => {
   const { window, calls } = setup();
   window.PerformanceObserver = class { observe() { throw new Error('must not observe before init'); } };
-  window.crease.capture('before');
-  window.crease.flush();
+  window.Zappa.capture('before');
+  window.Zappa.flush();
   assert.equal(calls.length, 0);
 });
 
 test('captures only allowlisted campaign parameters after consent', () => {
   const { window, calls } = setup();
   window.history.replaceState({}, '', '/landing?utm_source=search&utm_medium=paid&utm_campaign=spring&utm_content=hello%40example.com&email=private');
-  assert.equal(window.crease.identify(), null);
-  window.crease.init({ projectId: 'p', writeKey: 'crease_0123456789abcdef', endpoint: 'https://collector.example/events' });
-  window.crease.flush();
+  assert.equal(window.Zappa.identify(), null);
+  window.Zappa.init({ projectId: 'p', writeKey: 'Zappa_0123456789abcdef', endpoint: 'https://collector.example/events' });
+  window.Zappa.flush();
   const event = calls[0].body.events[0];
   assert.equal(event.path, '/landing');
   assert.deepEqual(event.attribution, { utm_source: 'search', utm_medium: 'paid', utm_campaign: 'spring' });
-  window.crease.optOut();
-  assert.equal(window.crease.identify(), null);
-  assert.equal(window.localStorage.getItem('crease_visitor:p'), undefined);
+  window.Zappa.optOut();
+  assert.equal(window.Zappa.identify(), null);
+  assert.equal(window.localStorage.getItem('Zappa_visitor:p'), undefined);
 });

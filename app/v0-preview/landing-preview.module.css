@@ -16,6 +16,35 @@
   border-radius: 18px;
   background: var(--paper);
   box-shadow: 0 18px 54px rgb(36 30 22 / 8%);
+  transform-origin: 50% 18%;
+}
+
+.isEntering {
+  animation: preview-arrive 850ms cubic-bezier(.2, .72, .24, 1) both;
+}
+
+.isEntering .windowControls,
+.isEntering .address,
+.isEntering .sampleBadge {
+  animation: preview-detail-arrive 520ms cubic-bezier(.2, .72, .24, 1) both;
+}
+
+.isEntering .windowControls { animation-delay: 130ms; }
+.isEntering .address { animation-delay: 190ms; }
+.isEntering .sampleBadge { animation-delay: 250ms; }
+
+.isEntering .previewFoot {
+  animation: preview-detail-arrive 560ms cubic-bezier(.2, .72, .24, 1) 1.35s both;
+}
+
+@keyframes preview-arrive {
+  from { opacity: 0; transform: translateY(18px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes preview-detail-arrive {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 :global([data-theme='dark']) .preview {
@@ -75,12 +104,20 @@
 
 .viewport {
   position: relative;
-  max-height: 590px;
-  overflow: hidden;
+  max-height: min(72vh, 760px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  scrollbar-color: var(--lineStrong) transparent;
+  scrollbar-width: thin;
   padding: 28px 34px 0;
   background: var(--paper);
-  mask-image: linear-gradient(to bottom, #000 84%, transparent 100%);
 }
+
+.viewport:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -3px; }
+.viewport::-webkit-scrollbar { width: 8px; }
+.viewport::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 99px; background: var(--lineStrong); background-clip: padding-box; }
+.viewport::-webkit-scrollbar-track { background: transparent; }
 
 .report {
   max-width: 100%;
@@ -107,14 +144,16 @@
   color: var(--ink);
   font-weight: 600;
   white-space: nowrap;
+  transition: color 160ms ease, gap 160ms ease;
 }
 
 .previewFoot a svg { width: 15px; height: 15px; }
-.previewFoot a:hover { color: var(--accent-line); }
+.previewFoot a:hover { color: var(--accent-line); gap: 9px; }
+.previewFoot a:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 4px; }
 
 @media (max-width: 700px) {
   .preview { width: calc(100% - 32px); margin-top: 42px; border-radius: 14px; }
-  .viewport { max-height: 540px; padding: 20px 16px 0; }
+  .viewport { padding: 20px 16px 0; }
   .chrome { grid-template-columns: auto 1fr auto; gap: 10px; padding-inline: 12px; }
   .address { justify-self: center; font-size: 11px; }
   .sampleBadge { font-size: 10px; }
@@ -122,5 +161,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .isEntering,
+  .isEntering .windowControls,
+  .isEntering .address,
+  .isEntering .sampleBadge,
+  .isEntering .previewFoot { animation: none; }
   .previewFoot a { transition: none; }
 }

@@ -23,4 +23,4 @@
 
 ## Compatibility
 
-Rebranding must not change package names, tracker filename `/crease.js`, project IDs, write-key prefixes, API fields/routes, or analytics behavior. Clerk remains the only auth provider; Supabase PostgreSQL/RLS remains the data authorization boundary.
+Rebranding must not change package names, tracker filename `/Zappa.js`, project IDs, write-key prefixes, API fields/routes, or analytics behavior. Clerk remains the only auth provider; Supabase PostgreSQL/RLS remains the data authorization boundary.

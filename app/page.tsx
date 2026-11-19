@@ -5,7 +5,7 @@ import InstallSnippet from './install-snippet';
 import LandingProductPreview from './v0-preview/LandingProductPreview';
 import s from './landing.module.css';
 
-const repo = 'https://github.com/AmanSagar0607/crease';
+const repo = 'https://github.com/AmanSagar0607/Zappa';
 
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -41,7 +41,7 @@ const faqs = [
   },
   {
     q: 'Does it work with Next.js?',
-    a: 'Yes. Use the @crease/analytics/next component, the plain ESM package, or the standalone crease.js tracker for any HTML site. The docs show all three.',
+    a: 'Yes. Use the @Zappa/analytics/next component, the plain ESM package, or the standalone Zappa.js tracker for any HTML site. The docs show all three.',
   },
   {
     q: 'Where does my data live?',
@@ -49,7 +49,7 @@ const faqs = [
   },
   {
     q: 'Do I need a cookie banner?',
-    a: 'Zappa is built to collect as little as possible, but compliance depends on where you and your visitors are. The tracker waits for a crease:consent event if you need one, and the docs explain the trade-offs honestly.',
+    a: 'Zappa is built to collect as little as possible, but compliance depends on where you and your visitors are. The tracker waits for a Zappa:consent event if you need one, and the docs explain the trade-offs honestly.',
   },
   {
     q: 'Can I use my own domain?',
@@ -184,7 +184,7 @@ export default function Home() {
           </h2>
           <div className={s.compareGrid}>
             <div className={s.compareCol}>
-              <p>Guessing by hand</p>
+              <p >Guessing by hand</p>
               <div className={s.comparePanel}>
                 <div className={s.browserCard}>
                   <div className={s.browserTabs}>
@@ -219,7 +219,7 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <p className={s.sectionCaption}>
+          <p className={s.sectionCaption} style={{ marginTop: 64 }}>
             Connect your site once. The answers come to you. Your data stays yours.
           </p>
         </section>
@@ -473,7 +473,7 @@ export default function Home() {
                 <a href={repo}>GitHub</a>
               </li>
               <li>
-                <a href="https://github.com/AmanSagar0607/crease/issues">Issues</a>
+                <a href="https://github.com/AmanSagar0607/Zappa/issues">Issues</a>
               </li>
               <li>
                 <a href="#faq">FAQ</a>

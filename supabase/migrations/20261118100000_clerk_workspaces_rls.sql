@@ -168,9 +168,24 @@ select public._zappa_enable_rls('workspace_memberships');
 select public._zappa_enable_rls('user_profiles');
 select public._zappa_enable_rls('projects');
 
+do $$
+begin
+  if to_regclass('public.clerk_profiles') is not null then
+    perform public._zappa_enable_rls('clerk_profiles');
+  end if;
+  if to_regclass('public.waitlist') is not null then
+    perform public._zappa_enable_rls('waitlist');
+  end if;
+end $$;
+
 drop policy if exists workspace_member_read on public.workspaces;
 create policy workspace_member_read on public.workspaces for select to authenticated
   using (public.is_workspace_member(id));
+
+-- Membership changes must go through a trusted server workflow so a client JWT
+-- cannot grant itself a role or add another member.
+revoke insert, update, delete on public.workspaces from authenticated;
+revoke insert, update, delete on public.workspace_memberships from authenticated;
 
 drop policy if exists membership_member_read on public.workspace_memberships;
 create policy membership_member_read on public.workspace_memberships for select to authenticated
@@ -179,6 +194,14 @@ create policy membership_member_read on public.workspace_memberships for select 
 drop policy if exists profile_self_read on public.user_profiles;
 create policy profile_self_read on public.user_profiles for select to authenticated
   using (clerk_user_id = public.current_clerk_user_id());
+
+do $$
+begin
+  if to_regclass('public.clerk_profiles') is not null then
+    execute 'drop policy if exists clerk_profile_self_read on public.clerk_profiles';
+    execute 'create policy clerk_profile_self_read on public.clerk_profiles for select to authenticated using (clerk_id = public.current_clerk_user_id())';
+  end if;
+end $$;
 
 drop policy if exists projects_workspace_read on public.projects;
 create policy projects_workspace_read on public.projects for select to authenticated
@@ -194,6 +217,27 @@ drop policy if exists projects_admin_delete on public.projects;
 create policy projects_admin_delete on public.projects for delete to authenticated
   using (public.can_manage_project(id::text));
 
+-- Apply the same explicit boundary to optional project configuration tables.
+do $$
+declare
+  rel text;
+begin
+  foreach rel in array array['domains','project_domains','project_goals','project_property_keys'] loop
+    if to_regclass('public.' || rel) is not null
+       and exists (select 1 from information_schema.columns where table_schema='public' and table_name=rel and column_name='project_id') then
+      perform public._zappa_enable_rls(rel);
+      execute format('drop policy if exists %I on public.%I', rel || '_member_read', rel);
+      execute format('create policy %I on public.%I for select to authenticated using (public.can_access_project(project_id::text))', rel || '_member_read', rel);
+      execute format('drop policy if exists %I on public.%I', rel || '_admin_insert', rel);
+      execute format('create policy %I on public.%I for insert to authenticated with check (public.can_manage_project(project_id::text))', rel || '_admin_insert', rel);
+      execute format('drop policy if exists %I on public.%I', rel || '_admin_update', rel);
+      execute format('create policy %I on public.%I for update to authenticated using (public.can_manage_project(project_id::text)) with check (public.can_manage_project(project_id::text))', rel || '_admin_update', rel);
+      execute format('drop policy if exists %I on public.%I', rel || '_admin_delete', rel);
+      execute format('create policy %I on public.%I for delete to authenticated using (public.can_manage_project(project_id::text))', rel || '_admin_delete', rel);
+    end if;
+  end loop;
+end $$;
+
 -- Apply workspace membership reads and project-scoped reads to data tables. Analytics
 -- are read-only to Clerk clients; ingestion/retention uses trusted server-side paths.
 -- Project and integration mutations are owner/admin only. Payment webhook event rows
@@ -204,8 +248,8 @@ declare
   rel text;
 begin
   foreach rel in array array[
-    'events','analytics_sessions','event_properties','project_property_keys',
-    'attribution_touchpoints','project_goals','payments',
+    'events','analytics_sessions','event_properties',
+    'attribution_touchpoints','payments',
     'project_repositories','project_vercel','payment_integrations'
   ] loop
     if to_regclass('public.' || rel) is not null then
@@ -234,6 +278,31 @@ begin
           and public.can_access_project(i.project_id::text)
       ))$policy$;
   end if;
+
+  -- event_properties has no project_id -> projects foreign key of its own. Resolve
+  -- its project through the composite event key before evaluating workspace access.
+  if to_regclass('public.event_properties') is not null then
+    execute 'drop policy if exists event_properties_member_read on public.event_properties';
+    execute 'create policy event_properties_member_read on public.event_properties for select to authenticated using (exists (select 1 from public.events e where e.project_id = event_properties.project_id and e.id = event_properties.event_id and public.can_access_project(e.project_id::text)))';
+  end if;
+end $$;
+
+-- Legacy connection rows contain encrypted credentials. Keep them inaccessible via
+-- the public Supabase API; integrations continue through the trusted backend until
+-- their storage and ownership mapping are migrated explicitly.
+do $$
+begin
+  if to_regclass('public.github_connections') is not null then
+    perform public._zappa_enable_rls('github_connections');
+    revoke all on public.github_connections from anon, authenticated;
+  end if;
+  if to_regclass('public.vercel_connections') is not null then
+    perform public._zappa_enable_rls('vercel_connections');
+    revoke all on public.vercel_connections from anon, authenticated;
+  end if;
+  if to_regclass('public.waitlist') is not null then
+    revoke all on public.waitlist from anon, authenticated;
+  end if;
 end $$;
 
 -- Identity/session and operational tables are not part of browser-exposed customer
@@ -246,6 +315,13 @@ grant select on public.workspaces, public.workspace_memberships to authenticated
 grant select on public.user_profiles to authenticated;
 grant select on public.projects to authenticated;
 grant insert, update, delete on public.projects to authenticated;
+do $$
+begin
+  if to_regclass('public.clerk_profiles') is not null then
+    revoke all on public.clerk_profiles from anon, authenticated;
+    grant select on public.clerk_profiles to authenticated;
+  end if;
+end $$;
 
 -- Internal setup helper is removed after schema policies are installed.
 drop function public._zappa_enable_rls(text);

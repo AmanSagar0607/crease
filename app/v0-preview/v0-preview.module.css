@@ -43,6 +43,25 @@
   -webkit-font-smoothing: antialiased;
 }
 
+.entering .sidebar,
+.entering .topbar,
+.entering .pageHead,
+.entering .sampleNotice,
+.entering .previewToolbar,
+.entering .reviewNote {
+  animation: route-element-arrive 560ms cubic-bezier(.2, .72, .24, 1) both;
+}
+.entering .sidebar { animation-delay: 70ms; }
+.entering .topbar { animation-delay: 120ms; }
+.entering .pageHead { animation-delay: 220ms; }
+.entering .sampleNotice { animation-delay: 300ms; }
+.entering .previewToolbar { animation-delay: 380ms; }
+.entering .reviewNote { animation-delay: 900ms; }
+@keyframes route-element-arrive {
+  from { opacity: 0; transform: translate3d(0, 9px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
 :global([data-theme='dark']) .page {
   --background: #0B0B0B;
   --foreground: #F0EFEB;
@@ -143,6 +162,15 @@
   .rangeGroup { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .rangeGroup button { padding-inline: 6px; }
   .previewOnly { width: 100%; margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entering .sidebar,
+  .entering .topbar,
+  .entering .pageHead,
+  .entering .sampleNotice,
+  .entering .previewToolbar,
+  .entering .reviewNote { animation: none; }
 }
 
 @media (max-width: 480px) {

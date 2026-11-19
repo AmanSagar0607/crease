@@ -1,24 +1,24 @@
-# Crease — Handoff Context
+# Zappa — Handoff Context
 
 Last updated: 2026-11-13
 
 ## Product goal
 
-Crease is a free, PostHog-style product analytics platform for independent developers. Developers sign in with GitHub, create projects for their websites, install a tracker manually, through an npm package, or through a reviewable GitHub pull request, then view visitors, sessions, page views, pages, devices, referrers, and countries.
+Zappa is a free, PostHog-style product analytics platform for independent developers. Developers sign in with GitHub, create projects for their websites, install a tracker manually, through an npm package, or through a reviewable GitHub pull request, then view visitors, sessions, page views, pages, devices, referrers, and countries.
 
 The product should feel similar to Vercel’s project experience:
 
 - One workspace with multiple projects.
 - A dedicated page for each project.
 - Project tabs for Analytics, Installation, Integrations, and Settings.
-- GitHub connects once per account; users then connect a specific repository to each Crease project.
+- GitHub connects once per account; users then connect a specific repository to each Zappa project.
 - Vercel integration is optional and manages a user-selected Vercel project.
 
 ## Repository and current branch
 
-- Repository: `https://github.com/AmanSagar0607/crease`
+- Repository: `https://github.com/AmanSagar0607/Zappa`
 - Production branch: `main`
-- Deployment branch: `deploy/crease-mvp`
+- Deployment branch: `deploy/Zappa-mvp`
 - Latest intended commit at handoff: `d8bac36` — `Show project sections as tabs`
 
 Do not commit `.env`, `.env.local`, `.neon`, `.vercel`, `backend/.tools`, `.agents`, or `.codex`.
@@ -27,12 +27,12 @@ Do not commit `.env`, `.env.local`, `.neon`, `.vercel`, `backend/.tools`, `.agen
 
 | Area | Technology | Current deployment |
 | --- | --- | --- |
-| Frontend | Next.js 16 / React | Vercel: `https://crease-bice.vercel.app` |
-| API | Python FastAPI | Render: `https://crease-api-u8uy.onrender.com` |
-| Database | Neon Postgres | Neon project `crease` / `red-truth-68796652` |
+| Frontend | Next.js 16 / React | Vercel: `https://Zappa-bice.vercel.app` |
+| API | Python FastAPI | Render: `https://Zappa-api-u8uy.onrender.com` |
+| Database | Neon Postgres | Neon project `Zappa` / `red-truth-68796652` |
 | GitHub | OAuth App for sign-in + GitHub App for repositories | Configured by owner |
 | Vercel | Connectable account integration | Configured by owner |
-| Legacy backend experiment | Cloudflare Python Worker | `crease-api`; unusable on the free Workers CPU limit, Render is the active backend |
+| Legacy backend experiment | Cloudflare Python Worker | `Zappa-api`; unusable on the free Workers CPU limit, Render is the active backend |
 
 Vercel forwards `/api/*` to Render using the Vercel production `BACKEND_URL` environment variable.
 
@@ -44,15 +44,15 @@ Vercel forwards `/api/*` to Render using the Vercel production `BACKEND_URL` env
 - `app/dashboard/VercelGitSettings.tsx` — Vercel integration UI.
 - `backend/main.py` — FastAPI app, OAuth, projects, events, GitHub and Vercel endpoints.
 - `backend/github_install.py` — creates GitHub installation/activation pull requests.
-- `public/crease.js` — standalone browser tracker.
-- `packages/crease-analytics` — npm package source.
+- `public/Zappa.js` — standalone browser tracker.
+- `packages/Zappa-analytics` — npm package source.
 - `app/docs/page.tsx` — public package usage page at `/docs`.
 
 ## What is working
 
 ### Authentication and projects
 
-- GitHub OAuth sign-in uses `https://crease-bice.vercel.app/api/auth/callback` in production.
+- GitHub OAuth sign-in uses `https://Zappa-bice.vercel.app/api/auth/callback` in production.
 - Users can create projects and get dedicated URLs such as `/dashboard/projects/:id`.
 - Each project page now has real tabs. Only the selected tab’s content is displayed.
 
@@ -82,7 +82,7 @@ Vercel forwards `/api/*` to Render using the Vercel production `BACKEND_URL` env
   - `app/layout.tsx`
   - `app/layout.jsx`
 - Existing tracking code for `amansagar.in` is present in `src/app/layout.tsx`.
-- If an existing installation waits for `crease:consent` but no consent manager dispatches that event, the UI offers **Prepare tracking pull request**. That creates a reviewable GitHub PR changing startup to `load` instead of `crease:consent`.
+- If an existing installation waits for `Zappa:consent` but no consent manager dispatches that event, the UI offers **Prepare tracking pull request**. That creates a reviewable GitHub PR changing startup to `load` instead of `Zappa:consent`.
 
 ### Vercel integration
 
@@ -91,7 +91,7 @@ Vercel forwards `/api/*` to Render using the Vercel production `BACKEND_URL` env
 - The Vercel integration redirect URL must be:
 
 ```text
-https://crease-bice.vercel.app/api/vercel/callback
+https://Zappa-bice.vercel.app/api/vercel/callback
 ```
 
 ## Required external configuration
@@ -104,9 +104,9 @@ The Render service needs these values:
 
 ```text
 DATABASE_URL
-FRONTEND_URL=https://crease-bice.vercel.app
-PUBLIC_API_URL=https://crease-bice.vercel.app
-CREASE_PUBLIC_ORIGIN=https://crease-bice.vercel.app
+FRONTEND_URL=https://Zappa-bice.vercel.app
+PUBLIC_API_URL=https://Zappa-bice.vercel.app
+Zappa_PUBLIC_ORIGIN=https://Zappa-bice.vercel.app
 COOKIE_SECURE=true
 PYTHON_VERSION=3.12.11
 GITHUB_CLIENT_ID
@@ -130,15 +130,15 @@ The OAuth App client ID is configured in Render as `GITHUB_CLIENT_ID`.
 Production callback:
 
 ```text
-https://crease-bice.vercel.app/api/auth/callback
+https://Zappa-bice.vercel.app/api/auth/callback
 ```
 
 ### GitHub App — repository access
 
-The GitHub App is `CREASE-APP`. It must use:
+The GitHub App is `Zappa-APP`. It must use:
 
 ```text
-https://crease-bice.vercel.app/api/github-app/callback
+https://Zappa-bice.vercel.app/api/github-app/callback
 ```
 
 Required repository permissions:
@@ -154,44 +154,44 @@ After changing permissions, the existing installation must accept the new permis
 The Vercel Integration’s redirect URL must be:
 
 ```text
-https://crease-bice.vercel.app/api/vercel/callback
+https://Zappa-bice.vercel.app/api/vercel/callback
 ```
 
 Ensure the integration is installed on the relevant Vercel team and granted access to the projects users should see.
 
 ## Npm package
 
-The source package is `packages/crease-analytics` and is named `@crease/analytics`.
+The source package is `packages/Zappa-analytics` and is named `@Zappa/analytics`.
 
 Exports:
 
 ```ts
-import { init } from '@crease/analytics';
-import { Analytics } from '@crease/analytics/next';
+import { init } from '@Zappa/analytics';
+import { Analytics } from '@Zappa/analytics/next';
 ```
 
 Next.js usage:
 
 ```tsx
-import { Analytics } from '@crease/analytics/next';
+import { Analytics } from '@Zappa/analytics/next';
 
-<Analytics projectId="YOUR_CREASE_PROJECT_ID" />
+<Analytics projectId="YOUR_Zappa_PROJECT_ID" />
 ```
 
 The package was verified with a direct Node ESM import. The docs page is `/docs`.
 
-It is **not confirmed published to npm**. `npm whoami` reported no npm login and npm reported that `@crease/analytics` does not currently exist.
+It is **not confirmed published to npm**. `npm whoami` reported no npm login and npm reported that `@Zappa/analytics` does not currently exist.
 
 To publish, the owner must run:
 
 ```bash
 npm login
-cd packages/crease-analytics
+cd packages/Zappa-analytics
 npm pack --dry-run
 npm publish --access public
 ```
 
-The npm account must own the `@crease` scope. If it does not, choose a package name/scope that the owner controls before publishing.
+The npm account must own the `@Zappa` scope. If it does not, choose a package name/scope that the owner controls before publishing.
 
 ## Validation already performed
 
@@ -203,7 +203,7 @@ The npm account must own the `@crease` scope. If it does not, choose a package n
 ## Current limitations and priorities
 
 1. **Fix Vercel project discovery.** The Vercel UI says the account is connected but returns no available projects. Inspect OAuth token scope/team context and Vercel integration installation configuration.
-2. **Publish `@crease/analytics`.** Login to npm and confirm scope ownership first.
+2. **Publish `@Zappa/analytics`.** Login to npm and confirm scope ownership first.
 3. **Improve analytics accuracy.** Country data is unknown. A trusted proxy/edge geo strategy is needed before enabling geo headers.
 4. **Keep SPA tracking covered.** Both the standalone tracker and npm package now observe History API changes, query-only route changes, and `popstate`; keep these behaviors covered when changing the SDK.
 5. **Add durable schema migrations and scheduled retention cleanup.** Current schema uses `CREATE TABLE IF NOT EXISTS`; retention cleanup is not scheduled.
@@ -212,19 +212,19 @@ The npm account must own the `@crease` scope. If it does not, choose a package n
 
 ## Production hardening, database migration, and dashboard update (deployed 2026-11-13)
 
-- Both `sdk/crease.js` and `packages/crease-analytics/index.js` now observe `pushState`, `replaceState`, query-only route changes, and `popstate`; duplicate URLs are suppressed and navigation is not blocked.
+- Both `sdk/Zappa.js` and `packages/Zappa-analytics/index.js` now observe `pushState`, `replaceState`, query-only route changes, and `popstate`; duplicate URLs are suppressed and navigation is not blocked.
 - SDK visitor and session IDs now use shared first-party local storage. Session IDs rotate after 30 minutes idle or 24 hours. API `analytics_sessions` records first/last event time, entry/exit path, visitor ID, and pageview count. Duration is approximate based on received events.
-- The ingestion OPTIONS response now permits `X-Crease-Key`, which the SDK sends.
+- The ingestion OPTIONS response now permits `X-Zappa-Key`, which the SDK sends.
 - `backend/expire.py` deletes expired session records with expired events. Project deletion and retention-setting updates also clear corresponding session records.
 - API/SDK documentation was updated. Python compilation passed, the SDK test file passed 5/5, and `npx tsc --noEmit` passed. The full Next build compiled and passed TypeScript but failed during prerender with a Windows `EPERM` creating `.next` segment folders. A local browser preview could not reach localhost from the Codex environment.
 - The backend now requires `DATABASE_URL` and refuses SQLite URLs. This prevents the Windows development environment or a misconfigured deployment from silently creating a local SQLite database.
 - `/health` now verifies the configured database with `SELECT 1` and does not return credentials.
 - Neon was checked read-only: it contains one user, one project, and 16 events, with eight distinct event session IDs. The local SQLite file is an older copy of that same GitHub identity/site, with different IDs and zero events, so copying its rows would create duplicates. No local SQLite records were imported.
 - API startup applies additive idempotent schema setup and backfills `analytics_sessions` from existing event history using replacement upserts, so a restart will not double-count. The deployment created the missing `analytics_sessions` and `rate_limits` tables and backfilled eight session rows.
-- The deployed Render service `crease-api` at `https://crease-api-u8uy.onrender.com` returned HTTP 200 from `/health` with `database: connected`. Neon still has one user, one project, and all 16 events. No SQLite records were imported because the local snapshot is a stale duplicate with zero events.
+- The deployed Render service `Zappa-api` at `https://Zappa-api-u8uy.onrender.com` returned HTTP 200 from `/health` with `database: connected`. Neon still has one user, one project, and all 16 events. No SQLite records were imported because the local snapshot is a stale duplicate with zero events.
 - Direct database connections from this Windows environment time out; Neon MCP read-only queries work. The full backend API test suite remains unverified in this environment.
 - The temporary Neon test branch `codex-test-session-hardening` expires automatically and was created only for isolated testing; it was not promoted to production.
-- Commit `c938fdc` (database hardening/migration) and `3ddfa9e` (dashboard) are pushed to `deploy/crease-mvp`. Render auto-deployed both; the latest Render deploy is live.
+- Commit `c938fdc` (database hardening/migration) and `3ddfa9e` (dashboard) are pushed to `deploy/Zappa-mvp`. Render auto-deployed both; the latest Render deploy is live.
 - The dashboard now uses a dark project sidebar with Analytics sections and opens the single project at `/dashboard`; “All projects” returns to the workspace list. Vercel’s connector currently lists only `true-memory`, and no Vercel deployment exists for the dashboard commit. Preserve the unrelated uncommitted `docs/IMPROVEMENT_AUDIT.md` edit.
 - Other production hardening items remain open: event schemas/idempotency quotas beyond current controls, versioned migrations, Vercel project discovery, property filtering, scheduled retention, account deletion, and complete security/tenant review.
 
@@ -254,9 +254,9 @@ The npm account must own the `@crease` scope. If it does not, choose a package n
 
 ## Stripe sandbox verification update
 
-- The user confirmed that Crease connects merchants' existing Stripe accounts for revenue analytics and does not route their funds or payouts. Stripe CLI `Crease development` is in test mode; always verify mode before testing.
+- The user confirmed that Zappa connects merchants' existing Stripe accounts for revenue analytics and does not route their funds or payouts. Stripe CLI `Zappa development` is in test mode; always verify mode before testing.
 - A real sandbox PaymentIntent for USD 12.00 and a USD 3.00 partial refund were delivered through the Stripe CLI to the local FastAPI webhook and recorded correctly in a disposable PostgreSQL database (original amount 1200, refund 300, USD, live_mode false). Temporary listeners, database, keys and test dependencies were removed. This verifies only that narrow charge/refund path, not production readiness, Connect, subscriptions, disputes, full reconciliation, or customer-to-visitor association. The CLI's built-in trigger fixture failed on a deprecated payment method parameter; a sandbox PaymentIntent using current dynamic defaults succeeded.
-- The Stripe MCP implementation planner became available but returned that it needs more business context. Awaiting the user's description of what Crease sells and whether payments are subscriptions, one-time, invoices, or a combination. Do not guess these business decisions.
+- The Stripe MCP implementation planner became available but returned that it needs more business context. Awaiting the user's description of what Zappa sells and whether payments are subscriptions, one-time, invoices, or a combination. Do not guess these business decisions.
 
 Acquisition reporting: project-owner GET /api/projects/{id}/acquisition supports first, last, and last-non-direct observed touchpoints. See docs/ACQUISITION_REPORT.md. No revenue attribution is inferred. PostgreSQL integration tests pass locally; no production deployment performed.
 
@@ -292,16 +292,16 @@ Overview acquisition source search and CSV export operate on the API's first 50 
 - The project analytics surface remains intentionally dark-only; the site theme toggle is now rendered only on theme-aware pages (workspace list) instead of being a no-op control inside the analytics header.
 - Repaired mojibake text in `AcquisitionSection.tsx`, `CampaignsSection.tsx` and `PagesSection.tsx` (dashes, ellipsis, smart quotes, sort arrows, middle dot) that had been committed double-encoded.
 - Verified with a disposable PostgreSQL cluster on port 5433 plus a seeded demo project (user `u_demo`): `GET /api/me`, `GET /api/projects/{id}/overview?start=&end=&model=first_touch` returned real data, and Chrome CDP screenshots covered desktop 1440x900, tablet 834x1112, mobile 390x844, the mobile drawer, and the workspace list in both themes with no console errors.
-- Backend deploy: `deploy/crease-mvp` advanced to `89eba82` with the attribution/acquisition/overview commits and `0003_attribution_touchpoints`, and without `0004_payment_foundation` or any Stripe/payment code. Production returns 401 (auth required) instead of 404 for the overview route after the Render redeploy.
+- Backend deploy: `deploy/Zappa-mvp` advanced to `89eba82` with the attribution/acquisition/overview commits and `0003_attribution_touchpoints`, and without `0004_payment_foundation` or any Stripe/payment code. Production returns 401 (auth required) instead of 404 for the overview route after the Render redeploy.
 - Direct TCP to Neon is refused from this environment, so revision `0003` was applied through Neon's HTTPS SQL endpoint (`POST https://<endpoint>/sql` with `Neon-Connection-String`): the `attribution_touchpoints` table and both indexes were created and `alembic_version` was stamped `0003_attribution_touchpoints`. Future migrations need the same connection path, which only Render or the owner's network currently has.
 
 ## Launch-readiness pass for a free analytics MVP (2026-11-18)
 
 - Added server-side bot filtering (`FILTER_BOTS`, default `true`): batches whose `User-Agent` matches known crawlers, monitors, or automation clients are acknowledged with `{ "accepted": 0, "filtered": "bot" }` and never stored. Filtering happens after project, write-key, and origin validation, so invalid callers still receive their normal errors.
-- Made retention self-scheduling. The API runs one pass 30 seconds after startup and then every `RETENTION_INTERVAL_HOURS` (default 24) in a background thread, which removes the previous dependency on an external cron service. `POST /internal/retention` still exists for external triggers and requires `X-Crease-Retention-Secret` when `RETENTION_SECRET` is configured. `backend/expire.py` now checks `to_regclass` before touching optional tables, so it also runs on databases without the payment foundation or property migrations.
+- Made retention self-scheduling. The API runs one pass 30 seconds after startup and then every `RETENTION_INTERVAL_HOURS` (default 24) in a background thread, which removes the previous dependency on an external cron service. `POST /internal/retention` still exists for external triggers and requires `X-Zappa-Retention-Secret` when `RETENTION_SECRET` is configured. `backend/expire.py` now checks `to_regclass` before touching optional tables, so it also runs on databases without the payment foundation or property migrations.
 - Country is trusted on `/internal/events` whenever `GEO_FORWARD_SECRET` authenticated the request, so `TRUST_VERCEL_GEO` now defaults to `true`. Public `/api/events` still never reads country headers. Country remains `Unknown` in production until the same secret is set on both Render and Vercel and `BACKEND_URL` points at the Render origin.
 - `GET /health` now reports `ingestion.bot_filter`, `ingestion.geo_forwarding`, and `retention.scheduled_hours` / `retention.external_trigger` booleans without exposing secrets.
 - Removed fabricated customer testimonials from the landing page and replaced them with factual product principles. Removed the unenforced "one project free forever" promise: pricing and the landing page now state that unlimited projects are free during early access, with a separate open-source/self-host plan. The retention FAQ now mentions the cleanup job.
-- Verification: 39 backend tests pass against an isolated PostgreSQL schema (adds bot filtering, geo default, retention endpoint, scheduled retention, and missing-table tests); `npx tsc --noEmit` and `npm run build` pass; SDK tests 8/8 and analytics package tests 2/2 pass. A local uvicorn run against `crease_demo` confirmed `GET /health`, bot rejection with a Googlebot UA, normal ingestion, authenticated overview data, the 401/200 retention endpoint behavior, and a startup retention pass deleting an expired probe event with clear logs.
-- The docs page and npm README no longer lead with an unpublished package. `app/docs/page.tsx` now starts with the working script-tag install and states that `@crease/analytics` lives in `packages/crease-analytics` and is not on npm yet; the package README example uses a numeric property because string properties are dropped by the SDK.
+- Verification: 39 backend tests pass against an isolated PostgreSQL schema (adds bot filtering, geo default, retention endpoint, scheduled retention, and missing-table tests); `npx tsc --noEmit` and `npm run build` pass; SDK tests 8/8 and analytics package tests 2/2 pass. A local uvicorn run against `Zappa_demo` confirmed `GET /health`, bot rejection with a Googlebot UA, normal ingestion, authenticated overview data, the 401/200 retention endpoint behavior, and a startup retention pass deleting an expired probe event with clear logs.
+- The docs page and npm README no longer lead with an unpublished package. `app/docs/page.tsx` now starts with the working script-tag install and states that `@Zappa/analytics` lives in `packages/Zappa-analytics` and is not on npm yet; the package README example uses a numeric property because string properties are dropped by the SDK.
 - Still outstanding for a broad launch: set `GEO_FORWARD_SECRET` on Render and Vercel for country data; add error monitoring and database backups; complete the security review; Render free-tier cold starts remain.

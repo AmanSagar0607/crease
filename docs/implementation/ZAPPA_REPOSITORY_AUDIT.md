@@ -1,7 +1,7 @@
 # Zappa repository audit
 
 **Audit date:** 2026-11-18\
-**Source:** `https://github.com/AmanSagar0607/crease`, branch `main`, commit `ca9f049` (clean checkout at audit). The separate shared `Zappa` repository URL initially present in project context contains only a license; the user then supplied this Crease repository as the intended source. User confirmed Zappa is the customer-facing name and Clerk the only auth provider.
+**Source:** `https://github.com/AmanSagar0607/Zappa`, branch `main`, commit `ca9f049` (clean checkout at audit). The separate shared `Zappa` repository URL initially present in project context contains only a license; the user then supplied this Zappa repository as the intended source. User confirmed Zappa is the customer-facing name and Clerk the only auth provider.
 
 ## Current architecture
 
@@ -15,7 +15,7 @@
 ## Existing implemented functionality
 
 - Project workspace and individual project routing, project CRUD, manual domains and DNS ownership verification.
-- Standalone tracker `public/crease.js`, `sdk/crease.js`, and `packages/crease-analytics` with page views, SPA route detection, custom event capture, consent-aware initialization/opt-out, batching and retry behavior. Public compatibility identifiers must remain stable.
+- Standalone tracker `public/Zappa.js`, `sdk/Zappa.js`, and `packages/Zappa-analytics` with page views, SPA route detection, custom event capture, consent-aware initialization/opt-out, batching and retry behavior. Public compatibility identifiers must remain stable.
 - Event ingestion, project write-key generation/rotation, per-project origin/domain checks, idempotency, payload checks, fixed-window database-backed rate limiting, bot filtering and data retention scheduling.
 - Dashboard overview with actual visitors, sessions, pageviews, previous period, time series, acquisition model selection, conversion event selection, campaign/landing page summaries, recent activity, property filters and UTC period selection.
 - Acquisition reports for first touch, last touch, last non-direct touch. Documentation explicitly distinguishes observed touchpoint visitors from revenue or confirmed direct traffic.

@@ -4,13 +4,13 @@ The FastAPI service exposes its interactive OpenAPI reference at `/docs` and the
 
 ## Ingest events
 
-`POST /api/events` accepts a JSON batch of up to 20 events. Send `Content-Type: application/json` and `X-Crease-Key: <project write key>`. The collector checks the write key, verified project domain, allowed origin, payload shape, and event timestamp. The project ID is public and is not an authentication credential.
+`POST /api/events` accepts a JSON batch of up to 20 events. Send `Content-Type: application/json` and `X-Zappa-Key: <project write key>`. The collector checks the write key, verified project domain, allowed origin, payload shape, and event timestamp. The project ID is public and is not an authentication credential.
 
 Each event contains `id`, `name`, `timestamp`, `path`, optional `visitorId`, optional `sessionId`, `referrer`, and numeric or boolean `properties`. Reusing an event ID within one project is idempotent. Event paths exclude query strings and fragments. The SDK sends `schemaVersion: 1`; older clients may omit it. `sessionId` is accepted for compatibility but the collector assigns the authoritative session server-side.
 
 The collector responds with `{ "accepted": n }`, where `n` is the number of newly stored events. It may return 401 for an invalid write key, 403 for an unverified project or rejected origin, 404 for an unknown project, 413 for an oversized request, 422 for an invalid event, or 429 when a configured shared database rate limit is reached. Transient delivery remains best effort; SDKs retry network errors and server/rate-limit responses.
 
-For cross-origin browser requests, the preflight allows `Content-Type` and `X-Crease-Key`. Origin checks reduce accidental cross-site use but do not authenticate a visitor and do not make public browser events unforgeable.
+For cross-origin browser requests, the preflight allows `Content-Type` and `X-Zappa-Key`. Origin checks reduce accidental cross-site use but do not authenticate a visitor and do not make public browser events unforgeable.
 
 Country is accepted only on `/internal/events`, which authenticates `GEO_FORWARD_SECRET` first. Forwarded values must be ISO 3166-1 alpha-2 and are stored when `TRUST_VERCEL_GEO` is true (the default). Public `/api/events` never trusts country headers. Missing, disabled, or unrecognized country is stored as unknown; malformed values are rejected with 422.
 
@@ -18,11 +18,11 @@ Requests whose `User-Agent` matches a known crawler, uptime monitor, or automati
 
 ## Retention job
 
-`POST /internal/retention` deletes events, session summaries, touchpoints, event properties, and (when those tables exist) expired payment rows for every project according to its `retention_days`. It requires `X-Crease-Retention-Secret` to match `RETENTION_SECRET`; when the secret is unset the route returns 401. The response reports `projects`, `events`, and `sessions` totals. The API also runs retention in-process 30 seconds after startup and every `RETENTION_INTERVAL_HOURS` (default 24), which covers hosts without a cron service. Set `RETENTION_INTERVAL_HOURS=0` to disable the loop and schedule `python backend/expire.py` yourself.
+`POST /internal/retention` deletes events, session summaries, touchpoints, event properties, and (when those tables exist) expired payment rows for every project according to its `retention_days`. It requires `X-Zappa-Retention-Secret` to match `RETENTION_SECRET`; when the secret is unset the route returns 401. The response reports `projects`, `events`, and `sessions` totals. The API also runs retention in-process 30 seconds after startup and every `RETENTION_INTERVAL_HOURS` (default 24), which covers hosts without a cron service. Set `RETENTION_INTERVAL_HOURS=0` to disable the loop and schedule `python backend/expire.py` yourself.
 
 ## Project APIs
 
-Authenticated project routes require the Crease session cookie and check project ownership server-side. The current routes include project CRUD, `/api/projects/{id}/summary?days=7|30|90`, `/api/projects/{id}/properties`, `/api/projects/{id}/events`, `/api/projects/{id}/funnel`, `/api/projects/{id}/funnel/multi`, project-scoped goals, write-key rotation, retention configuration, domain verification, GitHub repository installation, and Vercel integration settings. See the OpenAPI schema for request and response details from the running version.
+Authenticated project routes require the Zappa session cookie and check project ownership server-side. The current routes include project CRUD, `/api/projects/{id}/summary?days=7|30|90`, `/api/projects/{id}/properties`, `/api/projects/{id}/events`, `/api/projects/{id}/funnel`, `/api/projects/{id}/funnel/multi`, project-scoped goals, write-key rotation, retention configuration, domain verification, GitHub repository installation, and Vercel integration settings. See the OpenAPI schema for request and response details from the running version.
 
 ## Property filters
 

@@ -28,16 +28,16 @@ async def installation_status(token: str, repository: str, project_id: str):
                 if content.get('encoding') != 'base64' or content.get('size', 0) > 500_000: raise HTTPException(422, 'The entry file cannot be inspected.')
                 try: source = base64.b64decode(content['content'], validate=False).decode('utf-8')
                 except (ValueError, UnicodeError, KeyError): raise HTTPException(422, 'The entry file cannot be inspected.')
-                state = 'not_installed' if 'data-crease-install' not in source else ('installed' if project_id in source else 'different_project')
+                state = 'not_installed' if 'data-Zappa-install' not in source else ('installed' if project_id in source else 'different_project')
                 return {'state':state, 'path':path, 'branch':branch}
     except httpx.RequestError as exc: raise HTTPException(503, 'Could not connect to GitHub') from exc
     raise HTTPException(422, 'No supported entry file found, or GitHub App Contents access is missing.')
 
 async def enable_tracking_pr(token: str, repository: str, project_id: str):
-    """Create a reviewable PR that changes Crease's consent listener to page-load tracking."""
+    """Create a reviewable PR that changes Zappa's consent listener to page-load tracking."""
     status = await installation_status(token, repository, project_id)
     if status['state'] != 'installed':
-        raise HTTPException(409, 'Crease installation was not found for this project')
+        raise HTTPException(409, 'Zappa installation was not found for this project')
     headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'}
     try:
         async with httpx.AsyncClient(base_url='https://api.github.com', headers=headers, timeout=20) as client:
@@ -48,17 +48,17 @@ async def enable_tracking_pr(token: str, repository: str, project_id: str):
             if content_response.status_code != 200: raise HTTPException(403, 'Cannot read the installed entry file')
             content = content_response.json()
             source = base64.b64decode(content['content']).decode('utf-8')
-            old = "window.addEventListener('crease:consent',"
-            if old not in source: raise HTTPException(409, 'This installation does not use Crease’s consent listener')
+            old = "window.addEventListener('Zappa:consent',"
+            if old not in source: raise HTTPException(409, 'This installation does not use Zappa’s consent listener')
             updated = source.replace(old, "window.addEventListener('load',", 1)
             branch_response = await client.get(f'/repos/{repository}/branches/{base}')
             if branch_response.status_code != 200: raise HTTPException(403, 'Cannot create a branch in this repository')
-            branch = 'crease/enable-tracking-' + uuid4().hex[:12]
+            branch = 'Zappa/enable-tracking-' + uuid4().hex[:12]
             create_branch = await client.post(f'/repos/{repository}/git/refs', json={'ref':'refs/heads/'+branch,'sha':branch_response.json()['commit']['sha']})
             if create_branch.status_code >= 400: raise HTTPException(400, 'GitHub could not create the tracking branch')
-            update = await client.put(f"/repos/{repository}/contents/{status['path']}", json={'message':'Enable Crease tracking on page load','content':base64.b64encode(updated.encode()).decode(),'sha':content['sha'],'branch':branch})
+            update = await client.put(f"/repos/{repository}/contents/{status['path']}", json={'message':'Enable Zappa tracking on page load','content':base64.b64encode(updated.encode()).decode(),'sha':content['sha'],'branch':branch})
             if update.status_code >= 400: raise HTTPException(400, 'GitHub could not update the installation file')
-            pull = await client.post(f'/repos/{repository}/pulls', json={'title':'Enable Crease tracking on page load','head':branch,'base':base,'body':'Updates the existing Crease installation to initialize on page load. Review your consent requirements before merging.'})
+            pull = await client.post(f'/repos/{repository}/pulls', json={'title':'Enable Zappa tracking on page load','head':branch,'base':base,'body':'Updates the existing Zappa installation to initialize on page load. Review your consent requirements before merging.'})
             if pull.status_code >= 400: raise HTTPException(400, 'GitHub could not create the pull request')
             return {'url':pull.json()['html_url']}
     except httpx.RequestError as exc: raise HTTPException(503, 'Could not connect to GitHub') from exc
@@ -66,13 +66,13 @@ async def enable_tracking_pr(token: str, repository: str, project_id: str):
 async def create_install_pr(token: str, repository: str, path: str, project_id: str, public_url: str, write_key: str):
     if not REPO.fullmatch(repository) or '..' in repository:
         raise HTTPException(422, 'Enter a GitHub repository as owner/name')
-    if not re.fullmatch(r'crease_[A-Za-z0-9_-]{16,}', write_key):
+    if not re.fullmatch(r'Zappa_[A-Za-z0-9_-]{16,}', write_key):
         raise HTTPException(422, 'Generate a valid project write key before creating an installation pull request')
     if not re.fullmatch(r'[A-Za-z0-9_./-]+\.html?', path) or '..' in path or path.startswith('/'):
         raise HTTPException(422, 'Enter a relative HTML file path, such as index.html')
     parsed = urlsplit(public_url)
     if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ('', '/') or parsed.hostname in ('localhost', '127.0.0.1'):
-        raise HTTPException(422, 'Crease must have a public HTTPS origin before creating an installation pull request')
+        raise HTTPException(422, 'Zappa must have a public HTTPS origin before creating an installation pull request')
     origin = 'https://' + parsed.netloc
     headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'}
     async with httpx.AsyncClient(base_url='https://api.github.com', headers=headers, timeout=20) as client:
@@ -99,18 +99,18 @@ async def create_install_pr(token: str, repository: str, path: str, project_id: 
             raise HTTPException(422, 'The file must be a text HTML file smaller than 500 KB')
         try: source = base64.b64decode(contents['content']).decode('utf-8')
         except (ValueError, UnicodeError): raise HTTPException(422, 'The HTML file must be UTF-8')
-        if 'data-crease-install' in source: raise HTTPException(409, 'This file already contains a Crease installation')
+        if 'data-Zappa-install' in source: raise HTTPException(409, 'This file already contains a Zappa installation')
         closing = r'</head\s*>' if kind == 'html' else r'</body\s*>'
         if len(re.findall(closing, source, re.I)) != 1:
             raise HTTPException(422, 'The entry file must contain exactly one closing head tag (HTML) or body tag (Next.js layout).')
-        snippet = f'''\n<!-- Crease: dispatch crease:consent after visitor consent is granted. -->\n<script src="{origin}/crease.js" data-crease-install defer></script>\n<script>\n  window.addEventListener('crease:consent', function () {{\n    if (window.crease) window.crease.init({{ projectId: {json.dumps(project_id)}, endpoint: {json.dumps(origin+'/api/events')}, writeKey: {json.dumps(write_key)} }});\n  }});\n</script>\n'''
+        snippet = f'''\n<!-- Zappa: dispatch Zappa:consent after visitor consent is granted. -->\n<script src="{origin}/Zappa.js" data-Zappa-install defer></script>\n<script>\n  window.addEventListener('Zappa:consent', function () {{\n    if (window.Zappa) window.Zappa.init({{ projectId: {json.dumps(project_id)}, endpoint: {json.dumps(origin+'/api/events')}, writeKey: {json.dumps(write_key)} }});\n  }});\n</script>\n'''
         if kind == 'next':
-            script = "window.addEventListener('crease:consent', function () { var s = document.createElement('script'); s.src = " + json.dumps(origin+'/crease.js') + "; s.onload = function () { if (window.crease) window.crease.init({ projectId: " + json.dumps(project_id) + ", endpoint: " + json.dumps(origin+'/api/events') + ", writeKey: " + json.dumps(write_key) + " }); }; document.head.appendChild(s); }, { once: true });"
-            snippet = '\n<script data-crease-install dangerouslySetInnerHTML={{ __html: '+json.dumps(script)+' }} />\n'
+            script = "window.addEventListener('Zappa:consent', function () { var s = document.createElement('script'); s.src = " + json.dumps(origin+'/Zappa.js') + "; s.onload = function () { if (window.Zappa) window.Zappa.init({ projectId: " + json.dumps(project_id) + ", endpoint: " + json.dumps(origin+'/api/events') + ", writeKey: " + json.dumps(write_key) + " }); }; document.head.appendChild(s); }, { once: true });"
+            snippet = '\n<script data-Zappa-install dangerouslySetInnerHTML={{ __html: '+json.dumps(script)+' }} />\n'
         updated = re.sub(closing, lambda match: snippet + match.group(), source, count=1, flags=re.I)
         branch_info = await call('GET', f'/repos/{repository}/branches/{base}')
-        branch = 'crease/install-' + uuid4().hex[:12]
+        branch = 'Zappa/install-' + uuid4().hex[:12]
         await call('POST', f'/repos/{repository}/git/refs', json={'ref':'refs/heads/'+branch,'sha':branch_info['commit']['sha']})
-        await call('PUT', f'/repos/{repository}/contents/{path}', json={'message':'Add Crease analytics installation','content':base64.b64encode(updated.encode()).decode(),'sha':contents['sha'],'branch':branch})
-        pr = await call('POST', f'/repos/{repository}/pulls', json={'title':'Add Crease analytics','head':branch,'base':base,'body':'Adds Crease tracking. Tracking starts only when the site dispatches `window.dispatchEvent(new Event("crease:consent"))` after any required consent. Review the code and configure your consent flow before merging.'})
+        await call('PUT', f'/repos/{repository}/contents/{path}', json={'message':'Add Zappa analytics installation','content':base64.b64encode(updated.encode()).decode(),'sha':contents['sha'],'branch':branch})
+        pr = await call('POST', f'/repos/{repository}/pulls', json={'title':'Add Zappa analytics','head':branch,'base':base,'body':'Adds Zappa tracking. Tracking starts only when the site dispatches `window.dispatchEvent(new Event("Zappa:consent"))` after any required consent. Review the code and configure your consent flow before merging.'})
         return {'url':pr['html_url']}

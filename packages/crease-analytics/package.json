@@ -1,7 +1,7 @@
 {
-  "name": "@crease/analytics",
+  "name": "@Zappa/analytics",
   "version": "0.1.0",
-  "description": "Privacy-aware website analytics for Crease projects.",
+  "description": "Privacy-aware website analytics for Zappa projects.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,

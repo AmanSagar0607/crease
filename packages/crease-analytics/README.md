@@ -1,26 +1,26 @@
-# @crease/analytics
+# @Zappa/analytics
 
-Add Crease page views and custom events to a site.
+Add Zappa page views and custom events to a site.
 
 ## Next.js
 
 ```bash
-npm i @crease/analytics
+npm i @Zappa/analytics
 ```
 
 ```tsx
-import { Analytics } from '@crease/analytics/next';
+import { Analytics } from '@Zappa/analytics/next';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html><body>{children}<Analytics projectId="YOUR_PROJECT_ID" writeKey="crease_YOUR_PROJECT_WRITE_KEY" /></body></html>;
+  return <html><body>{children}<Analytics projectId="YOUR_PROJECT_ID" writeKey="Zappa_YOUR_PROJECT_WRITE_KEY" /></body></html>;
 }
 ```
 
 ## Any JavaScript site
 
 ```js
-import { init } from '@crease/analytics';
-const analytics = init({ projectId: 'YOUR_PROJECT_ID', writeKey: 'crease_YOUR_PROJECT_WRITE_KEY' });
+import { init } from '@Zappa/analytics';
+const analytics = init({ projectId: 'YOUR_PROJECT_ID', writeKey: 'Zappa_YOUR_PROJECT_WRITE_KEY' });
 analytics.track('signup_completed', { plan: 1 });
 ```
 

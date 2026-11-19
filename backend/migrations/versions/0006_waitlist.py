@@ -1,4 +1,4 @@
-"""Store consented Crease waitlist signups.
+"""Store consented Zappa waitlist signups.
 
 Revision ID: 0006_waitlist
 Revises: 0005_project_goals

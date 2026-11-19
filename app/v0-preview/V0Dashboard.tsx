@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Activity,
@@ -33,11 +33,33 @@ import ThemeToggle from '../theme-toggle';
 import { createSampleReport } from './sample-report';
 import s from './v0-preview.module.css';
 
+const ROUTE_VISITED_KEY = 'zappa:dashboard-preview-route-seen:v1';
+
 export default function V0Dashboard() {
   const report = useMemo(() => createSampleReport(), []);
+  const [animateEntrance, setAnimateEntrance] = useState(false);
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    try {
+      if (window.localStorage.getItem(ROUTE_VISITED_KEY)) return;
+    } catch {
+      // Storage can be disabled; this route can still animate in this visit.
+    }
+
+    const frame = requestAnimationFrame(() => {
+      setAnimateEntrance(true);
+      try {
+        window.localStorage.setItem(ROUTE_VISITED_KEY, '1');
+      } catch {
+        // Keep the entrance animation available for this page view.
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   return (
-    <div className={s.page}>
+    <div className={`${s.page}${animateEntrance ? ` ${s.entering}` : ''}`}>
       <TooltipProvider>
       <SidebarProvider
         className={s.layout}
@@ -129,6 +151,7 @@ export default function V0Dashboard() {
                 model="last_non_direct"
                 conversionEvent="signup"
                 filtered={false}
+                previewMotion={animateEntrance}
                 onNavigate={(section) => {
                   const target = document.getElementById(section);
                   if (target) window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - 76, behavior: 'smooth' });

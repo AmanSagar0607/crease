@@ -12,7 +12,7 @@ In one terminal, from `backend`:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements-local.txt
-$env:DATABASE_URL='postgresql+psycopg://user:password@localhost:5432/crease'
+$env:DATABASE_URL='postgresql+psycopg://user:password@localhost:5432/Zappa'
 alembic upgrade head
 uvicorn main:app --reload --port 8000
 ```
@@ -24,21 +24,21 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000/sign-up` to create an account or `/sign-in` to log in. PostgreSQL is required for the existing FastAPI service; SQLite is rejected. Set `DATABASE_URL` to a SQLAlchemy PostgreSQL URL such as `postgresql+psycopg://user:password@localhost:5432/zappa`, then run `alembic upgrade head` from `backend` before starting the API. The API no longer creates or alters tables on startup. Clerk session JWTs are verified by the backend; legacy `crease_session` cookies are not accepted. `BACKEND_URL` controls the frontend's API proxy; `FRONTEND_URL`, `CLERK_ISSUER`, `CLERK_AUTHORIZED_PARTIES` and optionally `CLERK_JWKS_URL` configure the API. Never copy provider credentials into source files.
+Open `http://localhost:3000/sign-up` to create an account or `/sign-in` to log in. PostgreSQL is required for the existing FastAPI service; SQLite is rejected. Set `DATABASE_URL` to a SQLAlchemy PostgreSQL URL such as `postgresql+psycopg://user:password@localhost:5432/zappa`, then run `alembic upgrade head` from `backend` before starting the API. The API no longer creates or alters tables on startup. Clerk session JWTs are verified by the backend; legacy `Zappa_session` cookies are not accepted. `BACKEND_URL` controls the frontend's API proxy; `FRONTEND_URL`, `CLERK_ISSUER`, `CLERK_AUTHORIZED_PARTIES` and optionally `CLERK_JWKS_URL` configure the API. Never copy provider credentials into source files.
 
 ## Tracking
 
-Copy or serve `sdk/crease.js` from your site, then initialize it only after any required visitor consent. The public file name, npm package scope, event contracts, project IDs, and `crease_` write-key format remain compatibility identifiers, not the customer-facing Zappa wordmark. Configure the project's exact hostname, the write key shown in the dashboard, and the collector URL shown in the dashboard. Before a project accepts events, it must prove domain ownership with a DNS TXT record (`crease-site-verification=<token>`) at `_crease-verification.<domain>`; the dashboard shows the token and a check button. See [SDK usage and limitations](sdk/README.md). The write key authenticates writes for one project, but it is embedded in client code; treat collector data as untrusted and rotate the key if it leaks.
+Copy or serve `sdk/Zappa.js` from your site, then initialize it only after any required visitor consent. The public file name, npm package scope, event contracts, project IDs, and `Zappa_` write-key format remain compatibility identifiers, not the customer-facing Zappa wordmark. Configure the project's exact hostname, the write key shown in the dashboard, and the collector URL shown in the dashboard. Before a project accepts events, it must prove domain ownership with a DNS TXT record (`Zappa-site-verification=<token>`) at `_Zappa-verification.<domain>`; the dashboard shows the token and a check button. See [SDK usage and limitations](sdk/README.md). The write key authenticates writes for one project, but it is embedded in client code; treat collector data as untrusted and rotate the key if it leaks.
 
 The dashboard can also create a GitHub pull request for a static HTML file, regardless of hosting provider. This requires a **separate GitHub App**, independent of Clerk account sign-in. Register it in GitHub Developer Settings with callback `http://localhost:3000/api/github-app/callback`, repository permissions Contents: read/write and Pull requests: read/write, and metadata read. Disable webhooks if unused. Set the GitHub App slug, client ID, client secret, and a generated Fernet key in `backend/.env` (see `.env.example`); restart the API. Install the app on selected repositories, then authorize it separately from Clerk account sign-in; repository access is requested only for the selected GitHub App installation. The app user token is encrypted in an HTTP-only browser cookie for one hour; configure HTTPS and `COOKIE_SECURE=true` outside local development. Repository enumeration is limited to 1,000 installations and 1,000 repositories per installation.
 
-Before creating a pull request, deploy Zappa to a publicly reachable HTTPS origin where `/crease.js` and `/api/events` work and set `CREASE_PUBLIC_ORIGIN` once on the server. The pull request adds a consent-gated snippet: the site must dispatch `crease:consent` after any required consent. Creating the pull request writes a new branch to GitHub; it does not merge or deploy it. Only a root `index.html` is supported currently. Next.js and other non-HTML entry points, Netlify account connections, and edge injection are not implemented yet.
+Before creating a pull request, deploy Zappa to a publicly reachable HTTPS origin where `/Zappa.js` and `/api/events` work and set `Zappa_PUBLIC_ORIGIN` once on the server. The pull request adds a consent-gated snippet: the site must dispatch `Zappa:consent` after any required consent. Creating the pull request writes a new branch to GitHub; it does not merge or deploy it. Only a root `index.html` is supported currently. Next.js and other non-HTML entry points, Netlify account connections, and edge injection are not implemented yet.
 
 ## Publish the npm package
 
-The reusable client package lives in [`packages/crease-analytics`](packages/crease-analytics). It exports a framework-neutral `init()` API and a Next.js `<Analytics />` component.
+The reusable client package lives in [`packages/Zappa-analytics`](packages/Zappa-analytics). It exports a framework-neutral `init()` API and a Next.js `<Analytics />` component.
 
-Before publishing, sign in to the npm account or organization that owns the `@crease` scope:
+Before publishing, sign in to the npm account or organization that owns the `@Zappa` scope:
 
 ```bash
 npm login
@@ -47,20 +47,20 @@ npm login
 Check the package contents and publish a public release:
 
 ```bash
-cd packages/crease-analytics
+cd packages/Zappa-analytics
 npm pack --dry-run
 npm publish --access public
 ```
 
-After publishing, Next.js applications can install it with `npm i @crease/analytics` and add the component below to their root layout:
+After publishing, Next.js applications can install it with `npm i @Zappa/analytics` and add the component below to their root layout:
 
 ```tsx
-import { Analytics } from '@crease/analytics/next';
+import { Analytics } from '@Zappa/analytics/next';
 
-<Analytics projectId="YOUR_CREASE_PROJECT_ID" writeKey="crease_YOUR_PROJECT_WRITE_KEY" />
+<Analytics projectId="YOUR_Zappa_PROJECT_ID" writeKey="Zappa_YOUR_PROJECT_WRITE_KEY" />
 ```
 
-For a JavaScript site, import `init` from `@crease/analytics`, pass the project ID and write key, and call `track()` for custom events. Only initialize analytics when the site's consent policy permits it.
+For a JavaScript site, import `init` from `@Zappa/analytics`, pass the project ID and write key, and call `track()` for custom events. Only initialize analytics when the site's consent policy permits it.
 
 ### Vercel Git settings (experimental)
 
@@ -69,9 +69,9 @@ Register a separate connectable-account integration in Vercel with Project read/
 ## Tests
 
 ```powershell
-node --test sdk/crease.test.cjs
+node --test sdk/Zappa.test.cjs
 cd backend
-$env:TEST_DATABASE_URL='postgresql://user:password@localhost:5432/crease_test'
+$env:TEST_DATABASE_URL='postgresql://user:password@localhost:5432/Zappa_test'
 python -m unittest test_api -v
 ```
 
@@ -81,7 +81,7 @@ The backend suite creates an isolated PostgreSQL schema per run and drops it aft
 
 See [collector API behavior](docs/api.md), [migration status and rollout steps](docs/migrations.md), and the [production deployment checklist](docs/production-checklist.md) before changing the live service.
 
-Country is unknown until the Vercel proxy and `GEO_FORWARD_SECRET` are configured; public ingestion always ignores country headers. Sessions are computed server-side: a new session starts after 30 minutes without an event from the same visitor (`SESSION_IDLE_MINUTES`, default `30`) or at a UTC day boundary. A client-supplied session ID is ignored for that decision. The API records session start/last activity, entry/exit path, and pageview count. Session duration remains approximate. Changing retention updates the setting; `python backend/expire.py` and `POST /internal/retention` delete expired events and session summaries and log counts per project. The API also runs a pass 30 seconds after startup and every 24 hours (`RETENTION_INTERVAL_HOURS`, default `24`), so the hosted deployment needs no external cron. Event ingestion uses durable fixed-window counters in the shared database: `RATE_LIMIT_IP_PER_MINUTE` defaults to `120` and `RATE_LIMIT_PROJECT_PER_MINUTE` defaults to `600`. Ingestion drops requests whose `User-Agent` identifies a crawler, monitor, or automation client (`FILTER_BOTS`, default `true`). Alembic baseline migrations are present; run `alembic upgrade head` before starting the API. Security review, Vercel integration, and full OAuth/production deployment verification remain outstanding. Custom event properties are indexed per event and filterable by key/value through `/api/projects/{id}/events` and `/api/projects/{id}/summary`; `/api/projects/{id}/properties` lists observed keys, types, and top values. A basic two-step, ordered-session funnel is available through `/api/projects/{id}/funnel` and the dashboard Funnel section. Backups need a deletion and retention policy. Public analytics collection requires a per-project write key, but the key ships in client code, so it cannot prevent a determined caller from forging events for that project. Project creation is restricted to authenticated users. Domains must pass DNS TXT ownership verification before their events are accepted; add the TXT record at `_crease-verification.<domain>` (existing root TXT records remain supported). Verification checks are limited to 5 per user and project per minute by default (`VERIFY_LIMIT_PER_MINUTE`); once verified, a project stays verified until it is deleted.
+Country is unknown until the Vercel proxy and `GEO_FORWARD_SECRET` are configured; public ingestion always ignores country headers. Sessions are computed server-side: a new session starts after 30 minutes without an event from the same visitor (`SESSION_IDLE_MINUTES`, default `30`) or at a UTC day boundary. A client-supplied session ID is ignored for that decision. The API records session start/last activity, entry/exit path, and pageview count. Session duration remains approximate. Changing retention updates the setting; `python backend/expire.py` and `POST /internal/retention` delete expired events and session summaries and log counts per project. The API also runs a pass 30 seconds after startup and every 24 hours (`RETENTION_INTERVAL_HOURS`, default `24`), so the hosted deployment needs no external cron. Event ingestion uses durable fixed-window counters in the shared database: `RATE_LIMIT_IP_PER_MINUTE` defaults to `120` and `RATE_LIMIT_PROJECT_PER_MINUTE` defaults to `600`. Ingestion drops requests whose `User-Agent` identifies a crawler, monitor, or automation client (`FILTER_BOTS`, default `true`). Alembic baseline migrations are present; run `alembic upgrade head` before starting the API. Security review, Vercel integration, and full OAuth/production deployment verification remain outstanding. Custom event properties are indexed per event and filterable by key/value through `/api/projects/{id}/events` and `/api/projects/{id}/summary`; `/api/projects/{id}/properties` lists observed keys, types, and top values. A basic two-step, ordered-session funnel is available through `/api/projects/{id}/funnel` and the dashboard Funnel section. Backups need a deletion and retention policy. Public analytics collection requires a per-project write key, but the key ships in client code, so it cannot prevent a determined caller from forging events for that project. Project creation is restricted to authenticated users. Domains must pass DNS TXT ownership verification before their events are accepted; add the TXT record at `_Zappa-verification.<domain>` (existing root TXT records remain supported). Verification checks are limited to 5 per user and project per minute by default (`VERIFY_LIMIT_PER_MINUTE`); once verified, a project stays verified until it is deleted.
 
 
 ### Country geolocation deployment

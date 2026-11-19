@@ -10,12 +10,12 @@ Reviewed the project navigation in `DashboardView`, the shared shadcn sidebar an
 - `SheetContent` renders a close button by default, but the sidebar explicitly hid every direct button. Restored the close button and sized it to a 44px target. The mobile header’s sidebar trigger is also 44px.
 - The previous footer offset was 218px although the configured sidebar width is 240px. The expanded desktop footer now uses `var(--sidebar-width)`; the collapsed and mobile layouts continue to use zero offset.
 - The mobile header hides its Account link. Added an Account link to the mobile drawer beside the user/sign-out actions; selecting a drawer link closes the drawer through the existing `ProjectNavigation` handler.
-- Increased desktop nav labels to 14px and drawer labels to 13px, raised drawer rows to 44px, and increased compact workspace/caption text. Mobile active-state styling now uses the same vertical accent treatment as desktop rather than a horizontal-tab marker.
+- InZappad desktop nav labels to 14px and drawer labels to 13px, raised drawer rows to 44px, and inZappad compact workspace/caption text. Mobile active-state styling now uses the same vertical accent treatment as desktop rather than a horizontal-tab marker.
 
 ## Verification
 
 - `npm run build` — passed after the navigation changes.
-- `node --test sdk/crease.test.cjs` — 8 tests passed.
+- `node --test sdk/Zappa.test.cjs` — 8 tests passed.
 - Python syntax checks and `git diff --check` — passed.
 - This was a source-level responsive audit, not an authenticated visual browser acceptance run. A Clerk-authenticated dashboard session/test account was not available in the local QA context, so no dashboard screenshot is claimed.
 

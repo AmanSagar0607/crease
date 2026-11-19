@@ -5,7 +5,7 @@
 -- db`. Fixtures use unique test-only IDs inside a transaction and are rolled back;
 -- no production connection or production data is used.
 begin;
-select plan(12);
+select plan(15);
 
 -- Fixture setup runs as the local database test owner before switching to authenticated.
 insert into public.workspaces(id, name, created_by) values
@@ -31,6 +31,8 @@ on conflict (project_id, id) do nothing;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"user_test_clerk_a","role":"authenticated"}', true);
 select is((select count(*)::int from public.workspaces where id = 'test-ws-rls-a'), 1, 'identity A sees own workspace');
+select is((select count(*)::int from public.workspace_memberships where workspace_id = 'test-ws-rls-a' and user_id = 'user_test_clerk_a'), 1, 'identity A sees own membership');
+select throws_ok($$update public.workspace_memberships set role = 'admin' where workspace_id = 'test-ws-rls-a' and user_id = 'user_test_clerk_a'$$, '42501', null, 'identity A cannot promote itself');
 select is((select count(*)::int from public.projects where id = 'test-project-rls-a'), 1, 'identity A sees own project');
 select is((select count(*)::int from public.projects where id = 'test-project-rls-b'), 0, 'identity A cannot read B project');
 select is((select count(*)::int from public.events where id = 'test-event-rls-a'), 1, 'identity A sees related event');
@@ -39,6 +41,7 @@ select is((with changed as (update public.projects set name = 'stolen' where id 
 select is((with removed as (delete from public.projects where id = 'test-project-rls-b' returning 1) select count(*)::int from removed), 0, 'identity A cannot delete B project');
 select is((with changed as (update public.events set name = 'stolen' where project_id = 'test-project-rls-b' and id = 'test-event-rls-b' returning 1) select count(*)::int from changed), 0, 'identity A cannot update B event');
 select is((with removed as (delete from public.events where project_id = 'test-project-rls-b' and id = 'test-event-rls-b' returning 1) select count(*)::int from removed), 0, 'identity A cannot delete B event');
+select throws_ok($$insert into public.workspace_memberships(workspace_id,user_id,role) values ('test-ws-rls-b','user_test_clerk_a','owner')$$, '42501', null, 'identity A cannot add itself to B workspace');
 
 select set_config('request.jwt.claims', '{"sub":"user_test_clerk_b","role":"authenticated"}', true);
 select is((select count(*)::int from public.projects where id = 'test-project-rls-b'), 1, 'identity B sees own project');

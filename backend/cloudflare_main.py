@@ -18,8 +18,8 @@ class Default(WorkerEntrypoint):
                 password = quote(str(db.password), safe='')
                 database = quote(str(db.database), safe='')
                 os.environ['DATABASE_URL'] = f'postgresql+pg8000://{user}:{password}@{db.host}:{db.port}/{database}'
-                os.environ['CREASE_WORKER'] = '1'
-                for key in ('FRONTEND_URL', 'PUBLIC_API_URL', 'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET', 'GITHUB_APP_SLUG', 'GITHUB_APP_CLIENT_ID', 'GITHUB_APP_CLIENT_SECRET', 'GITHUB_APP_TOKEN_KEY', 'CREASE_PUBLIC_ORIGIN', 'COOKIE_SECURE', 'VERCEL_INTEGRATION_SLUG', 'VERCEL_INTEGRATION_CLIENT_ID', 'VERCEL_INTEGRATION_CLIENT_SECRET', 'VERCEL_TOKEN_KEY'):
+                os.environ['Zappa_WORKER'] = '1'
+                for key in ('FRONTEND_URL', 'PUBLIC_API_URL', 'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET', 'GITHUB_APP_SLUG', 'GITHUB_APP_CLIENT_ID', 'GITHUB_APP_CLIENT_SECRET', 'GITHUB_APP_TOKEN_KEY', 'Zappa_PUBLIC_ORIGIN', 'COOKIE_SECURE', 'VERCEL_INTEGRATION_SLUG', 'VERCEL_INTEGRATION_CLIENT_ID', 'VERCEL_INTEGRATION_CLIENT_SECRET', 'VERCEL_TOKEN_KEY'):
                     value = getattr(self.env, key, None)
                     if value is not None: os.environ[key] = str(value)
                 from main import app

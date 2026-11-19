@@ -1,4 +1,4 @@
-"""Baseline schema matching the pre-Alembic Crease database.
+"""Baseline schema matching the pre-Alembic Zappa database.
 
 Revision ID: 0001_baseline
 Revises:

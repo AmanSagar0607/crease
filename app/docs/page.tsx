@@ -9,24 +9,24 @@ export default function Docs() {
       <Link href="/">✳ Zappa</Link>
       <ThemeToggle />
     </header>
-    <p style={{ fontSize: 12, letterSpacing: '.1em', marginTop: 48 }}>CREASE ANALYTICS / GET STARTED</p>
+    <p style={{ fontSize: 12, letterSpacing: '.1em', marginTop: 48 }}>Zappa ANALYTICS / GET STARTED</p>
     <h1 style={{ fontSize: 42, letterSpacing: '-.05em' }}>Get started.</h1>
     <p>Count page views and send custom events from any JavaScript site, including Next.js and React.</p>
     <h2>1. Add the tracker</h2>
-    <Code>{`<script src="https://YOUR_ZAPPA_ORIGIN/crease.js" defer></script>
+    <Code>{`<script src="https://YOUR_ZAPPA_ORIGIN/Zappa.js" defer></script>
 <script>
-  // Dispatch crease:consent once your consent policy allows analytics.
-  window.addEventListener('crease:consent', function () {
+  // Dispatch Zappa:consent once your consent policy allows analytics.
+  window.addEventListener('Zappa:consent', function () {
     Zappa.init({
       projectId: 'YOUR_PROJECT_ID',
-      writeKey: 'crease_YOUR_PROJECT_WRITE_KEY',
-      endpoint: 'https://crease-bice.vercel.app/api/events'
+      writeKey: 'Zappa_YOUR_PROJECT_WRITE_KEY',
+      endpoint: 'https://Zappa-bice.vercel.app/api/events'
     });
   }, { once: true });
 </script>`}</Code>
     <p>
       The dashboard shows the same snippet with your project ID and write key filled in.
-      Zappa only records page views after <code>crease:consent</code> fires.
+      Zappa only records page views after <code>Zappa:consent</code> fires.
     </p>
     <h2>2. Deploy and visit your site</h2>
     <p>Deploy the change, visit your site, then open your Zappa project to see page views. Content blockers can prevent browser analytics from loading.</p>
@@ -35,8 +35,8 @@ export default function Docs() {
     <p>Property values must be numbers or booleans, with at most 20 properties per event. Pages and referrers are recorded automatically.</p>
     <h2>Next.js and npm</h2>
     <p>
-      The <code>@crease/analytics</code> package lives in the repository under
-      <code>packages/crease-analytics</code>. It is not published to npm yet, so use the script tag
+      The <code>@Zappa/analytics</code> package lives in the repository under
+      <code>packages/Zappa-analytics</code>. It is not published to npm yet, so use the script tag
       above or install it from the repository until it is.
     </p>
   </main>;

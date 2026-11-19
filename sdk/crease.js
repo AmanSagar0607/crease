@@ -1,9 +1,9 @@
-/* Crease browser SDK. Call init only after obtaining any required consent. */
+/* Zappa browser SDK. Call init only after obtaining any required consent. */
 (function (root) {
   'use strict';
   var options, queue = [], timer, currentUrl, currentPath, enabled = false, routeHandler, leaveHandler, visibilityHandler;
   var vitals = {}, vitalsSent = false, observerList = [];
-  var visitorKey = 'crease_visitor', sessionKey = 'crease_session';
+  var visitorKey = 'Zappa_visitor', sessionKey = 'Zappa_session';
   var sessionIdleMs = 30 * 60 * 1000, sessionMaxMs = 24 * 60 * 60 * 1000;
   function id() { return root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : null; }
   function read(key) { try { return root.localStorage.getItem(key); } catch (_) { return null; } }
@@ -67,7 +67,7 @@
     if (timer) root.clearTimeout(timer); timer = null;
     if (!enabled || !queue.length) return;
     var batch = queue.slice(0, 20); queue = queue.slice(batch.length);
-    root.fetch(options.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Crease-Key': options.writeKey }, body: JSON.stringify({ projectId: options.projectId, events: batch }), keepalive: true, credentials: 'omit' })
+    root.fetch(options.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Zappa-Key': options.writeKey }, body: JSON.stringify({ projectId: options.projectId, events: batch }), keepalive: true, credentials: 'omit' })
       .then(function (response) { if (!response.ok && (response.status === 429 || response.status >= 500)) throw new Error('Temporary ingestion failure'); })
       .catch(function () { if (enabled) { queue = batch.concat(queue).slice(0, 100); if (!timer) timer = root.setTimeout(flush, 10000); } });
     if (queue.length) schedule();
@@ -103,24 +103,24 @@
   }
   function patchHistory(method) {
     var original = root.history[method];
-    if (typeof original !== 'function' || original.__creasePatched) return;
-    function wrapped() { var result = original.apply(this, arguments); root.dispatchEvent(new Event('crease:navigation')); return result; }
-    wrapped.__creasePatched = true; wrapped.__creaseOriginal = original; root.history[method] = wrapped;
+    if (typeof original !== 'function' || original.__ZappaPatched) return;
+    function wrapped() { var result = original.apply(this, arguments); root.dispatchEvent(new Event('Zappa:navigation')); return result; }
+    wrapped.__ZappaPatched = true; wrapped.__ZappaOriginal = original; root.history[method] = wrapped;
   }
   function init(config) {
     if (enabled || !config || !config.projectId || !config.endpoint) return;
-    if (typeof config.writeKey !== 'string' || !/^crease_[A-Za-z0-9_-]{16,}$/.test(config.writeKey)) return;
+    if (typeof config.writeKey !== 'string' || !/^Zappa_[A-Za-z0-9_-]{16,}$/.test(config.writeKey)) return;
     var endpoint; try { endpoint = new URL(config.endpoint, root.location.href); } catch (_) { return; }
     if (endpoint.protocol !== 'https:' && endpoint.hostname !== 'localhost') return;
     options = { projectId: String(config.projectId), endpoint: endpoint.href, writeKey: config.writeKey };
-    visitorKey = 'crease_visitor:' + options.projectId; sessionKey = 'crease_session:' + options.projectId;
-    if (!read(visitorKey) && read('crease_visitor')) write(visitorKey, read('crease_visitor'));
-    if (!read(sessionKey) && read('crease_session')) write(sessionKey, read('crease_session'));
+    visitorKey = 'Zappa_visitor:' + options.projectId; sessionKey = 'Zappa_session:' + options.projectId;
+    if (!read(visitorKey) && read('Zappa_visitor')) write(visitorKey, read('Zappa_visitor'));
+    if (!read(sessionKey) && read('Zappa_session')) write(sessionKey, read('Zappa_session'));
     enabled = true; currentUrl = null; resetVitals(); observeVitals();
     patchHistory('pushState'); patchHistory('replaceState');
     routeHandler = pageview; leaveHandler = leaving; visibilityHandler = hidden;
     root.addEventListener('popstate', routeHandler);
-    root.addEventListener('crease:navigation', routeHandler);
+    root.addEventListener('Zappa:navigation', routeHandler);
     root.addEventListener('pagehide', leaveHandler);
     if (root.document && root.document.addEventListener) root.document.addEventListener('visibilitychange', visibilityHandler);
     pageview();
@@ -129,11 +129,11 @@
   function optOut() {
     enabled = false; queue = []; currentUrl = null;
     if (timer) root.clearTimeout(timer); timer = null;
-    if (routeHandler) { root.removeEventListener('popstate', routeHandler); root.removeEventListener('crease:navigation', routeHandler); }
+    if (routeHandler) { root.removeEventListener('popstate', routeHandler); root.removeEventListener('Zappa:navigation', routeHandler); }
     if (leaveHandler) root.removeEventListener('pagehide', leaveHandler);
     if (visibilityHandler && root.document && root.document.removeEventListener) root.document.removeEventListener('visibilitychange', visibilityHandler);
     observerList.forEach(function (observer) { try { observer.disconnect(); } catch (_) {} }); observerList = [];
-    resetVitals(); remove(visitorKey); remove(sessionKey); remove('crease_visitor'); remove('crease_session');
+    resetVitals(); remove(visitorKey); remove(sessionKey); remove('Zappa_visitor'); remove('Zappa_session');
   }
-  root.crease = { init: init, capture: capture, pageview: pageview, flush: flush, optOut: optOut, reset: reset, identify: function () { return visitorId(); } };
+  root.Zappa = { init: init, capture: capture, pageview: pageview, flush: flush, optOut: optOut, reset: reset, identify: function () { return visitorId(); } };
 })(window);

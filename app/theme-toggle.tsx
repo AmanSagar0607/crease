@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useTheme } from 'next-themes';
 import { ChevronDown, Monitor, Moon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,6 +11,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useTheme } from './theme-provider';
 import s from './theme-toggle.module.css';
 
 type Theme = 'system' | 'light' | 'dark';

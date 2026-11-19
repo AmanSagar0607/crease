@@ -67,7 +67,7 @@ export default function WaitlistPage() {
           </ol>
           <div className={s.previewFoot}>
             <span>BUILT IN THE OPEN</span>
-            <a href="https://github.com/AmanSagar0607/crease" target="_blank" rel="noreferrer">View the project <ArrowUpRight aria-hidden="true" /></a>
+            <a href="https://github.com/AmanSagar0607/Zappa" target="_blank" rel="noreferrer">View the project <ArrowUpRight aria-hidden="true" /></a>
           </div>
         </aside>
       </section>

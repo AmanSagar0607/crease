@@ -1,4 +1,5 @@
 import { ClerkProvider } from '@clerk/nextjs';
+import Script from 'next/script';
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import ThemeProvider from './theme-provider';
@@ -34,6 +35,11 @@ const clerkAppearance = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <Script id="Zappa-theme-init" strategy="beforeInteractive">
+          {`(function(){var key='Zappa-theme',theme='system';try{var stored=localStorage.getItem(key);if(stored==='system'||stored==='light'||stored==='dark')theme=stored;}catch(e){}var resolved=theme==='system'?(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):theme;var root=document.documentElement;root.classList.remove('light','dark');root.classList.add(resolved);root.setAttribute('data-theme',resolved);root.style.colorScheme=resolved;})();`}
+        </Script>
+      </head>
       <body>
         <ClerkProvider appearance={clerkAppearance}>
           <ThemeProvider>{children}</ThemeProvider>

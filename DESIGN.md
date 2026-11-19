@@ -89,7 +89,7 @@ Show one pricing card as requested. Use only Zappa’s confirmed price, usage ba
 
 ### Docs
 
-Make SDK/API setup, event fields, attribution semantics and limitations, privacy/data lifecycle, troubleshooting, and copyable install snippets easy to find. Preserve the public tracking SDK, `/crease.js` path, package names, API routes/fields, project IDs, write-key prefixes, and existing documentation contracts.
+Make SDK/API setup, event fields, attribution semantics and limitations, privacy/data lifecycle, troubleshooting, and copyable install snippets easy to find. Preserve the public tracking SDK, `/Zappa.js` path, package names, API routes/fields, project IDs, write-key prefixes, and existing documentation contracts.
 
 ### Sign-in and account
 
@@ -119,7 +119,7 @@ Explicit visual QA widths: **375, 768, 1024, 1440, and 1920px**. Verify no horiz
 
 ## Protected product and data contracts
 
-This specification changes presentation and interaction only. Preserve all existing functionality, data, acquisition reporting, revenue attribution semantics, and backend connections. Keep the existing tracking SDK and API fields, `/crease.js`, public package names, project IDs, and write-key prefixes. Keep Clerk as the only authentication provider; Supabase PostgreSQL/RLS remains the authorization and data boundary; do not expose secret keys or bypass RLS. Keep Vercel as the hosting target and Resend for transactional emails. Do not claim that Zappa is open source, cookie-free, privacy-certified, audited, compliant, or hosted in a particular region unless each statement is verified for Zappa.
+This specification changes presentation and interaction only. Preserve all existing functionality, data, acquisition reporting, revenue attribution semantics, and backend connections. Keep the existing tracking SDK and API fields, `/Zappa.js`, public package names, project IDs, and write-key prefixes. Keep Clerk as the only authentication provider; Supabase PostgreSQL/RLS remains the authorization and data boundary; do not expose secret keys or bypass RLS. Keep Vercel as the hosting target and Resend for transactional emails. Do not claim that Zappa is open source, cookie-free, privacy-certified, audited, compliant, or hosted in a particular region unless each statement is verified for Zappa.
 
 ## First implementation pass
 

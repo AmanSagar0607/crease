@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 from main import engine, now, stamp
 
-logger = logging.getLogger('crease.retention')
+logger = logging.getLogger('Zappa.retention')
 
 
 def table_exists(db, name):

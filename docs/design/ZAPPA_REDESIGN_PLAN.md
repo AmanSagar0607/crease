@@ -2,7 +2,7 @@
 
 **Mode:** Dashboard redesign/overhaul, guided by the user-supplied detailed specification and public Mobbin skills workflow. The connected Mobbin reference search did not return saved product screens in this session, so no screenshot is represented as a Mobbin-derived reference. The supplied design and repository are the actual sources of truth.
 
-**Scope:** Modernize the authenticated project dashboard’s application shell, sidebar, overview hierarchy, reporting toolbar, cards, charts, and responsive behavior. Preserve analytics values, loading/error/empty states, feature actions, project identity, tracking SDK behavior, SDK package name, `/crease.js`, API paths, and existing hash routes.
+**Scope:** Modernize the authenticated project dashboard’s application shell, sidebar, overview hierarchy, reporting toolbar, cards, charts, and responsive behavior. Preserve analytics values, loading/error/empty states, feature actions, project identity, tracking SDK behavior, SDK package name, `/Zappa.js`, API paths, and existing hash routes.
 
 **Visual direction:** Analytics surface uses the supplied dark palette (`#161513` background, `#1E1C1A` surface, `#262320` raised surface, `#34302B` border, `#F2EFE8` text, `#A29D91` muted text, `#E07A52` terracotta reserved for primary actions, active indicator, and the sessions line). The public marketing page retains its previously approved cream/terracotta Zappa identity.
 

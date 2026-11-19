@@ -2,7 +2,7 @@
 
 ## Production database
 
-Neon is the source of truth for the deployed Crease account. The production database contains one user, one project, and 16 analytics events. The local Windows SQLite snapshot is stale, has different internal IDs, and has no analytics events, so no SQLite rows were copied.
+Neon is the source of truth for the deployed Zappa account. The production database contains one user, one project, and 16 analytics events. The local Windows SQLite snapshot is stale, has different internal IDs, and has no analytics events, so no SQLite rows were copied.
 
 The API requires `DATABASE_URL` and rejects SQLite URLs. Set the Render service's `DATABASE_URL` to the existing Neon PostgreSQL connection URL. The URL must remain a secret and must not be committed or included in logs. `/health` returns `{"status":"ok","database":"connected"}` only after a `SELECT 1` succeeds.
 
@@ -13,7 +13,7 @@ The API requires `DATABASE_URL` and rejects SQLite URLs. Set the Render service'
 Run migrations from `backend` before starting the API:
 
 ```powershell
-$env:DATABASE_URL='postgresql+psycopg://user:password@host:5432/crease'
+$env:DATABASE_URL='postgresql+psycopg://user:password@host:5432/Zappa'
 alembic upgrade head
 ```
 

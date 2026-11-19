@@ -10,7 +10,7 @@ export const metadata: Metadata = {
     'Unlimited projects and all analytics, free while Zappa is in early access. Self-host the whole thing with Apache-2.0 source.',
 };
 
-const repo = 'https://github.com/AmanSagar0607/crease';
+const repo = 'https://github.com/AmanSagar0607/Zappa';
 
 const plans = [
   {
@@ -287,7 +287,7 @@ export default function Pricing() {
           <div>
             <Link className={s.footerBrand} href="/">
               <span aria-hidden="true">✳</span>
-              crease
+              Zappa
             </Link>
             <p className={s.footerTagline}>Analytics for the things you make.</p>
           </div>
@@ -315,7 +315,7 @@ export default function Pricing() {
                 <a href={repo}>GitHub</a>
               </li>
               <li>
-                <a href="https://github.com/AmanSagar0607/crease/issues">Issues</a>
+                <a href="https://github.com/AmanSagar0607/Zappa/issues">Issues</a>
               </li>
               <li>
                 <a href="#faq">FAQ</a>

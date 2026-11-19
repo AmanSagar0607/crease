@@ -3896,6 +3896,7 @@
 }
 
 
+
 /* Analytics shell theme bridge: this dashboard is now theme-aware rather than dark-only. */
 .analyticsDashboard.dashboard {
   --ink: var(--foreground);
@@ -4036,4 +4037,13 @@
   border-color: var(--border);
   background: var(--card);
   color: var(--foreground);
+}
+
+/* Collapsed rail centering: older shell rules set margin-left: 0, which keeps a
+   max-width content column pinned to the left. Restore both auto margins. */
+@media (min-width: 1024px) {
+  .analyticsDashboard.dashboard:has(> [data-slot='sidebar'][data-state='collapsed']) .main,
+  .analyticsDashboard.dashboard:has(> [data-slot='sidebar'][data-state='collapsed']) .footer {
+    margin-inline: auto;
+  }
 }

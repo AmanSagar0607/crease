@@ -22,7 +22,7 @@ from alembic.config import Config
 test_database_url = os.getenv('TEST_DATABASE_URL')
 if not test_database_url or not test_database_url.startswith(('postgresql://', 'postgresql+')):
     raise RuntimeError('Set TEST_DATABASE_URL to an isolated PostgreSQL test database; SQLite and the production DATABASE_URL are not used by this suite.')
-test_schema = 'crease_test_' + uuid4().hex
+test_schema = 'Zappa_test_' + uuid4().hex
 admin_url = make_url(test_database_url)
 if admin_url.drivername == 'postgresql':
     admin_url = admin_url.set(drivername='postgresql+psycopg')
@@ -83,7 +83,7 @@ class ApiTest(unittest.TestCase):
         headers = {'origin':main.FRONTEND_URL}
         project = self.client.post('/api/projects', json={'name':'Goal site','domain':'example.com'}, headers=headers).json()
         self.verify_project(project['id'])
-        event_headers = {'origin':'https://example.com','x-crease-key':project['write_key']}
+        event_headers = {'origin':'https://example.com','x-Zappa-key':project['write_key']}
         now = main.now()
         events = [
             {'id':'goal-one','name':'signup','timestamp':main.stamp(now-timedelta(minutes=2)),'path':'/signup','visitorId':'v1'},
@@ -116,7 +116,7 @@ class ApiTest(unittest.TestCase):
         headers = {'origin':main.FRONTEND_URL}
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
-        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        event_headers = {'origin':'https://example.com','x-Zappa-key':p['write_key']}
         base = {'name':'pageview','timestamp':main.stamp(main.now()-timedelta(hours=2)),'path':'/landing','visitorId':'visitor'}
         event = dict(base, id='first', referrer='search.example', attribution={'utm_source':'search','utm_campaign':'spring'})
         direct = dict(base, id='second', referrer='example.com')
@@ -156,7 +156,7 @@ class ApiTest(unittest.TestCase):
             {'id':'three','name':'pageview','timestamp':main.stamp(at+timedelta(hours=2)),'path':'/landing','visitorId':'v2','attribution':{'utm_source':'email','utm_medium':'newsletter','utm_campaign':'launch'}},
             {'id':'boundary','name':'pageview','timestamp':main.stamp(at+timedelta(days=1)),'path':'/later','visitorId':'v3'},
         ]
-        self.assertEqual(self.client.post('/api/events',json={'projectId':p['id'],'events':events},headers={'origin':'https://example.com','x-crease-key':p['write_key']}).json()['accepted'],5)
+        self.assertEqual(self.client.post('/api/events',json={'projectId':p['id'],'events':events},headers={'origin':'https://example.com','x-Zappa-key':p['write_key']}).json()['accepted'],5)
         url=f'/api/projects/{p["id"]}/overview?start={day}&end={day}'
         first=self.client.get(url).json()
         dates=f'start={day}&end={day}'
@@ -183,7 +183,7 @@ class ApiTest(unittest.TestCase):
         self.assertIn('social.example',[r['source'] for r in non_direct['acquisition']])
         signup={'id':'signup','name':'signup','timestamp':main.stamp(at+timedelta(hours=1,minutes=5)),'path':'/signup','visitorId':'v1'}
         duplicate_visitor={**signup,'id':'signup-again','timestamp':main.stamp(at+timedelta(hours=1,minutes=6))}
-        self.assertEqual(self.client.post('/api/events',json={'projectId':p['id'],'events':[signup,duplicate_visitor]},headers={'origin':'https://example.com','x-crease-key':p['write_key']}).json()['accepted'],2)
+        self.assertEqual(self.client.post('/api/events',json={'projectId':p['id'],'events':[signup,duplicate_visitor]},headers={'origin':'https://example.com','x-Zappa-key':p['write_key']}).json()['accepted'],2)
         converted=self.client.get(url+'&conversion_event=signup').json()
         self.assertEqual((converted['metrics']['conversions'],converted['metrics']['conversion_rate']),(1,0.5))
         self.assertEqual(sum(row['conversions'] for row in converted['acquisition']),1)
@@ -214,7 +214,7 @@ class ApiTest(unittest.TestCase):
             {'id':'d','name':'pageview','timestamp':main.stamp(base),'path':'/','visitorId':'v2'},
             {'id':'e','name':'pageview','timestamp':main.stamp(base),'path':'/','visitorId':'v3','attribution':{'utm_campaign':'spring'}},
         ]
-        self.assertEqual(self.client.post('/api/events',json={'projectId':p['id'],'events':events},headers={'origin':'https://example.com','x-crease-key':p['write_key']}).json()['accepted'],5)
+        self.assertEqual(self.client.post('/api/events',json={'projectId':p['id'],'events':events},headers={'origin':'https://example.com','x-Zappa-key':p['write_key']}).json()['accepted'],5)
         def report(model):
             response=self.client.get('/api/projects/'+p['id']+'/acquisition?days=7&model='+model)
             self.assertEqual(response.status_code,200)
@@ -297,7 +297,7 @@ class ApiTest(unittest.TestCase):
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
         event = {'name':'pageview','timestamp':main.stamp(main.now()),'path':'/hello','visitorId':'v','sessionId':'s'}
-        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        event_headers = {'origin':'https://example.com','x-Zappa-key':p['write_key']}
         original_ip, original_project = main.RATE_LIMIT_IP_PER_MINUTE, main.RATE_LIMIT_PROJECT_PER_MINUTE
         try:
             main.RATE_LIMIT_IP_PER_MINUTE = 2
@@ -327,11 +327,11 @@ class ApiTest(unittest.TestCase):
         self.client.cookies.set('__session', 'token')
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
-        self.assertRegex(p['write_key'], r'^crease_[A-Za-z0-9_-]{16,}$')
-        event_headers = {'origin':'https://example.com', 'x-crease-key':p['write_key']}
+        self.assertRegex(p['write_key'], r'^Zappa_[A-Za-z0-9_-]{16,}$')
+        event_headers = {'origin':'https://example.com', 'x-Zappa-key':p['write_key']}
         event = {'id':'event1','name':'pageview','timestamp':main.stamp(main.now()),'path':'/hello','visitorId':'v','sessionId':'s'}
         payload = {'projectId':p['id'],'events':[event]}
-        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://evil.example', 'x-crease-key':p['write_key']}).status_code,403)
+        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://evil.example', 'x-Zappa-key':p['write_key']}).status_code,403)
         self.assertEqual(self.client.post('/api/events', json=payload, headers=event_headers).json()['accepted'],1)
         self.assertEqual(self.client.post('/api/events', json=payload, headers=event_headers).json()['accepted'],0)
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/summary').json()['metrics']['pageviews'],1)
@@ -344,8 +344,8 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(overview[0]['visitors_7d'], 1)
         self.assertEqual(overview[0]['events_7d'], 1)
         alternate = dict(event, id='event2')
-        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[alternate]}, headers={'origin':'https://www.example.com', 'x-crease-key':p['write_key']}).json()['accepted'],1)
-        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[dict(event, id='event3')]}, headers={'origin':'https://other.example.com', 'x-crease-key':p['write_key']}).status_code,403)
+        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[alternate]}, headers={'origin':'https://www.example.com', 'x-Zappa-key':p['write_key']}).json()['accepted'],1)
+        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[dict(event, id='event3')]}, headers={'origin':'https://other.example.com', 'x-Zappa-key':p['write_key']}).status_code,403)
         self.client.cookies.set('__session', 'token-u2')
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/summary').status_code,404)
         self.assertEqual(self.client.delete('/api/projects/'+p['id'], headers=headers).status_code,404)
@@ -358,7 +358,7 @@ class ApiTest(unittest.TestCase):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Props','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
-        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        event_headers = {'origin':'https://example.com','x-Zappa-key':p['write_key']}
         base = main.now() - timedelta(hours=2)
         events = [
             {'id':'p1','name':'signup','timestamp':main.stamp(base),'path':'/signup','visitorId':'v1','properties':{'seats':3,'trial':True,'beta':True}},
@@ -409,7 +409,7 @@ class ApiTest(unittest.TestCase):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
-        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        event_headers = {'origin':'https://example.com','x-Zappa-key':p['write_key']}
         timestamp = main.stamp(main.now())
         events = [
             {'id':'s1','name':'pageview','timestamp':timestamp,'path':'/entry','visitorId':'visitor','sessionId':'session'},
@@ -429,7 +429,7 @@ class ApiTest(unittest.TestCase):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Sessions','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
-        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        event_headers = {'origin':'https://example.com','x-Zappa-key':p['write_key']}
         base = main.now().replace(microsecond=0) - timedelta(hours=3)
         def send(event_id, visitor, at):
             event = {'id':event_id,'name':'pageview','timestamp':main.stamp(at),'path':'/','visitorId':visitor,'sessionId':'client-supplied'}
@@ -468,7 +468,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.patch('/api/projects/'+p['id']+'/retention', json={'retention_days':7}, headers=headers).status_code,200)
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 2)
-        with self.assertLogs('crease.retention', level='INFO') as logs:
+        with self.assertLogs('Zappa.retention', level='INFO') as logs:
             totals = expire.enforce_retention(main.engine)
         self.assertEqual(totals['events'], 1)
         self.assertEqual(totals['sessions'], 1)
@@ -484,7 +484,7 @@ class ApiTest(unittest.TestCase):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Funnel','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
-        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        event_headers = {'origin':'https://example.com','x-Zappa-key':p['write_key']}
         base = main.now() - timedelta(hours=2)
         events = [
             {'id':'f1','name':'view_pricing','timestamp':main.stamp(base),'path':'/pricing','visitorId':'v1'},
@@ -516,20 +516,20 @@ class ApiTest(unittest.TestCase):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Geo','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
-        base = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        base = {'origin':'https://example.com','x-Zappa-key':p['write_key']}
         def send(event_id, path, extra):
             event = {'id':event_id,'name':'pageview','timestamp':main.stamp(main.now()),'path':'/','visitorId':'v'}
             return self.client.post(path, json={'projectId':p['id'],'events':[event]}, headers={**base, **extra})
         with patch.object(main, 'TRUST_VERCEL_GEO', True), patch.object(main, 'GEO_FORWARD_SECRET', 'test-secret'):
-            self.assertEqual(send('direct', '/api/events', {'x-vercel-ip-country':'US', 'x-crease-country':'US'}).status_code, 200)
-            self.assertEqual(send('no-secret', '/internal/events', {'x-crease-country':'US'}).status_code, 401)
-            self.assertEqual(send('bad-secret', '/internal/events', {'x-crease-forward-secret':'wrong','x-crease-country':'US'}).status_code, 401)
-            self.assertEqual(send('invalid', '/internal/events', {'x-crease-forward-secret':'test-secret','x-crease-country':'ZZ'}).status_code, 422)
-            self.assertEqual(send('malformed', '/internal/events', {'x-crease-forward-secret':'test-secret','x-crease-country':'us'}).status_code, 422)
-            self.assertEqual(send('missing', '/internal/events', {'x-crease-forward-secret':'test-secret'}).status_code, 200)
-            self.assertEqual(send('valid', '/internal/events', {'x-crease-forward-secret':'test-secret','x-crease-country':'US'}).status_code, 200)
+            self.assertEqual(send('direct', '/api/events', {'x-vercel-ip-country':'US', 'x-Zappa-country':'US'}).status_code, 200)
+            self.assertEqual(send('no-secret', '/internal/events', {'x-Zappa-country':'US'}).status_code, 401)
+            self.assertEqual(send('bad-secret', '/internal/events', {'x-Zappa-forward-secret':'wrong','x-Zappa-country':'US'}).status_code, 401)
+            self.assertEqual(send('invalid', '/internal/events', {'x-Zappa-forward-secret':'test-secret','x-Zappa-country':'ZZ'}).status_code, 422)
+            self.assertEqual(send('malformed', '/internal/events', {'x-Zappa-forward-secret':'test-secret','x-Zappa-country':'us'}).status_code, 422)
+            self.assertEqual(send('missing', '/internal/events', {'x-Zappa-forward-secret':'test-secret'}).status_code, 200)
+            self.assertEqual(send('valid', '/internal/events', {'x-Zappa-forward-secret':'test-secret','x-Zappa-country':'US'}).status_code, 200)
         with patch.object(main, 'TRUST_VERCEL_GEO', False), patch.object(main, 'GEO_FORWARD_SECRET', 'test-secret'):
-            self.assertEqual(send('disabled', '/internal/events', {'x-crease-forward-secret':'test-secret','x-crease-country':'US'}).status_code, 200)
+            self.assertEqual(send('disabled', '/internal/events', {'x-Zappa-forward-secret':'test-secret','x-Zappa-country':'US'}).status_code, 200)
         with main.engine.connect() as db:
             rows = dict(db.execute(text('SELECT id, country FROM events WHERE project_id=:id'), {'id':p['id']}).all())
         self.assertEqual(rows, {'direct':None, 'missing':None, 'valid':'US', 'disabled':None})
@@ -538,7 +538,7 @@ class ApiTest(unittest.TestCase):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Bots','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
-        base = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        base = {'origin':'https://example.com','x-Zappa-key':p['write_key']}
         event = {'id':'bot-1','name':'pageview','timestamp':main.stamp(main.now()),'path':'/','visitorId':'v'}
         for agent in ('Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
                       'curl/8.4.0', 'Mozilla/5.0 (X11; Linux x86_64) HeadlessChrome/120.0.0.0 Safari/537.36',
@@ -557,10 +557,10 @@ class ApiTest(unittest.TestCase):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Geo default','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
-        base = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        base = {'origin':'https://example.com','x-Zappa-key':p['write_key']}
         event = {'id':'geo-1','name':'pageview','timestamp':main.stamp(main.now()),'path':'/','visitorId':'v'}
         with patch.object(main, 'GEO_FORWARD_SECRET', 'test-secret'):
-            response = self.client.post('/internal/events', json={'projectId':p['id'],'events':[event]}, headers={**base,'x-crease-forward-secret':'test-secret','x-crease-country':'DE'})
+            response = self.client.post('/internal/events', json={'projectId':p['id'],'events':[event]}, headers={**base,'x-Zappa-forward-secret':'test-secret','x-Zappa-country':'DE'})
         self.assertEqual(response.status_code, 200)
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT country FROM events WHERE id=:id'), {'id':'geo-1'}).scalar_one(), 'DE')
@@ -572,9 +572,9 @@ class ApiTest(unittest.TestCase):
         with main.engine.begin() as db:
             db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,properties) VALUES (:project,:id,:name,:at,:path,:visitor,:session,:properties)'), {'project':p['id'],'id':'expired','name':'pageview','at':main.stamp(main.now()-timedelta(days=30)),'path':'/','visitor':'v','session':'s','properties':'{}'})
         self.assertEqual(self.client.post('/internal/retention').status_code, 401)
-        self.assertEqual(self.client.post('/internal/retention', headers={'x-crease-retention-secret':'wrong'}).status_code, 401)
+        self.assertEqual(self.client.post('/internal/retention', headers={'x-Zappa-retention-secret':'wrong'}).status_code, 401)
         with patch.object(main, 'RETENTION_SECRET', 'cron-secret'):
-            response = self.client.post('/internal/retention', headers={'x-crease-retention-secret':'cron-secret'})
+            response = self.client.post('/internal/retention', headers={'x-Zappa-retention-secret':'cron-secret'})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['events'], 1)
         with main.engine.connect() as db:
@@ -612,9 +612,9 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 0)
 
     def test_event_preflight_allows_sdk_write_key_header(self):
-        response = self.client.options('/api/events', headers={'origin':'https://example.com','access-control-request-method':'POST','access-control-request-headers':'content-type,x-crease-key'})
+        response = self.client.options('/api/events', headers={'origin':'https://example.com','access-control-request-method':'POST','access-control-request-headers':'content-type,x-Zappa-key'})
         self.assertEqual(response.status_code,204)
-        self.assertIn('X-Crease-Key',response.headers['access-control-allow-headers'])
+        self.assertIn('X-Zappa-Key',response.headers['access-control-allow-headers'])
         with main.engine.connect() as db: self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events')).scalar_one(),0)
 
     def test_events_require_project_write_key(self):
@@ -626,17 +626,17 @@ class ApiTest(unittest.TestCase):
         event = {'id':'event1','name':'pageview','timestamp':main.stamp(main.now()),'path':'/hello','visitorId':'v','sessionId':'s'}
         payload = {'projectId':p['id'],'events':[event]}
         self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com'}).status_code,401)
-        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com','x-crease-key':'crease_wrongwrongwrongwrong'}).status_code,401)
-        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com','x-crease-key':other['write_key']}).status_code,401)
-        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com','x-crease-key':p['write_key']}).json()['accepted'],1)
+        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com','x-Zappa-key':'Zappa_wrongwrongwrongwrong'}).status_code,401)
+        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com','x-Zappa-key':other['write_key']}).status_code,401)
+        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com','x-Zappa-key':p['write_key']}).json()['accepted'],1)
         with main.engine.connect() as db:
             stored = db.execute(text('SELECT write_key_hash FROM projects WHERE id=:id'), {'id':p['id']}).scalar_one()
         self.assertEqual(stored, main.digest(p['write_key']))
         self.assertNotIn(p['write_key'], stored)
         rotated = self.client.post('/api/projects/'+p['id']+'/write-key', headers=headers).json()['write_key']
         self.assertNotEqual(rotated, p['write_key'])
-        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com','x-crease-key':p['write_key']}).status_code,401)
-        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[dict(event, id='event2')]}, headers={'origin':'https://example.com','x-crease-key':rotated}).json()['accepted'],1)
+        self.assertEqual(self.client.post('/api/events', json=payload, headers={'origin':'https://example.com','x-Zappa-key':p['write_key']}).status_code,401)
+        self.assertEqual(self.client.post('/api/events', json={'projectId':p['id'],'events':[dict(event, id='event2')]}, headers={'origin':'https://example.com','x-Zappa-key':rotated}).json()['accepted'],1)
         listing = {item['id']:item for item in self.client.get('/api/projects').json()}
         self.assertTrue(listing[p['id']]['has_write_key'])
         self.assertNotIn('write_key', listing[p['id']])
@@ -649,11 +649,11 @@ class ApiTest(unittest.TestCase):
         self.assertTrue(p['verification_token'])
         verification = self.client.get('/api/projects/'+p['id']+'/verification').json()
         self.assertFalse(verification['verified'])
-        self.assertEqual(verification['record'], 'crease-site-verification='+p['verification_token'])
-        self.assertEqual(verification['dns_name'], '_crease-verification.example.com')
+        self.assertEqual(verification['record'], 'Zappa-site-verification='+p['verification_token'])
+        self.assertEqual(verification['dns_name'], '_Zappa-verification.example.com')
         event = {'id':'event1','name':'pageview','timestamp':main.stamp(main.now()),'path':'/hello','visitorId':'v','sessionId':'s'}
         payload = {'projectId':p['id'],'events':[event]}
-        event_headers = {'origin':'https://example.com','x-crease-key':p['write_key']}
+        event_headers = {'origin':'https://example.com','x-Zappa-key':p['write_key']}
         self.assertEqual(self.client.post('/api/events', json=payload, headers=event_headers).status_code,403)
         with patch.object(main, 'dns_has_token', new=AsyncMock(return_value=False)):
             failed = self.client.post('/api/projects/'+p['id']+'/verification/check', headers=headers).json()
@@ -682,7 +682,7 @@ class ApiTest(unittest.TestCase):
         def check(answers):
             with patch.object(main.httpx, 'AsyncClient', return_value=Client(answers)):
                 return asyncio.run(main.dns_has_token('example.com', token))
-        self.assertTrue(check({'_crease-verification.example.com': [{'type':16, 'data':'"'+expected+'"'}]}))
+        self.assertTrue(check({'_Zappa-verification.example.com': [{'type':16, 'data':'"'+expected+'"'}]}))
         self.assertTrue(check({'example.com': [{'type':16, 'data':'"'+expected+'"'}]}))
         self.assertFalse(check({'example.com': [{'type':16, 'data':'"prefix'+expected+'suffix"'}]}))
         self.assertFalse(check({'example.com': [{'type':1, 'data':'"'+expected+'"'}]}))
@@ -705,7 +705,7 @@ class ApiTest(unittest.TestCase):
         headers = {'origin':main.FRONTEND_URL}
         self.client.cookies.set('__session', 'token')
         project = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()
-        payload = {'repository':'owner/site','path':'index.html','installation_id':1,'write_key':'crease_0123456789abcdef'}
+        payload = {'repository':'owner/site','path':'index.html','installation_id':1,'write_key':'Zappa_0123456789abcdef'}
         with patch.object(main, 'GITHUB_APP_SLUG', ''):
             self.assertEqual(self.client.post('/api/projects/'+project['id']+'/github-install', json=payload, headers=headers).status_code,503)
         self.client.cookies.set('__session', 'token-u2')
@@ -713,14 +713,14 @@ class ApiTest(unittest.TestCase):
 
     def test_github_app_token_is_bound_to_signed_in_user(self):
         key = Fernet.generate_key().decode()
-        with patch.object(main, 'GITHUB_APP_SLUG', 'crease'), patch.object(main, 'GITHUB_APP_CLIENT_ID', 'id'), patch.object(main, 'GITHUB_APP_CLIENT_SECRET', 'secret'), patch.object(main, 'GITHUB_APP_TOKEN_KEY', key):
+        with patch.object(main, 'GITHUB_APP_SLUG', 'Zappa'), patch.object(main, 'GITHUB_APP_CLIENT_ID', 'id'), patch.object(main, 'GITHUB_APP_CLIENT_SECRET', 'secret'), patch.object(main, 'GITHUB_APP_TOKEN_KEY', key):
             encrypted = main.app_cipher().encrypt(main.json.dumps({'token':'test', 'user_id':'u1'}).encode()).decode()
             self.assertEqual(main.app_user_token(encrypted, {'id':'u1'}), 'test')
             with self.assertRaises(main.HTTPException): main.app_user_token(encrypted, {'id':'u2'})
 
     def test_saved_github_connection_is_encrypted_and_user_scoped(self):
         key = Fernet.generate_key().decode()
-        with patch.object(main, 'GITHUB_APP_SLUG', 'crease'), patch.object(main, 'GITHUB_APP_CLIENT_ID', 'id'), patch.object(main, 'GITHUB_APP_CLIENT_SECRET', 'secret'), patch.object(main, 'GITHUB_APP_TOKEN_KEY', key):
+        with patch.object(main, 'GITHUB_APP_SLUG', 'Zappa'), patch.object(main, 'GITHUB_APP_CLIENT_ID', 'id'), patch.object(main, 'GITHUB_APP_CLIENT_SECRET', 'secret'), patch.object(main, 'GITHUB_APP_TOKEN_KEY', key):
             encrypted = main.app_cipher().encrypt(b'github-token').decode()
             with main.engine.begin() as db:
                 db.execute(text('INSERT INTO github_connections VALUES (:user,:token)'), {'user':'u1', 'token':encrypted})
@@ -754,16 +754,16 @@ class ApiTest(unittest.TestCase):
             return httpx.Response(404, json={'message':'Not Found'})
         real_client = httpx.AsyncClient
         with patch.object(github_install.httpx, 'AsyncClient', side_effect=lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw)):
-            result = asyncio.run(github_install.create_install_pr('token','owner/site','index.html','project-id','https://crease.example','crease_0123456789abcdef'))
+            result = asyncio.run(github_install.create_install_pr('token','owner/site','index.html','project-id','https://Zappa.example','Zappa_0123456789abcdef'))
         updated = base64.b64decode(writes[0]['content']).decode()
         self.assertEqual(result['url'], 'https://github.com/owner/site/pull/1')
-        self.assertIn('data-crease-install', updated)
-        self.assertIn('crease:consent', updated)
+        self.assertIn('data-Zappa-install', updated)
+        self.assertIn('Zappa:consent', updated)
         self.assertIn('writeKey', updated)
-        self.assertLess(updated.index('data-crease-install'), updated.index('</body>'))
+        self.assertLess(updated.index('data-Zappa-install'), updated.index('</body>'))
 
     def test_installation_status_identifies_project_on_default_branch(self):
-        source = '<script data-crease-install>project-123</script>'
+        source = '<script data-Zappa-install>project-123</script>'
         def handler(request):
             if request.url.path == '/repos/owner/site': return httpx.Response(200, json={'default_branch':'main'})
             if request.url.path.endswith('/contents/index.html'):
@@ -782,8 +782,8 @@ class ApiTest(unittest.TestCase):
         self.client.cookies.set('__session','token')
         project = self.client.post('/api/projects', json={'name':'Site','domain':'example.com'}, headers=headers).json()['id']
         payload = {'repository':'Owner/Site','installation_id':42}
-        responses = [([{'id':42,'app_slug':'crease'}], False), ([{'full_name':'Owner/Site'}], False)]
-        with patch.object(main, 'GITHUB_APP_SLUG', 'crease'), patch.object(main, 'app_user_token', return_value='test'), patch.object(main, 'github_app_pages', new=AsyncMock(side_effect=responses)):
+        responses = [([{'id':42,'app_slug':'Zappa'}], False), ([{'full_name':'Owner/Site'}], False)]
+        with patch.object(main, 'GITHUB_APP_SLUG', 'Zappa'), patch.object(main, 'app_user_token', return_value='test'), patch.object(main, 'github_app_pages', new=AsyncMock(side_effect=responses)):
             self.assertEqual(self.client.put('/api/projects/'+project+'/git', json=payload, headers=headers).status_code, 200)
         self.assertEqual(self.client.get('/api/projects/'+project+'/git').json()['repository']['full_name'], 'Owner/Site')
         self.client.cookies.set('__session','token-u2')
@@ -823,10 +823,10 @@ class ApiTest(unittest.TestCase):
             async def __aexit__(self, *args): pass
             async def post(self, *args, **kwargs): return Response()
         key = Fernet.generate_key().decode()
-        with patch.object(main, 'VERCEL_INTEGRATION_SLUG', 'crease'), patch.object(main, 'VERCEL_INTEGRATION_CLIENT_ID', 'id'), patch.object(main, 'VERCEL_INTEGRATION_CLIENT_SECRET', 'secret'), patch.object(main, 'VERCEL_TOKEN_KEY', key), patch.object(main.httpx, 'AsyncClient', Client):
+        with patch.object(main, 'VERCEL_INTEGRATION_SLUG', 'Zappa'), patch.object(main, 'VERCEL_INTEGRATION_CLIENT_ID', 'id'), patch.object(main, 'VERCEL_INTEGRATION_CLIENT_SECRET', 'secret'), patch.object(main, 'VERCEL_TOKEN_KEY', key), patch.object(main.httpx, 'AsyncClient', Client):
             start = self.client.get('/api/vercel/connect', follow_redirects=False)
             state = parse_qs(urlsplit(start.headers['location']).query)['state'][0]
-            state_cookie = self.client.cookies.get('crease_vercel_state')
+            state_cookie = self.client.cookies.get('Zappa_vercel_state')
             invalid = self.client.get('/api/vercel/callback', params={'code':'test','state':'incorrect'}, follow_redirects=False)
             self.assertEqual(invalid.status_code,400)
             invalid_next = self.client.get('/api/vercel/callback', params={'code':'test','state':state,'next':'https://example.com/steal'}, follow_redirects=False)
@@ -837,7 +837,7 @@ class ApiTest(unittest.TestCase):
             with main.engine.connect() as db:
                 encrypted = db.execute(text('SELECT encrypted_token FROM vercel_connections WHERE user_id=:user'), {'user':'u1'}).scalar_one()
                 self.assertNotIn('vercel-secret',encrypted)
-            self.client.cookies.set('crease_vercel_state',state_cookie)
+            self.client.cookies.set('Zappa_vercel_state',state_cookie)
             self.assertEqual(self.client.get('/api/vercel/callback', params={'code':'test','state':state}, follow_redirects=False).status_code,400)
 
     def test_vercel_git_settings_map_event_and_status_flags(self):
@@ -896,7 +896,7 @@ class ApiTest(unittest.TestCase):
     def test_clerk_auth_rejects_missing_and_invalid_tokens_and_ignores_legacy_cookie(self):
         self.client.cookies.clear()
         self.assertEqual(self.client.get('/api/me').status_code, 401)
-        self.client.cookies.set('crease_session', 'u1')
+        self.client.cookies.set('Zappa_session', 'u1')
         self.assertEqual(self.client.get('/api/me').status_code, 401)
         self.client.cookies.set('__session', 'bad-token')
         self.assertEqual(self.client.get('/api/me').status_code, 401)

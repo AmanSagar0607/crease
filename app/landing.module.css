@@ -1908,8 +1908,8 @@
   position: sticky;
   z-index: 40;
   top: 0;
-  border-bottom: 1px solid var(--line);
-  background: var(--navBg);
+  padding-top: 16px;
+  background: transparent;
   -webkit-backdrop-filter: blur(18px) saturate(160%);
   backdrop-filter: blur(18px) saturate(160%);
   transition: background 200ms ease, border-color 200ms ease;

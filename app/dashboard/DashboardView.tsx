@@ -125,7 +125,7 @@ type FunnelStep = {
 };
 type Funnel = { steps: FunnelStep[]; days: number; start: string; end: string };
 function writeKeyStorage(projectId: string) {
-  return `crease-write-key:${projectId}`;
+  return `Zappa-write-key:${projectId}`;
 }
 
 function readWriteKey(projectId: string) {
@@ -383,7 +383,9 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
   const handleUnauthorized = useCallback((setMessage: (message: string) => void) => {
     if (clerkLoaded && !isSignedIn) {
-      router.replace('/sign-in');
+      const signInUrl = new URL('/sign-in', window.location.origin);
+      signInUrl.searchParams.set('redirect_url', window.location.href);
+      router.replace(`${signInUrl.pathname}${signInUrl.search}`);
       return;
     }
     setMessage(
@@ -863,7 +865,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   }
 
   const collector = process.env.NEXT_PUBLIC_COLLECTOR_URL || (origin ? `${origin}/api/events` : '');
-  const snippet = `<script src="${origin}/crease.js" defer></script>
+  const snippet = `<script src="${origin}/Zappa.js" defer></script>
 <script>
   window.addEventListener('load', function () {
     Zappa.init({ projectId: '${project?.id || ''}', writeKey: '${writeKey}', endpoint: '${collector}' });
@@ -1638,7 +1640,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                           {!verification?.verified && verification && (
                             <div className={s.verifyRows}>
                               <div className={s.verifyRow}>
-                                <span>TXT name: _crease-verification.{project.domain}</span>
+                                <span>TXT name: _Zappa-verification.{project.domain}</span>
                                 <code>{verification.record}</code>
                               </div>
                             </div>
@@ -1876,7 +1878,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
           <span>ZAPPA / YOUR WORK, UNDERSTOOD</span>
           <div className={s.footerLinks}>
             <Link href="/docs">DOCS</Link>
-            <a href="https://github.com/AmanSagar0607/crease">OPEN SOURCE</a>
+            <a href="https://github.com/AmanSagar0607/Zappa">OPEN SOURCE</a>
           </div>
         </div>
       </footer>
