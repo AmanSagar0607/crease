@@ -1,15 +1,15 @@
-# @Zappa/analytics
+# @aman-sagar06077/zappa-analytics
 
 Add Zappa page views and custom events to a site.
 
 ## Next.js
 
 ```bash
-npm i @Zappa/analytics
+npm i @aman-sagar06077/zappa-analytics
 ```
 
 ```tsx
-import { Analytics } from '@Zappa/analytics/next';
+import { Analytics } from '@aman-sagar06077/zappa-analytics/next';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return <html><body>{children}<Analytics projectId="YOUR_PROJECT_ID" writeKey="Zappa_YOUR_PROJECT_WRITE_KEY" /></body></html>;
@@ -19,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 ## Any JavaScript site
 
 ```js
-import { init } from '@Zappa/analytics';
+import { init } from '@aman-sagar06077/zappa-analytics';
 const analytics = init({ projectId: 'YOUR_PROJECT_ID', writeKey: 'Zappa_YOUR_PROJECT_WRITE_KEY' });
 analytics.track('signup_completed', { plan: 1 });
 ```

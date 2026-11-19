@@ -1,0 +1,44 @@
+0 verbose cli C:\Program Files\nodejs\node.exe C:\Users\DELL\AppData\Roaming\npm\node_modules\npm\bin\npm-cli.js
+1 info using npm@11.4.2
+2 info using node@v22.16.0
+3 silly config load:file:C:\Users\DELL\AppData\Roaming\npm\node_modules\npm\npmrc
+4 silly config load:file:D:\aman\personal projects\crease\source\packages\zappa-analytics\.npmrc
+5 silly config load:file:C:\Users\DELL\.npmrc
+6 silly config load:file:C:\Users\DELL\AppData\Roaming\npm\etc\npmrc
+7 verbose title npm publish
+8 verbose argv "publish" "--access" "public" "--cache" ".npm-cache"
+9 verbose logfile logs-max:10 dir:D:\aman\personal projects\crease\source\packages\zappa-analytics\.npm-cache\_logs\2026-11-19T07_14_32_049Z-
+10 verbose logfile D:\aman\personal projects\crease\source\packages\zappa-analytics\.npm-cache\_logs\2026-11-19T07_14_32_049Z-debug-0.log
+11 silly logfile done cleaning log files
+12 verbose publish [ '.' ]
+13 silly packumentCache heap:4345298944 maxSize:1086324736 maxEntrySize:543162368
+14 notice
+15 notice 📦  @aman-sagar06077/zappa-analytics@0.1.0
+16 notice Tarball Contents
+17 notice 1.5kB README.md
+17 notice 405B index.d.ts
+17 notice 8.7kB index.js
+17 notice 164B next.d.ts
+17 notice 388B next.js
+17 notice 616B package.json
+18 notice Tarball Details
+19 notice name: @aman-sagar06077/zappa-analytics
+20 notice version: 0.1.0
+21 notice filename: aman-sagar06077-zappa-analytics-0.1.0.tgz
+22 notice package size: 4.3 kB
+23 notice unpacked size: 11.7 kB
+24 notice shasum: 96c22bcb568295e69a8ec86d74d258e6b75e8381
+25 notice integrity: sha512-xJ3Blm8vXeAGP[...]ypkWLu2mwWzLQ==
+26 notice total files: 6
+27 notice
+28 http fetch GET 404 https://registry.npmjs.org/@aman-sagar06077%2fzappa-analytics 62ms (cache skip)
+29 http fetch GET 404 https://registry.npmjs.org/@aman-sagar06077%2fzappa-analytics 14ms (cache skip)
+30 notice Publishing to https://registry.npmjs.org/ with tag latest and public access
+31 notice Your package is being processed and may take a few minutes to become available.
+32 http fetch PUT 202 https://registry.npmjs.org/@aman-sagar06077%2fzappa-analytics 1701ms
+33 verbose cwd D:\aman\personal projects\crease\source\packages\zappa-analytics
+34 verbose os Windows_NT 10.0.26300
+35 verbose node v22.16.0
+36 verbose npm  v11.4.2
+37 verbose exit 0
+38 info ok

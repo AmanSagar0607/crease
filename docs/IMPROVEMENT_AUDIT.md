@@ -4,7 +4,7 @@ Audit and implementation record for the Zappa backend and dashboard. The audit s
 
 ## Scope and method
 
-- Reviewed `backend/main.py`, `backend/expire.py`, the Alembic migration directory, `backend/test_api.py`, the dashboard under `app/dashboard/`, the browser SDK (`sdk/Zappa.js`, `public/Zappa.js`), and the npm client (`packages/Zappa-analytics/index.js`).
+- Reviewed `backend/main.py`, `backend/expire.py`, the Alembic migration directory, `backend/test_api.py`, the dashboard under `app/dashboard/`, the browser SDK (`sdk/Zappa.js`, `public/Zappa.js`), and the npm client (`packages/zappa-analytics/index.js`).
 - Ran the backend suite against a local PostgreSQL instance (port 5433) because the API intentionally rejects SQLite, the SDK suite with `node --test`, and the dashboard with `npx tsc --noEmit` and `npm run build`.
 - Verified the API and dashboard against a seeded local database, including property filters, the funnel, retention cleanup, and the migration backfill.
 - Kept the consent-gated design. No cookies, fingerprinting, or session replay were added. The SDK sources remain byte-identical.

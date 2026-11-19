@@ -41,7 +41,7 @@ const faqs = [
   },
   {
     q: 'Does it work with Next.js?',
-    a: 'Yes. Use the @Zappa/analytics/next component, the plain ESM package, or the standalone Zappa.js tracker for any HTML site. The docs show all three.',
+    a: 'Yes. Use the @aman-sagar06077/zappa-analytics/next component, the plain ESM package, or the standalone Zappa.js tracker for any HTML site. The docs show all three.',
   },
   {
     q: 'Where does my data live?',

@@ -34,10 +34,9 @@ export default function Docs() {
     <Code>{`window.Zappa.capture('signup_completed', { plan: 1, trial: true });`}</Code>
     <p>Property values must be numbers or booleans, with at most 20 properties per event. Pages and referrers are recorded automatically.</p>
     <h2>Next.js and npm</h2>
-    <p>
-      The <code>@Zappa/analytics</code> package lives in the repository under
-      <code>packages/Zappa-analytics</code>. It is not published to npm yet, so use the script tag
-      above or install it from the repository until it is.
-    </p>
+    <p>When published, install <code>@aman-sagar06077/zappa-analytics</code> package with <code>npm install @aman-sagar06077/zappa-analytics</code>. Then add its component to your app and pass the project ID and public write key shown in Installation.</p>
+    <Code>{`import { Analytics } from '@aman-sagar06077/zappa-analytics/next';
+
+<Analytics projectId="YOUR_PROJECT_ID" writeKey="Zappa_YOUR_PROJECT_WRITE_KEY" enabled={consentGranted} />`}</Code>
   </main>;
 }

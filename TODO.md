@@ -5,7 +5,7 @@ This list tracks actual product outcomes. “Complete” requires implemented be
 ## Brand and product documentation
 
 - [ ] Customer-facing product name, app title/metadata, account/auth pages, workspace/dashboard shell, onboarding, documentation, and new product copy consistently say **Zappa**.
-- [ ] Preserve compatibility-sensitive identifiers and behavior: `public/Zappa.js`, `sdk/Zappa.js`, `@Zappa/analytics`, existing collector routes and payloads, `Zappa_` write-key format, existing project IDs and stored records, bookmarks/hash behavior, GitHub/Vercel integration APIs, and analytics semantics. Document any necessary exception before changing one.
+- [ ] Preserve compatibility-sensitive identifiers and behavior: `public/Zappa.js`, `sdk/Zappa.js`, `@aman-sagar06077/zappa-analytics`, existing collector routes and payloads, `Zappa_` write-key format, existing project IDs and stored records, bookmarks/hash behavior, GitHub/Vercel integration APIs, and analytics semantics. Document any necessary exception before changing one.
 - [ ] Keep the revenue analytics product promise focused on observed visitor → session → behavior → conversion → customer → verified revenue; never invent data.
 - [ ] Store the evidence-based DataFast reference audit, existing repository audit, Zappa product specification, Zappa design system, migration notes, and current environment-variable documentation in the repository.
 

@@ -1,0 +1,31 @@
+{
+  "name": "@aman-sagar06077/zappa-analytics",
+  "version": "0.1.0",
+  "description": "Privacy-aware website analytics for Zappa projects.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./next": {
+      "types": "./next.d.ts",
+      "default": "./next.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "next.js",
+    "next.d.ts",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

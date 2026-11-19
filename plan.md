@@ -2,7 +2,7 @@
 
 ## Product and delivery decision
 
-The task targets the existing repository `https://github.com/AmanSagar0607/Zappa`, currently checked out at commit `ca9f049` on `main`. The customer-facing product name is **Zappa**. Preserve existing analytics behavior, SDK/API contracts, and integrations; do not rename public `Zappa.js`, `@Zappa/analytics`, `Zappa_` write keys, existing URLs, or database identifiers in this pass because those are compatibility contracts. Keep all product copy and new UI branded Zappa. Do not deploy, touch production data, change DNS, send real email, run destructive migrations, create paid resources, or push to a deployment-triggering branch without approval.
+The task targets the existing repository `https://github.com/AmanSagar0607/Zappa`, currently checked out at commit `ca9f049` on `main`. The customer-facing product name is **Zappa**. Preserve existing analytics behavior, SDK/API contracts, and integrations; do not rename public `Zappa.js`, `@aman-sagar06077/zappa-analytics`, `Zappa_` write keys, existing URLs, or database identifiers in this pass because those are compatibility contracts. Keep all product copy and new UI branded Zappa. Do not deploy, touch production data, change DNS, send real email, run destructive migrations, create paid resources, or push to a deployment-triggering branch without approval.
 
 ## Design decisions
 
@@ -15,7 +15,7 @@ The task targets the existing repository `https://github.com/AmanSagar0607/Zappa
 
 ## Current architecture and migration approach
 
-The existing app is Next.js 16/React 19 with a Python FastAPI API, a PostgreSQL database documented as Neon in production, and three tracking surfaces: `public/Zappa.js`, `sdk/Zappa.js`, and `packages/Zappa-analytics`. This implementation must not create a second auth provider or a second analytics source of truth.
+The existing app is Next.js 16/React 19 with a Python FastAPI API, a PostgreSQL database documented as Neon in production, and three tracking surfaces: `public/Zappa.js`, `sdk/Zappa.js`, and `packages/zappa-analytics`. This implementation must not create a second auth provider or a second analytics source of truth.
 
 Clerk is the only authentication provider for signup, email/password, verification, supported Google/GitHub social sign-in, password recovery, sessions, profile/account management, and logout. Use the official Next.js SDK and prebuilt Clerk auth/account components, customized to the existing dark visual system. Database user IDs are Clerk IDs stored as text. The database owns workspace membership and roles in its own membership tables; do not assume paid Clerk custom roles or Clerk Organizations are necessary. Email verification and password-reset messages remain Clerk-owned; Resend is reserved for application notifications and invitations where actually implemented.
 
@@ -43,7 +43,7 @@ The checked-in app currently points at an external FastAPI/PostgreSQL boundary; 
 - `lib/`: server/client auth, Supabase token-aware clients, validation, and email helpers.
 - `supabase/migrations/`: additive PostgreSQL schema, indexes, RLS policies, and test fixtures; never applied to production by this task.
 - `backend/`: existing FastAPI ingestion/reporting and integrations; retain until replacement paths have tested equivalent behavior.
-- `public/`, `sdk/`, `packages/Zappa-analytics/`: compatibility-critical tracker assets and packages; preserve their public contracts.
+- `public/`, `sdk/`, `packages/zappa-analytics/`: compatibility-critical tracker assets and packages; preserve their public contracts.
 - `docs/research/`, `docs/implementation/`, `docs/design/`, `docs/product/`: evidence-based audit, migration notes, implementation requirements and design tokens.
 - `emails/` or `lib/email/`: only server-side transactional application email templates and send helpers, if implemented.
 
@@ -53,4 +53,4 @@ The repository’s existing production configuration and deployed services are o
 
 ## Relevant structure observed
 
-Current product code lives in `app/dashboard/`, the FastAPI application in `backend/main.py`, analytics definitions in `backend/overview_reporting.py`, and the tracking SDK in `public/Zappa.js`, `sdk/Zappa.js`, and `packages/Zappa-analytics/`. Migrations currently live under `backend/migrations/versions/`; the Supabase schema will be a separate, additive Supabase migration path until an approved cutover is complete.
+Current product code lives in `app/dashboard/`, the FastAPI application in `backend/main.py`, analytics definitions in `backend/overview_reporting.py`, and the tracking SDK in `public/Zappa.js`, `sdk/Zappa.js`, and `packages/zappa-analytics/`. Migrations currently live under `backend/migrations/versions/`; the Supabase schema will be a separate, additive Supabase migration path until an approved cutover is complete.

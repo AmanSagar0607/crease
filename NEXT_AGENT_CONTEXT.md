@@ -45,7 +45,7 @@ Vercel forwards `/api/*` to Render using the Vercel production `BACKEND_URL` env
 - `backend/main.py` — FastAPI app, OAuth, projects, events, GitHub and Vercel endpoints.
 - `backend/github_install.py` — creates GitHub installation/activation pull requests.
 - `public/Zappa.js` — standalone browser tracker.
-- `packages/Zappa-analytics` — npm package source.
+- `packages/zappa-analytics` — npm package source.
 - `app/docs/page.tsx` — public package usage page at `/docs`.
 
 ## What is working
@@ -161,37 +161,37 @@ Ensure the integration is installed on the relevant Vercel team and granted acce
 
 ## Npm package
 
-The source package is `packages/Zappa-analytics` and is named `@Zappa/analytics`.
+The source package is `packages/zappa-analytics` and is named `@aman-sagar06077/zappa-analytics`.
 
 Exports:
 
 ```ts
-import { init } from '@Zappa/analytics';
-import { Analytics } from '@Zappa/analytics/next';
+import { init } from '@aman-sagar06077/zappa-analytics';
+import { Analytics } from '@aman-sagar06077/zappa-analytics/next';
 ```
 
 Next.js usage:
 
 ```tsx
-import { Analytics } from '@Zappa/analytics/next';
+import { Analytics } from '@aman-sagar06077/zappa-analytics/next';
 
 <Analytics projectId="YOUR_Zappa_PROJECT_ID" />
 ```
 
 The package was verified with a direct Node ESM import. The docs page is `/docs`.
 
-It is **not confirmed published to npm**. `npm whoami` reported no npm login and npm reported that `@Zappa/analytics` does not currently exist.
+The package has not yet been published. `npm whoami` returned `aman-sagar0607`; an unscoped publish of `@aman-sagar06077/zappa-analytics@0.1.0` returned npm E404. Confirm the account scope/package naming before retrying.
 
 To publish, the owner must run:
 
 ```bash
 npm login
-cd packages/Zappa-analytics
+cd packages/zappa-analytics
 npm pack --dry-run
 npm publish --access public
 ```
 
-The npm account must own the `@Zappa` scope. If it does not, choose a package name/scope that the owner controls before publishing.
+For a scoped public package, use a scope owned by the signed-in npm account and pass `--access public`.
 
 ## Validation already performed
 
@@ -203,7 +203,7 @@ The npm account must own the `@Zappa` scope. If it does not, choose a package na
 ## Current limitations and priorities
 
 1. **Fix Vercel project discovery.** The Vercel UI says the account is connected but returns no available projects. Inspect OAuth token scope/team context and Vercel integration installation configuration.
-2. **Publish `@Zappa/analytics`.** Login to npm and confirm scope ownership first.
+2. **Publish the npm package.** Resolve npm E404 by confirming the exact available package name/scope, then publish and verify the registry version.
 3. **Improve analytics accuracy.** Country data is unknown. A trusted proxy/edge geo strategy is needed before enabling geo headers.
 4. **Keep SPA tracking covered.** Both the standalone tracker and npm package now observe History API changes, query-only route changes, and `popstate`; keep these behaviors covered when changing the SDK.
 5. **Add durable schema migrations and scheduled retention cleanup.** Current schema uses `CREATE TABLE IF NOT EXISTS`; retention cleanup is not scheduled.
@@ -212,7 +212,7 @@ The npm account must own the `@Zappa` scope. If it does not, choose a package na
 
 ## Production hardening, database migration, and dashboard update (deployed 2026-11-13)
 
-- Both `sdk/Zappa.js` and `packages/Zappa-analytics/index.js` now observe `pushState`, `replaceState`, query-only route changes, and `popstate`; duplicate URLs are suppressed and navigation is not blocked.
+- Both `sdk/Zappa.js` and `packages/zappa-analytics/index.js` now observe `pushState`, `replaceState`, query-only route changes, and `popstate`; duplicate URLs are suppressed and navigation is not blocked.
 - SDK visitor and session IDs now use shared first-party local storage. Session IDs rotate after 30 minutes idle or 24 hours. API `analytics_sessions` records first/last event time, entry/exit path, visitor ID, and pageview count. Duration is approximate based on received events.
 - The ingestion OPTIONS response now permits `X-Zappa-Key`, which the SDK sends.
 - `backend/expire.py` deletes expired session records with expired events. Project deletion and retention-setting updates also clear corresponding session records.
@@ -303,5 +303,5 @@ Overview acquisition source search and CSV export operate on the API's first 50 
 - `GET /health` now reports `ingestion.bot_filter`, `ingestion.geo_forwarding`, and `retention.scheduled_hours` / `retention.external_trigger` booleans without exposing secrets.
 - Removed fabricated customer testimonials from the landing page and replaced them with factual product principles. Removed the unenforced "one project free forever" promise: pricing and the landing page now state that unlimited projects are free during early access, with a separate open-source/self-host plan. The retention FAQ now mentions the cleanup job.
 - Verification: 39 backend tests pass against an isolated PostgreSQL schema (adds bot filtering, geo default, retention endpoint, scheduled retention, and missing-table tests); `npx tsc --noEmit` and `npm run build` pass; SDK tests 8/8 and analytics package tests 2/2 pass. A local uvicorn run against `Zappa_demo` confirmed `GET /health`, bot rejection with a Googlebot UA, normal ingestion, authenticated overview data, the 401/200 retention endpoint behavior, and a startup retention pass deleting an expired probe event with clear logs.
-- The docs page and npm README no longer lead with an unpublished package. `app/docs/page.tsx` now starts with the working script-tag install and states that `@Zappa/analytics` lives in `packages/Zappa-analytics` and is not on npm yet; the package README example uses a numeric property because string properties are dropped by the SDK.
+- The docs page and npm README no longer lead with an unpublished package. `app/docs/page.tsx` now starts with the working script-tag install and documents the `@aman-sagar06077/zappa-analytics` package source and install path; the package README example uses a numeric property because string properties are dropped by the SDK.
 - Still outstanding for a broad launch: set `GEO_FORWARD_SECRET` on Render and Vercel for country data; add error monitoring and database backups; complete the security review; Render free-tier cold starts remain.

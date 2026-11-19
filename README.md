@@ -34,34 +34,21 @@ The dashboard can also create a GitHub pull request for a static HTML file, rega
 
 Before creating a pull request, deploy Zappa to a publicly reachable HTTPS origin where `/Zappa.js` and `/api/events` work and set `Zappa_PUBLIC_ORIGIN` once on the server. The pull request adds a consent-gated snippet: the site must dispatch `Zappa:consent` after any required consent. Creating the pull request writes a new branch to GitHub; it does not merge or deploy it. Only a root `index.html` is supported currently. Next.js and other non-HTML entry points, Netlify account connections, and edge injection are not implemented yet.
 
-## Publish the npm package
+## npm package (ready to publish)
 
-The reusable client package lives in [`packages/Zappa-analytics`](packages/Zappa-analytics). It exports a framework-neutral `init()` API and a Next.js `<Analytics />` component.
-
-Before publishing, sign in to the npm account or organization that owns the `@Zappa` scope:
+The `@aman-sagar06077/zappa-analytics` package source exports a framework-neutral `init()` API and a Next.js `<Analytics />` component. Source lives in [`packages/zappa-analytics`](packages/zappa-analytics).
 
 ```bash
-npm login
+npm install @aman-sagar06077/zappa-analytics # after public npm release
 ```
-
-Check the package contents and publish a public release:
-
-```bash
-cd packages/Zappa-analytics
-npm pack --dry-run
-npm publish --access public
-```
-
-After publishing, Next.js applications can install it with `npm i @Zappa/analytics` and add the component below to their root layout:
 
 ```tsx
-import { Analytics } from '@Zappa/analytics/next';
+import { Analytics } from '@aman-sagar06077/zappa-analytics/next';
 
-<Analytics projectId="YOUR_Zappa_PROJECT_ID" writeKey="Zappa_YOUR_PROJECT_WRITE_KEY" />
+<Analytics projectId="YOUR_PROJECT_ID" writeKey="Zappa_YOUR_PROJECT_WRITE_KEY" enabled={consentGranted} />
 ```
 
-For a JavaScript site, import `init` from `@Zappa/analytics`, pass the project ID and write key, and call `track()` for custom events. Only initialize analytics when the site's consent policy permits it.
-
+For a JavaScript site, import `init` from `@aman-sagar06077/zappa-analytics`, pass the project ID and write key, and call `track()` for custom events. Only initialize analytics when the site's consent policy permits it.
 ### Vercel Git settings (experimental)
 
 Register a separate connectable-account integration in Vercel with Project read/write access and redirect URL `http://localhost:3000/api/vercel/callback` for local testing. Set `VERCEL_INTEGRATION_SLUG`, `VERCEL_INTEGRATION_CLIENT_ID`, `VERCEL_INTEGRATION_CLIENT_SECRET`, and an independently generated `VERCEL_TOKEN_KEY` in `backend/.env`, then restart the API. Use the Vercel panel in Zappa to authorize the integration and link a project. Access tokens are encrypted server-side. Disconnecting removes Zappa's stored token and project mappings but does not uninstall the integration at Vercel. Settings are read and written against the linked Vercel project. Inherited team settings are identified separately from project overrides. Project discovery is currently limited to the first 100 projects. Deploy hooks use Vercel's project API, but the published integration scope list does not explicitly include those endpoints; Vercel may deny access. Hook URLs are secrets shown only at creation. Concurrent edits in Vercel can race with Zappa updates. This integration needs a real Vercel integration registration and end-to-end verification before production use.

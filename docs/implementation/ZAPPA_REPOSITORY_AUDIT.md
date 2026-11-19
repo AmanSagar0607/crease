@@ -15,7 +15,7 @@
 ## Existing implemented functionality
 
 - Project workspace and individual project routing, project CRUD, manual domains and DNS ownership verification.
-- Standalone tracker `public/Zappa.js`, `sdk/Zappa.js`, and `packages/Zappa-analytics` with page views, SPA route detection, custom event capture, consent-aware initialization/opt-out, batching and retry behavior. Public compatibility identifiers must remain stable.
+- Standalone tracker `public/Zappa.js`, `sdk/Zappa.js`, and `packages/zappa-analytics` with page views, SPA route detection, custom event capture, consent-aware initialization/opt-out, batching and retry behavior. Public compatibility identifiers must remain stable.
 - Event ingestion, project write-key generation/rotation, per-project origin/domain checks, idempotency, payload checks, fixed-window database-backed rate limiting, bot filtering and data retention scheduling.
 - Dashboard overview with actual visitors, sessions, pageviews, previous period, time series, acquisition model selection, conversion event selection, campaign/landing page summaries, recent activity, property filters and UTC period selection.
 - Acquisition reports for first touch, last touch, last non-direct touch. Documentation explicitly distinguishes observed touchpoint visitors from revenue or confirmed direct traffic.
