@@ -11,6 +11,15 @@ export default clerkMiddleware(async (auth, request) => {
   const isProtectedPage = pathname === '/dashboard' || pathname.startsWith('/dashboard/') || pathname === '/account' || pathname.startsWith('/account/');
   const isProtectedApi = pathname.startsWith('/api/') && !isPublicApiPath(pathname);
   if (isProtectedPage || isProtectedApi) await auth.protect();
+}, {
+  // Keep Clerk's edge check aligned with the API's `azp` allowlist. Without
+  // this, requests from the production app can be rejected before the rewrite
+  // forwards them to the backend.
+  authorizedParties: [
+    'https://www.zappa.in',
+    'https://zappa.in',
+    'http://localhost:3000',
+  ],
 });
 
 export const config = {
