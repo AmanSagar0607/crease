@@ -3803,7 +3803,7 @@
   .analyticsDashboard.dashboard:has(> [data-slot='sidebar'][data-state='collapsed']) .main,
   .analyticsDashboard.dashboard:has(> [data-slot='sidebar'][data-state='collapsed']) .footer,
   .analyticsDashboard.dashboard:has(> [data-slot='sidebar'][data-state='collapsed']) .analyticsHeader .headerInner {
-    width: min(1440px, calc(100% - 96px));
+    width: min(1120px, calc(100% - 96px));
   }
 
   .analyticsDashboard [data-slot='sidebar-container'] {
