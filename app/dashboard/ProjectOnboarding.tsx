@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import styles from './onboarding.module.css';
 
-type Method = 'script' | 'npm' | 'wordpress' | 'shopify';
+type Method = 'script' | 'npm' | 'wordpress' | 'shopify' | 'agent';
 type NpmTarget = 'next' | 'javascript';
+type AgentTarget = 'codex' | 'claude' | 'other';
 type Props = {
   name: string;
   domain: string;
@@ -28,6 +29,7 @@ export default function ProjectOnboarding(props: Props) {
   const [step, setStep] = useState<'verify' | 'install' | 'events'>('verify');
   const [method, setMethod] = useState<Method>('script');
   const [npmTarget, setNpmTarget] = useState<NpmTarget>('next');
+  const [agentTarget, setAgentTarget] = useState<AgentTarget>('codex');
   const [copied, setCopied] = useState('');
   const [copyError, setCopyError] = useState('');
   const snippet = `<script>\n  // Dispatch Zappa:consent after any required consent has been granted.\n  window.addEventListener('Zappa:consent', function () {\n    var script = document.createElement('script');\n    script.src = ${JSON.stringify(props.origin + '/Zappa.js')};\n    script.onload = function () {\n      window.Zappa.init({\n        projectId: ${JSON.stringify(props.projectId)},\n        writeKey: ${JSON.stringify(props.writeKey)},\n        endpoint: ${JSON.stringify(props.endpoint)}\n      });\n    };\n    document.head.appendChild(script);\n  }, { once: true });\n</script>`;
@@ -36,6 +38,18 @@ export default function ProjectOnboarding(props: Props) {
   const npmSnippet = npmTarget === 'next'
     ? `import { Analytics } from '@aman-sagar06077/zappa-analytics/next';\n\n// Add inside your root layout's <body>\n<Analytics\n  projectId={process.env.NEXT_PUBLIC_ZAPPA_PROJECT_ID!}\n  writeKey={process.env.NEXT_PUBLIC_ZAPPA_WRITE_KEY!}\n  endpoint={process.env.NEXT_PUBLIC_ZAPPA_ORIGIN + '/api/events'}\n/>`
     : `import { init } from '@aman-sagar06077/zappa-analytics';\n\nconst analytics = init({\n  projectId: ${JSON.stringify(props.projectId)},\n  writeKey: ${JSON.stringify(props.writeKey)},\n  endpoint: ${JSON.stringify(props.endpoint)}\n});\n\nanalytics.track('signup_completed', { plan: 1 });`;
+  const agentNames: Record<AgentTarget, string> = { codex: 'Codex', claude: 'Claude Code', other: 'AI coding agent' };
+  const agentPrompt = `Set up Zappa analytics in this repository for the website ${props.domain} (project: ${props.name}).
+
+Install the published package using the repository's existing package manager:
+${npmInstallCommand}
+
+Add these values to the local environment file used by this app, and tell me where to add them in production hosting settings:
+${npmEnvSnippet}
+
+Inspect the framework and router before editing. For Next.js App Router, import Analytics from '@aman-sagar06077/zappa-analytics/next' and render it inside the root layout's <body>. For other setups, use the package's documented browser initialization API. Preserve any existing analytics consent flow: initialize only after consent when consent is required. Avoid duplicate tracker instances and don't add unrelated tracking or collect personal data.
+
+Make the smallest changes needed, then run the relevant typecheck or build if available. Report the files changed and how I can verify the first event. Do not deploy or commit/push.`;
   async function copy(value: string, label: string) {
     try { await navigator.clipboard.writeText(value); setCopied(label); setCopyError(''); }
     catch { setCopyError('Could not copy automatically. Select and copy the text instead.'); }
@@ -58,8 +72,17 @@ export default function ProjectOnboarding(props: Props) {
           </>}
           {step === 'install' && <>
             <div className={styles.cardHead}><div><span className={styles.kicker}>STEP 02 / INSTALLATION</span><h2>Add the tracker</h2><p>Choose how your site is built, then add the Zappa script after any required visitor consent.</p></div></div>
-            <div className={styles.tabs} role="group" aria-label="Installation method">{([['script','Website'],['npm','npm'],['wordpress','WordPress'],['shopify','Shopify']] as const).map(([id,label]) => <button key={id} type="button" aria-pressed={method === id} onClick={() => setMethod(id)}>{label}</button>)}</div>
-            {method === 'npm' ? <div className={styles.npmGuide}>
+            <div className={styles.tabs} role="group" aria-label="Installation method">{([['script','Website'],['npm','npm'],['wordpress','WordPress'],['shopify','Shopify'],['agent','AI agent']] as const).map(([id,label]) => <button key={id} type="button" aria-pressed={method === id} onClick={() => setMethod(id)}>{label}</button>)}</div>
+            {method === 'agent' ? <div className={styles.npmGuide}>
+              <div className={styles.npmGuideHead}><div><span className={styles.kicker}>LET YOUR CODING AGENT SET IT UP</span><h3>Copy a ready-to-run setup prompt.</h3></div></div>
+              <p className={styles.instructions}>Choose your agent, then paste the prompt into your coding session with this website’s codebase open. It includes the project’s install details and setup values.</p>
+              <div className={styles.npmTargets} role="group" aria-label="AI coding agent">
+                {([['codex','Codex'],['claude','Claude Code'],['other','Other']] as const).map(([id,label]) => <button key={id} type="button" aria-pressed={agentTarget === id} onClick={() => setAgentTarget(id)}>{label}</button>)}
+              </div>
+              <div className={styles.codeWrap}><button type="button" onClick={() => void copy(agentPrompt, `agent-${agentTarget}`)} disabled={!props.writeKey}>{copied === `agent-${agentTarget}` ? 'Copied' : `Copy ${agentNames[agentTarget]} prompt`}</button><pre tabIndex={0}><code>{props.writeKey ? agentPrompt : 'Write key unavailable. Open Installation in the dashboard to generate one.'}</code></pre></div>
+              <p className={styles.note}>The prompt asks your agent to inspect the app before choosing an integration, preserve consent handling, and show you the changes. Your project write key is included as public browser configuration.</p>
+              {!props.writeKey && <p className={styles.message} role="status">Generate a write key before copying the setup prompt.</p>}
+            </div> : method === 'npm' ? <div className={styles.npmGuide}>
               <div className={styles.npmGuideHead}>
                 <div><span className={styles.kicker}>NO EXTRA CONNECTION STEP</span><h3>Install, paste, start tracking.</h3></div>
                 <button className={styles.copyAction} type="button" onClick={() => void copy(npmInstallCommand, 'npm-install')}>{copied === 'npm-install' ? 'Copied' : 'Copy install command'}</button>
@@ -85,7 +108,7 @@ export default function ProjectOnboarding(props: Props) {
             <p className={styles.note}>After this code has run, dispatch <code>window.dispatchEvent(new Event('Zappa:consent'))</code> when consent is granted. On every later page load, dispatch it again after this listener is registered if your consent manager confirms consent is still valid. The write key is included in your public site code.</p>
             </>}
             {copyError && <p className={styles.message} role="status">{copyError}</p>}
-            <div className={styles.actions}><button className={styles.secondary} type="button" onClick={() => setStep('verify')}>? Back</button><button className={styles.primary} type="button" onClick={() => { setStep('events'); props.onCheckEvents(); }}>{method === 'npm' ? 'I’ve installed the package' : 'I’ve added the code'} <span>?</span></button></div>
+            <div className={styles.actions}><button className={styles.secondary} type="button" onClick={() => setStep('verify')}>? Back</button><button className={styles.primary} type="button" onClick={() => { setStep('events'); props.onCheckEvents(); }}>{method === 'npm' ? 'I’ve installed the package' : method === 'agent' ? 'I’ve finished setup' : 'I’ve added the code'} <span>?</span></button></div>
           </>}
           {step === 'events' && <>
             <div className={styles.cardHead}><div><span className={styles.kicker}>STEP 03 / FIRST EVENT</span><h2>{props.eventReceived ? 'Your site is connected.' : 'Waiting for your first event'}</h2><p>{props.eventReceived ? 'Zappa has received an event from this project.' : 'Publish your changes, grant any required consent, then visit your website to send a page view.'}</p></div><span className={styles.status} data-ready={props.eventReceived}>{props.eventReceived ? 'Receiving events' : 'Waiting'}</span></div>
