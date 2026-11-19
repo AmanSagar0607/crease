@@ -285,7 +285,7 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                     role="img"
                     aria-label="Daily visitors and sessions compared with the previous period"
                   >
-                    <LineChart data={report.series} margin={{ top: 12, right: 16, left: -20, bottom: 0 }}>
+                    <LineChart data={report.series} margin={{ top: 12, right: 16, left: 0, bottom: 0 }}>
                       <CartesianGrid stroke="var(--line)" vertical={false} />
                       <XAxis
                         dataKey="date"
@@ -295,7 +295,7 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                         tickLine={false}
                         axisLine={false}
                       />
-                      <YAxis allowDecimals={false} tick={{ fill: 'var(--muted)', fontSize: 13 }} tickLine={false} axisLine={false} />
+                      <YAxis domain={[0, 'dataMax']} tickCount={5} allowDecimals={false} tick={{ fill: 'var(--muted)', fontSize: 13 }} tickLine={false} axisLine={false} />
                       <ChartTooltip
                         cursor={false}
                         content={<ChartTooltipContent labelFormatter={(label) => `${String(label)} UTC`} />}
