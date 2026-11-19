@@ -1053,27 +1053,28 @@ async def live_event_stream(request: Request, projectId: str = Query(min_length=
     cursor = latest if after is None else after
 
     async def stream():
+        stream_cursor = cursor
         started = time.monotonic()
         last_heartbeat = started
-        yield f'event: ready\nid: {cursor}\ndata: {json.dumps({"cursor": cursor})}\n\n'
+        yield f'event: ready\nid: {stream_cursor}\ndata: {json.dumps({"cursor": stream_cursor})}\n\n'
         while time.monotonic() - started < 3000:
             if await request.is_disconnected():
                 break
             await asyncio.sleep(2)
             try:
-                rows = await asyncio.to_thread(_read_live_events, projectId, cursor)
+                rows = await asyncio.to_thread(_read_live_events, projectId, stream_cursor)
             except Exception:
                 logging.getLogger('Zappa.live').exception('Live event poll failed')
                 yield 'event: stream-error\ndata: {"retry":true}\n\n'
                 break
             for row in rows:
-                cursor = int(row['ingest_seq'])
+                stream_cursor = int(row['ingest_seq'])
                 payload = {
                     'id': row['id'], 'name': row['name'], 'occurred_at': row['occurred_at'],
                     'path': row['path'], 'country': row['country'], 'device': row['device'],
-                    'ingest_seq': cursor,
+                    'ingest_seq': stream_cursor,
                 }
-                yield f'id: {cursor}\nevent: analytics-event\ndata: {json.dumps(payload, separators=(",", ":"))}\n\n'
+                yield f'id: {stream_cursor}\nevent: analytics-event\ndata: {json.dumps(payload, separators=(",", ":"))}\n\n'
             current = time.monotonic()
             if current - last_heartbeat >= 15:
                 yield ': keep-alive\n\n'
