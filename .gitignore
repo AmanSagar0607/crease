@@ -20,3 +20,5 @@ backend/.worker-build-script.sh
 
 .agents/
 .codex/
+# Local npm cache created during package publishing
+packages/*/.npm-cache/
