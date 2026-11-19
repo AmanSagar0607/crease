@@ -2,11 +2,13 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import { ArrowUpRight, Menu, X } from 'lucide-react';
 import ThemeToggle from './theme-toggle';
 import s from './landing.module.css';
 
 export default function LandingNav() {
+  const { isLoaded, isSignedIn } = useAuth();
   const [open, setOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -44,8 +46,14 @@ export default function LandingNav() {
         </div>
         <div className={s.navEnd}>
           <span className={s.navTheme}><ThemeToggle /></span>
-          <Link className={s.navQuiet} href="/sign-in">Log in</Link>
-          <Link className={s.navAction} href="/sign-up">Start free</Link>
+          {isLoaded && (isSignedIn ? (
+            <Link className={s.navAction} href="/dashboard">Dashboard</Link>
+          ) : (
+            <>
+              <Link className={s.navQuiet} href="/sign-in">Log in</Link>
+              <Link className={s.navAction} href="/sign-up">Start free</Link>
+            </>
+          ))}
           <button
             ref={toggleRef}
             className={s.mobileMenuToggle}
@@ -74,10 +82,16 @@ export default function LandingNav() {
             <Link href="/waitlist" onClick={close}>Early access</Link>
             <a href="https://github.com/AmanSagar0607/Zappa" target="_blank" rel="noreferrer" onClick={close}>GitHub <ArrowUpRight aria-hidden="true" /></a>
             <div className={s.mobileMenuTheme}><ThemeToggle /></div>
-            <div className={s.mobileMenuActions}>
-              <Link className={s.mobileMenuLogin} href="/sign-in" onClick={close}>Log in</Link>
-              <Link className={s.mobileMenuStart} href="/sign-up" onClick={close}>Start free <ArrowUpRight aria-hidden="true" /></Link>
-            </div>
+            {isLoaded && <div className={s.mobileMenuActions}>
+              {isSignedIn ? (
+                <Link className={s.mobileMenuStart} href="/dashboard" onClick={close}>Dashboard <ArrowUpRight aria-hidden="true" /></Link>
+              ) : (
+                <>
+                  <Link className={s.mobileMenuLogin} href="/sign-in" onClick={close}>Log in</Link>
+                  <Link className={s.mobileMenuStart} href="/sign-up" onClick={close}>Start free <ArrowUpRight aria-hidden="true" /></Link>
+                </>
+              )}
+            </div>}
           </div>
         </div>
       )}
