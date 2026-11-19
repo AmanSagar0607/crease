@@ -303,6 +303,58 @@
   font: 12px/1.7 var(--font-mono, ui-monospace, Consolas, monospace);
   tab-size: 2;
 }
+.npmGuide {
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px solid var(--setup-line);
+  border-radius: 12px;
+  background: var(--paper, #f7f5ef);
+}
+.npmGuideHead { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.npmGuideHead h3 { margin: 6px 0 0; font-size: 18px; letter-spacing: -.03em; }
+.copyAction,
+.npmTargets button,
+.codeWrap button {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--setup-line);
+  border-radius: 8px;
+  background: var(--setup-card);
+  color: var(--setup-ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+.copyAction:hover,
+.npmTargets button:hover,
+.codeWrap button:hover { background: var(--soft, #efede7); }
+.copyAction:disabled,
+.codeWrap button:disabled { opacity: .55; cursor: not-allowed; }
+.command {
+  overflow-x: auto;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--setup-line);
+  border-radius: 9px;
+  background: var(--setup-card);
+  color: var(--setup-ink);
+  font: 12px/1.6 var(--font-mono, ui-monospace, Consolas, monospace);
+}
+.npmTargets {
+  display: inline-flex;
+  gap: 4px;
+  margin-top: 16px;
+  padding: 3px;
+  border: 1px solid var(--setup-line);
+  border-radius: 9px;
+  background: var(--setup-card);
+}
+.npmTargets button { border-color: transparent; background: transparent; }
+.npmTargets button[aria-pressed='true'] { border-color: var(--setup-line); background: var(--paper, #f7f5ef); font-weight: 650; }
+.npmGuide .instructions { margin-top: 12px; }
+.npmGuide .codeWrap { background: var(--setup-card); }
+.npmGuide .codeWrap pre { max-height: 250px; }
+.docsLink { margin: 12px 0 0; font-size: 13px; }
+.docsLink a { color: var(--blue, #b85436); text-decoration: underline; text-underline-offset: 3px; }
 .checklist { border-top: 1px solid var(--setup-line); }
 .checklist > div { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--setup-line); }
 .checklist span { color: var(--blue, #b85436); font-size: 12px; font-weight: 650; }
@@ -346,6 +398,9 @@
   .actions { flex-wrap: wrap; }
   .actions .primary { min-width: 100%; order: -1; }
   .tabs button { font-size: 11px; }
+  .npmGuide { padding: 14px; }
+  .npmGuideHead { align-items: flex-start; flex-direction: column; }
+  .copyAction { width: 100%; }
   .footer span:last-child { display: none; }
 }
 
