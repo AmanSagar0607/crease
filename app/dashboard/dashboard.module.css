@@ -1224,7 +1224,25 @@
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.06);
   transform: translateY(-2px);
 }
-
+.projectCardShell { display: flex; min-width: 0; flex-direction: column; gap: 8px; }
+.projectCardShell .projectCard { flex: 1; }
+.projectDeleteButton {
+  align-self: flex-end;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--negativeLine, var(--border));
+  border-radius: var(--radius-pill, 999px);
+  background: var(--card);
+  color: var(--negative, #a12f28);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--motion-fast, 150ms) ease, border-color var(--motion-fast, 150ms) ease;
+}
+.projectDeleteButton:hover:not(:disabled) { border-color: var(--negative, #a12f28); background: var(--negativeBg, #fff1ef); }
+.projectDeleteButton:active:not(:disabled) { transform: translateY(1px); }
+.projectDeleteButton:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.projectDeleteButton:disabled { cursor: wait; opacity: .58; }
 .projectCardTop {
   display: flex;
   align-items: center;

@@ -419,6 +419,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const rangeQuery = reportRange ? `&start=${reportRange.start}&end=${reportRange.end}` : '';
   const [retention, setRetention] = useState(30);
   const [settingsBusy, setSettingsBusy] = useState(false);
+  const [deletingProjectId, setDeletingProjectId] = useState('');
   const [settingsMessage, setSettingsMessage] = useState('');
   const [keyNotice, setKeyNotice] = useState('');
   const [writeKey, setWriteKey] = useState('');
@@ -861,6 +862,20 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       setError(e instanceof Error ? e.message : 'Could not delete the project.');
     } finally {
       setSettingsBusy(false);
+    }
+  }
+
+  async function deleteProjectFromList(item: Project) {
+    if (!window.confirm(`Delete “${item.name}” and all its analytics data? This cannot be undone.`)) return;
+    setError('');
+    setDeletingProjectId(item.id);
+    try {
+      await api(`/api/projects/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+      setProjects((list) => list.filter((projectItem) => projectItem.id !== item.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Could not delete ${item.name}.`);
+    } finally {
+      setDeletingProjectId('');
     }
   }
 
@@ -1789,7 +1804,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                     {projects.map((item) => {
                       const live = Boolean(item.last_event_at) && Date.now() - new Date(item.last_event_at!).getTime() < 7 * 864e5;
                       return (
-                        <Link className={s.projectCard} key={item.id} href={`/dashboard/projects/${encodeURIComponent(item.id)}`}>
+                        <div className={s.projectCardShell} key={item.id}>
+                        <Link className={s.projectCard} href={`/dashboard/projects/${encodeURIComponent(item.id)}`}>
                           <span className={s.projectCardTop}>
                             <span className={s.projectCardMark} aria-hidden="true">
                               {item.name.slice(0, 1).toUpperCase()}
@@ -1823,6 +1839,17 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             <span>{item.retention_days}d retention</span>
                           </span>
                         </Link>
+                        <button
+                          className={s.projectDeleteButton}
+                          type="button"
+                          aria-label={`Delete project ${item.name}`}
+                          title={`Delete ${item.name}`}
+                          disabled={Boolean(deletingProjectId)}
+                          onClick={() => void deleteProjectFromList(item)}
+                        >
+                          {deletingProjectId === item.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                        </div>
                       );
                     })}
                   </div>
