@@ -11,6 +11,12 @@ import VerifiedBadge from './VerifiedBadge';
 import ProjectOnboarding from './ProjectOnboarding';
 import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import OverviewV1 from './OverviewV1';
 import ReportToolbar from './ReportToolbar';
 import AcquisitionSection from './AcquisitionSection';
@@ -255,6 +261,14 @@ const ArrowUpRightIcon = ({ className }: { className?: string }) => (
 const ArrowRightIcon = ({ className }: { className?: string }) => (
   <Svg className={className}>
     <path d="M5 12h14M13 6l6 6-6 6" />
+  </Svg>
+);
+
+const MoreHorizontalIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <circle cx="5" cy="12" r="1" />
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="19" cy="12" r="1" />
   </Svg>
 );
 
@@ -1917,16 +1931,29 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                             <span>{item.retention_days}d retention</span>
                           </span>
                         </Link>
-                        <button
-                          className={s.projectDeleteButton}
-                          type="button"
-                          aria-label={`Delete project ${item.name}`}
-                          title={`Delete ${item.name}`}
-                          disabled={Boolean(deletingProjectId)}
-                          onClick={() => void deleteProjectFromList(item)}
-                        >
-                          {deletingProjectId === item.id ? 'Deleting…' : 'Delete'}
-                        </button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              className={s.projectCardMenuTrigger}
+                              type="button"
+                              aria-label={`More options for ${item.name}`}
+                              title={`More options for ${item.name}`}
+                              disabled={Boolean(deletingProjectId)}
+                            >
+                              <MoreHorizontalIcon className={s.projectCardMenuIcon} />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" sideOffset={6} className={s.projectCardMenu}>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              disabled={Boolean(deletingProjectId)}
+                              onSelect={() => void deleteProjectFromList(item)}
+                            >
+                              <TrashIcon className={s.projectCardMenuIcon} />
+                              Delete project
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         </div>
                       );
                     })}

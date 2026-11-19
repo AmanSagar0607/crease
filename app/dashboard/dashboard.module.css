@@ -1224,30 +1224,39 @@
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.06);
   transform: translateY(-2px);
 }
-.projectCardShell { display: flex; min-width: 0; flex-direction: column; gap: 8px; }
+.projectCardShell { position: relative; display: flex; min-width: 0; flex-direction: column; }
 .projectCardShell .projectCard { flex: 1; }
-.projectDeleteButton {
-  align-self: flex-end;
-  min-height: 38px;
-  padding: 0 12px;
-  border: 1px solid var(--negativeLine, var(--border));
-  border-radius: var(--radius-pill, 999px);
-  background: var(--card);
-  color: var(--negative, #a12f28);
-  font: inherit;
-  font-size: 12px;
+.projectCardMenuTrigger {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
   cursor: pointer;
-  transition: background var(--motion-fast, 150ms) ease, border-color var(--motion-fast, 150ms) ease;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
 }
-.projectDeleteButton:hover:not(:disabled) { border-color: var(--negative, #a12f28); background: var(--negativeBg, #fff1ef); }
-.projectDeleteButton:active:not(:disabled) { transform: translateY(1px); }
-.projectDeleteButton:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.projectDeleteButton:disabled { cursor: wait; opacity: .58; }
+.projectCardMenuTrigger:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--soft2);
+  color: var(--ink);
+}
+.projectCardMenuTrigger:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.projectCardMenuTrigger:disabled { cursor: wait; opacity: .58; }
+.projectCardMenuIcon { width: 18px; height: 18px; }
+.projectCardMenu { width: auto; min-width: 9rem; }
 .projectCardTop {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
+  padding-right: 38px;
 }
 
 .projectCardMark {
