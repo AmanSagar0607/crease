@@ -53,7 +53,7 @@ export default function LiveActivity({ projectId, range }: { projectId: string; 
   const loadHistory = useCallback(async (signal?: AbortSignal) => {
     const params = new URLSearchParams({ days: '30', limit: '100', start: range.start, end: range.end });
     const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/events?${params}`, {
-      credentials: 'same-origin', signal,
+      credentials: 'same-origin', cache: 'no-store', signal,
     });
     if (!res.ok) throw new Error(`Activity unavailable (${res.status}).`);
     const rows = await res.json() as LiveEvent[];

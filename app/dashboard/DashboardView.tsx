@@ -674,14 +674,34 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setPropertyValue('');
   }
 
-  function refreshAnalytics() {
+  const refreshAnalytics = useCallback(() => {
     setAcquisitionRefresh((value) => value + 1);
     setError('');
     void loadSummary();
     void loadProperties();
     void loadEvents();
     void loadFunnel();
-  }
+  }, [loadEvents, loadFunnel, loadProperties, loadSummary]);
+
+  useEffect(() => {
+    if (!selected || tab !== 'analytics' || activeSection === 'live') return;
+
+    let refreshTimer = 0;
+    const params = new URLSearchParams({ projectId: selected });
+    const source = new EventSource(`/api/events/stream?${params.toString()}`);
+    source.addEventListener('analytics-event', () => {
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshAnalytics();
+        void api<Project[]>('/api/projects').then(setProjects).catch(() => {});
+      }, 350);
+    });
+
+    return () => {
+      window.clearTimeout(refreshTimer);
+      source.close();
+    };
+  }, [activeSection, refreshAnalytics, selected, tab]);
 
   useEffect(() => {
     setOnboarding(new URLSearchParams(window.location.search).get('onboarding') === '1');
