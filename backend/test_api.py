@@ -684,6 +684,8 @@ class ApiTest(unittest.TestCase):
                 return asyncio.run(main.dns_has_token('example.com', token))
         self.assertTrue(check({'_Zappa-verification.example.com': [{'type':16, 'data':'"'+expected+'"'}]}))
         self.assertTrue(check({'example.com': [{'type':16, 'data':'"'+expected+'"'}]}))
+        self.assertTrue(check({'_crease-verification.example.com': [{'type':16, 'data':'"crease-site-verification='+token+'"'}]}))
+        self.assertTrue(check({'example.com': [{'type':16, 'data':'"crease-site-verification='+token+'"'}]}))
         self.assertFalse(check({'example.com': [{'type':16, 'data':'"prefix'+expected+'suffix"'}]}))
         self.assertFalse(check({'example.com': [{'type':1, 'data':'"'+expected+'"'}]}))
         self.assertFalse(check({}))

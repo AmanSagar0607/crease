@@ -562,11 +562,15 @@ async def rotate_write_key(project_id: str, user=Depends(session_user)):
 def verification_record(token): return 'Zappa-site-verification=' + token
 
 async def dns_has_token(domain, token):
-    # Only the exact challenge counts; user-controlled web pages are never fetched.
-    expected = verification_record(token)
+    # Accept current Zappa challenges plus exact pre-rebrand Crease records.
+    expected_by_name = {
+        f'_Zappa-verification.{domain}': {verification_record(token)},
+        f'_crease-verification.{domain}': {'crease-site-verification=' + token},
+        domain: {verification_record(token), 'crease-site-verification=' + token},
+    }
     try:
         async with httpx.AsyncClient(timeout=6) as client:
-            for name in (f'_Zappa-verification.{domain}', domain):
+            for name, expected_values in expected_by_name.items():
                 response = await client.get('https://cloudflare-dns.com/dns-query', params={'name':name,'type':'TXT'}, headers={'Accept':'application/dns-json'})
                 if response.status_code != 200:
                     continue
@@ -575,7 +579,7 @@ async def dns_has_token(domain, token):
                         continue
                     # DNS JSON represents each TXT segment as a quoted string.
                     segments = re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', str(answer.get('data', '')))
-                    if segments and ''.join(segments) == expected:
+                    if segments and ''.join(segments) in expected_values:
                         return True
     except (httpx.RequestError, ValueError, AttributeError, TypeError):
         return False
