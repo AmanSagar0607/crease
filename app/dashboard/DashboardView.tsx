@@ -440,6 +440,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [activeSection, setActiveSection] = useState<AnalyticsSection>('overview');
   const project = showProjects ? undefined : projects.find((item) => item.id === selected);
   const projectRef = useRef<Project | undefined>(undefined);
+  const loadVersion = useRef(0);
   projectRef.current = project;
   const activeProperty = properties.find((item) => item.name === propertyKey);
   const activeFilter = propertyKey && propertyValue ? { property: propertyKey, value: propertyValue } : null;
@@ -459,22 +460,28 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   });
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
+    setBusy(true);
+    setError('');
     try {
       const current = await api<User>('/api/me');
+      if (version !== loadVersion.current) return;
       setUser(current);
       const list = await api<Project[]>('/api/projects');
+      if (version !== loadVersion.current) return;
       setProjects(list);
       const viewingProjects = !projectId && new URLSearchParams(window.location.search).get('view') === 'projects';
       setShowProjects(viewingProjects);
       setSelected(projectId ? (list.some((project) => project.id === projectId) ? projectId : '') : !viewingProjects && list.length === 1 ? list[0].id : '');
     } catch (e) {
+      if (version !== loadVersion.current) return;
       if (e instanceof ApiError && e.status === 401) {
         handleUnauthorized(setError);
         return;
       }
       setError(e instanceof Error ? e.message : 'Could not load your workspace.');
     } finally {
-      setBusy(false);
+      if (version === loadVersion.current) setBusy(false);
     }
   }, [projectId, handleUnauthorized]);
 
