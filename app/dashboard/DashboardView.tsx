@@ -423,6 +423,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
   const [settingsMessage, setSettingsMessage] = useState('');
   const [keyNotice, setKeyNotice] = useState('');
   const [writeKey, setWriteKey] = useState('');
+  const [showWriteKey, setShowWriteKey] = useState(false);
   const [verification, setVerification] = useState<Verification | null>(null);
   const [verificationBusy, setVerificationBusy] = useState(false);
   const [verificationNotice, setVerificationNotice] = useState('');
@@ -710,6 +711,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
     setSettingsMessage('');
     setKeyNotice('');
     setWriteKey(selected ? readWriteKey(selected) : '');
+    setShowWriteKey(false);
     setVerification(null);
     setVerificationNotice('');
     setSetupChecking(false);
@@ -777,6 +779,8 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
 
   async function generateWriteKey() {
     if (!project) return;
+    const rotating = Boolean(project.has_write_key || writeKey);
+    if (rotating && !window.confirm('Rotate this project write key? The current key will stop working immediately. Update every deployed site and environment variable with the replacement.')) return;
     setError('');
     setKeyNotice('');
     try {
@@ -786,10 +790,13 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
       );
       saveWriteKey(project.id, result.write_key);
       setWriteKey(result.write_key);
+      setShowWriteKey(true);
       setProjects((list) =>
         list.map((item) => (item.id === project.id ? { ...item, has_write_key: true } : item)),
       );
-      setKeyNotice('New write key generated. Update every deployed copy of the snippet; the old key no longer works.');
+      setKeyNotice(rotating
+        ? 'Write key rotated. The previous key stopped working immediately; update every deployed site and environment variable.'
+        : 'Write key generated. This key is public browser configuration and appears in your installation snippet.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not generate a write key.');
     }
@@ -1620,22 +1627,25 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
                         </p>
                         {!writeKey ? (
                           <div className={s.keyNotice} role="status">
-                            <strong>Generate a write key</strong>
+                            <strong>{project.has_write_key ? 'Key is stored in another browser' : 'Generate a write key'}</strong>
                             <p>
-                              Zappa rejects events without a valid per-project write key. Generate one before copying
-                              the installation code.
+                              {project.has_write_key
+                                ? 'Reveal a key here by rotating it. The current key will stop working immediately, so update all installed copies.'
+                                : 'Zappa rejects events without a valid per-project write key. Generate one before copying the installation code.'}
                             </p>
                             <button className={`${s.btn} ${s.btnSecondary}`} type="button" onClick={generateWriteKey}>
-                              Generate write key
+                              {project.has_write_key ? 'Rotate & reveal key' : 'Generate write key'}
                             </button>
                           </div>
                         ) : (
-                          <p className={s.keyStatus}>
-                            Write key ready. It is stored in this browser and embedded in the snippet.{' '}
-                            <button className={s.keyRotate} type="button" onClick={generateWriteKey}>
-                              Rotate key
-                            </button>
-                          </p>
+                          <div className={s.keyStatus}>
+                            <p>Write key ready. This is public browser configuration embedded in your site.</p>
+                            <code>{showWriteKey ? writeKey : `${writeKey.slice(0, 9)}${'•'.repeat(18)}`}</code>{' '}
+                            <button className={s.keyRotate} type="button" onClick={() => setShowWriteKey((value) => !value)}>
+                              {showWriteKey ? 'Hide key' : 'Reveal key'}
+                            </button>{' '}
+                            <button className={s.keyRotate} type="button" onClick={generateWriteKey}>Rotate key</button>
+                          </div>
                         )}
                         {keyNotice && (
                           <p className={s.keyStatus} role="status">

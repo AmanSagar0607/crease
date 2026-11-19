@@ -21,7 +21,7 @@ from svix.webhooks import Webhook, WebhookVerificationError
 from dotenv import load_dotenv
 from pathlib import Path
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
@@ -1031,6 +1031,68 @@ async def project_events(project_id: str, days: int = 30, start: date | None = N
             where.append('e.path=:path'); params['path'] = path
         rows = db.execute(text(f"SELECT e.id, e.name, e.occurred_at, e.path, e.visitor_id, e.session_id, e.country, e.device, e.referrer, e.properties FROM {source} WHERE " + ' AND '.join(where) + ' ORDER BY e.occurred_at DESC LIMIT :limit'), params).mappings().all()
     return [{'id':row['id'],'name':row['name'],'occurred_at':row['occurred_at'],'path':row['path'],'visitor_id':row['visitor_id'],'session_id':row['session_id'],'country':row['country'],'device':row['device'],'referrer':row['referrer'],'properties':json.loads(row['properties'])} for row in rows]
+
+
+@app.get('/api/events/stream')
+async def live_event_stream(request: Request, projectId: str = Query(min_length=1, max_length=36), after: int | None = Query(default=None, ge=0), user=Depends(session_user)):
+    """Stream newly ingested events for one owned project using a durable DB cursor."""
+    header_cursor = request.headers.get('last-event-id')
+    if after is None and header_cursor:
+        try:
+            after = int(header_cursor)
+        except ValueError:
+            raise HTTPException(400, 'Invalid Last-Event-ID cursor') from None
+        if after < 0:
+            raise HTTPException(400, 'Invalid Last-Event-ID cursor')
+
+    with engine.connect() as db:
+        owned(db, projectId, user['id'])
+        latest = int(db.execute(text('SELECT COALESCE(MAX(ingest_seq),0) FROM events WHERE project_id=:id'), {'id':projectId}).scalar_one())
+    if after is not None and after > latest:
+        raise HTTPException(400, 'Live event cursor is ahead of this project')
+    cursor = latest if after is None else after
+
+    async def stream():
+        started = time.monotonic()
+        last_heartbeat = started
+        yield f'event: ready\nid: {cursor}\ndata: {json.dumps({"cursor": cursor})}\n\n'
+        while time.monotonic() - started < 3000:
+            if await request.is_disconnected():
+                break
+            await asyncio.sleep(2)
+            try:
+                rows = await asyncio.to_thread(_read_live_events, projectId, cursor)
+            except Exception:
+                logging.getLogger('Zappa.live').exception('Live event poll failed')
+                yield 'event: stream-error\ndata: {"retry":true}\n\n'
+                break
+            for row in rows:
+                cursor = int(row['ingest_seq'])
+                payload = {
+                    'id': row['id'], 'name': row['name'], 'occurred_at': row['occurred_at'],
+                    'path': row['path'], 'country': row['country'], 'device': row['device'],
+                    'ingest_seq': cursor,
+                }
+                yield f'id: {cursor}\nevent: analytics-event\ndata: {json.dumps(payload, separators=(",", ":"))}\n\n'
+            current = time.monotonic()
+            if current - last_heartbeat >= 15:
+                yield ': keep-alive\n\n'
+                last_heartbeat = current
+
+    return StreamingResponse(stream(), media_type='text/event-stream', headers={
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+    })
+
+
+def _read_live_events(project_id: str, cursor: int):
+    with engine.connect() as db:
+        return db.execute(text('''
+            SELECT ingest_seq,id,name,occurred_at,path,country,device
+            FROM events WHERE project_id=:id AND ingest_seq>:cursor
+            ORDER BY ingest_seq ASC LIMIT 100
+        '''), {'id':project_id, 'cursor':cursor}).mappings().all()
 
 @app.get('/api/projects/{project_id}/funnel')
 async def funnel(project_id: str, first: str = Query(min_length=1, max_length=64), second: str = Query(min_length=1, max_length=64), days: int = 30, start: date | None = None, end: date | None = None, user=Depends(session_user)):
