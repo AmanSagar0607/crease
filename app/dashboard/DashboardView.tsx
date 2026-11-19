@@ -1055,8 +1055,7 @@ export default function DashboardView({ projectId }: { projectId?: string }) {
             </nav>
           )}
           <div className={s.account}>
-            {/* Analytics stays dark-only, so the theme toggle appears on the projects view only. */}
-            {!project && <ThemeToggle iconOnly />}
+            <ThemeToggle iconOnly />
             <Link className={s.headerLink} href="/docs">
               Docs
             </Link>

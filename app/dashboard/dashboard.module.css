@@ -3894,3 +3894,146 @@
     transition: none;
   }
 }
+
+
+/* Analytics shell theme bridge: this dashboard is now theme-aware rather than dark-only. */
+.analyticsDashboard.dashboard {
+  --ink: var(--foreground);
+  --ink2: var(--text-primary);
+  --muted: var(--muted-foreground);
+  --line: var(--border);
+  --lineStrong: var(--border-strong);
+  --paper: var(--card);
+  --soft: var(--surface-raised);
+  --soft2: var(--surface-hover);
+  --page: var(--background);
+  --border: var(--border-default);
+  --focus: var(--ring);
+  --blue: var(--primary);
+  --headerBg: var(--background);
+  --markBg: var(--foreground);
+  --markInk: var(--background);
+  --btnQuietHover: var(--surface-hover);
+  --positive: #28724b;
+  --positiveBg: #eaf6ef;
+  --negative: #b33e35;
+  --negativeBg: #fff1ef;
+  --warning: #79520b;
+  --warningBg: #fff5dc;
+  --positiveLine: #d5e9dd;
+  --negativeLine: #e9c5c1;
+  --positiveDot: #228455;
+  --chartArea: rgba(45, 45, 45, .06);
+  --chartAlt: #817d75;
+  --chartThird: #28724b;
+  --chartFourth: #79520b;
+  --chartEmptyBg: rgba(255, 255, 255, .94);
+  --dangerBg: #fffdfd;
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--surface-hover);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  color-scheme: light;
+  background: var(--background);
+  color: var(--foreground);
+}
+:global(html[data-theme='dark']) .analyticsDashboard.dashboard {
+  --positive: #72c89a;
+  --positiveBg: #10251a;
+  --negative: #ef8c85;
+  --negativeBg: #2a1210;
+  --warning: #e3bd6f;
+  --warningBg: #241d0f;
+  --positiveLine: #1f4631;
+  --negativeLine: #5a2a24;
+  --positiveDot: #3fae74;
+  --chartArea: rgba(240, 239, 235, .07);
+  --chartAlt: #aaa69d;
+  --chartThird: #72c89a;
+  --chartFourth: #e3bd6f;
+  --chartEmptyBg: rgba(11, 11, 11, .94);
+  --dangerBg: #1a0f0e;
+  color-scheme: dark;
+}
+.analyticsDashboard.dashboard .analyticsHeader {
+  background: var(--background);
+  border-bottom-color: var(--border);
+  color: var(--foreground);
+}
+.analyticsDashboard.dashboard .analyticsHeader .headerInner {
+  border-color: var(--border);
+  background: transparent;
+  box-shadow: none;
+  color: var(--foreground);
+}
+.analyticsDashboard.dashboard .projectSidebar,
+.analyticsDashboard.dashboard .sidebarAccount {
+  border-color: var(--sidebar-border);
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
+}
+.analyticsDashboard.dashboard .sidebarBrand span,
+.analyticsDashboard.dashboard .sidebarProjectText small,
+.analyticsDashboard.dashboard .sidebarCaption,
+.analyticsDashboard.dashboard .sidebarUser,
+.analyticsDashboard.dashboard .sidebarUserName,
+.analyticsDashboard.dashboard .sidebarAccountSummary > svg {
+  color: var(--muted-foreground);
+}
+.analyticsDashboard.dashboard .sidebarProject,
+.analyticsDashboard.dashboard .sidebarSwitcher,
+.analyticsDashboard.dashboard .sidebarSwitcher select,
+.analyticsDashboard.dashboard .sidebarAccountMenu {
+  border-color: var(--border);
+  background: var(--card);
+  color: var(--foreground);
+}
+.analyticsDashboard.dashboard .sidebarProjectMark,
+.analyticsDashboard.dashboard .sidebarSwitcherMark {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.analyticsDashboard.dashboard .sidebarNavItem {
+  color: var(--foreground);
+}
+.analyticsDashboard.dashboard .sidebarNavItem:hover,
+.analyticsDashboard.dashboard .sidebarAccountSummary:hover,
+.analyticsDashboard.dashboard .sidebarAccount[open] .sidebarAccountSummary {
+  background: var(--surface-hover);
+  color: var(--foreground);
+}
+.analyticsDashboard.dashboard .sidebarNavItem[aria-current='page'] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.analyticsDashboard.dashboard .sidebarNavItem[aria-current='page'] .navIcon,
+.analyticsDashboard.dashboard .sidebarNavItem[aria-current='page']::before {
+  color: var(--primary);
+  background: var(--primary);
+}
+.analyticsDashboard.dashboard .sidebarCollapse,
+.analyticsDashboard.dashboard .sidebarAccountMenu a,
+.analyticsDashboard.dashboard .sidebarAccountMenu button {
+  border-color: var(--border);
+  background: var(--card);
+  color: var(--foreground);
+}
+.analyticsDashboard.dashboard .sidebarAccountMenu a:hover,
+.analyticsDashboard.dashboard .sidebarAccountMenu button:hover,
+.analyticsDashboard.dashboard .sidebarCollapse:hover {
+  background: var(--surface-hover);
+}
+.analyticsDashboard.dashboard .main,
+.analyticsDashboard.dashboard .footer {
+  background: var(--background);
+  color: var(--foreground);
+}
+.analyticsDashboard.dashboard :is(.kpi, .chartCard, .breakdownCard, .settingCard, .installCopy, .codeCard, .statePanel, .filterPanel) {
+  border-color: var(--border);
+  background: var(--card);
+  color: var(--foreground);
+}
