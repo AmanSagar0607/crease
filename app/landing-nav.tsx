@@ -44,7 +44,7 @@ export default function LandingNav() {
         </div>
         <div className={s.navEnd}>
           <span className={s.navTheme}><ThemeToggle /></span>
-          <Link className={s.navQuiet} href="/dashboard">Log in</Link>
+          <Link className={s.navQuiet} href="/sign-in">Log in</Link>
           <Link className={s.navAction} href="/sign-up">Start free</Link>
           <button
             ref={toggleRef}
@@ -75,7 +75,7 @@ export default function LandingNav() {
             <a href="https://github.com/AmanSagar0607/Zappa" target="_blank" rel="noreferrer" onClick={close}>GitHub <ArrowUpRight aria-hidden="true" /></a>
             <div className={s.mobileMenuTheme}><ThemeToggle /></div>
             <div className={s.mobileMenuActions}>
-              <Link className={s.mobileMenuLogin} href="/dashboard" onClick={close}>Log in</Link>
+              <Link className={s.mobileMenuLogin} href="/sign-in" onClick={close}>Log in</Link>
               <Link className={s.mobileMenuStart} href="/sign-up" onClick={close}>Start free <ArrowUpRight aria-hidden="true" /></Link>
             </div>
           </div>
