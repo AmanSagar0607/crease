@@ -8,7 +8,7 @@ import { useTheme } from 'next-themes';
 import { alpha2ToAlpha3, alpha2ToNumeric, getName, registerLocale } from 'i18n-iso-countries';
 import englishLocale from 'i18n-iso-countries/langs/en.json';
 import type * as GeoJSON from 'geojson';
-import { Monitor, Smartphone, Tablet } from 'lucide-react';
+import { Globe, Monitor, Smartphone, Tablet } from 'lucide-react';
 import { Map as InteractiveMap, MapControls, MapGeoJSON, useMap } from '@/components/ui/map';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useWorldData } from '@/lib/use-world-data';
@@ -129,6 +129,8 @@ export type Summary = {
   last_event_at: string | null;
   pages: Breakdown[];
   devices: Breakdown[];
+  browsers: Breakdown[];
+  operating_systems: Breakdown[];
   countries: Breakdown[];
   country_visitors: Breakdown[];
   referrers: Breakdown[];
@@ -347,6 +349,8 @@ function BreakdownCard({
   title,
   icon,
   rows,
+  browserRows = [],
+  operatingSystemRows = [],
   total,
   empty,
   deviceFacets = false,
@@ -355,14 +359,18 @@ function BreakdownCard({
   title: string;
   icon: ReactNode;
   rows: Breakdown[];
+  browserRows?: Breakdown[];
+  operatingSystemRows?: Breakdown[];
   total: number;
   empty: string;
   deviceFacets?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [deviceFacet, setDeviceFacet] = useState('device');
-  const shown = expanded ? rows : rows.slice(0, 5);
-  const max = rows[0]?.count || 1;
+  const activeRows = deviceFacet === 'browser' ? browserRows : deviceFacet === 'os' ? operatingSystemRows : rows;
+  const shown = expanded ? activeRows : activeRows.slice(0, 5);
+  const max = activeRows[0]?.count || 1;
+  const emptyLabel = deviceFacet === 'browser' ? 'No browser data for this period yet.' : deviceFacet === 'os' ? 'No operating system data for this period yet.' : empty;
 
   return (
     <section className={s.breakdownCard} id={id}>
@@ -371,7 +379,7 @@ function BreakdownCard({
           {icon}
           {title}
         </h3>
-        <span className={s.cardCount}>{rows.length ? `${rows.length} SOURCES` : 'NO DATA'}</span>
+        <span className={s.cardCount}>{activeRows.length ? `${activeRows.length} SOURCES` : 'NO DATA'}</span>
       </div>
       {deviceFacets && <Tabs value={deviceFacet} onValueChange={setDeviceFacet} className={s.deviceTabs}>
         <TabsList className={s.deviceTabsList} aria-label="Device breakdown type">
@@ -380,18 +388,13 @@ function BreakdownCard({
           <TabsTrigger className={s.deviceTab} value="device">Device</TabsTrigger>
         </TabsList>
       </Tabs>}
-      {deviceFacets && deviceFacet !== 'device' ? (
-        <div className={s.deviceBreakdownUnavailable} role="status">
-          <strong>{deviceFacet === 'browser' ? 'Browser' : 'Operating system'} data isn’t collected yet</strong>
-          <span>Only device type is currently available for this project.</span>
-        </div>
-      ) : shown.length ? (
+      {shown.length ? (
         <>
           {deviceFacets ? (
-            <ul className={s.deviceBreakdownList} aria-label="Visitors by device type">
+            <ul className={s.deviceBreakdownList} aria-label={`Pageviews by ${deviceFacet === 'os' ? 'operating system' : deviceFacet}`}>
               {shown.map((row, index) => {
                 const label = row.label.toLowerCase();
-                const Icon = label === 'mobile' ? Smartphone : label === 'tablet' ? Tablet : Monitor;
+                const Icon = deviceFacet === 'browser' ? Globe : deviceFacet === 'os' ? Monitor : label === 'mobile' ? Smartphone : label === 'tablet' ? Tablet : Monitor;
                 return <li className={s.deviceBreakdownRow} key={`${row.label}-${index}`}>
                   <div className={s.deviceBarRow}>
                     <span className={s.deviceBarFill} style={{ width: `${Math.max(2, (row.count / max) * 68)}%` }} aria-hidden="true" />
@@ -421,16 +424,16 @@ function BreakdownCard({
               ))}
             </ul>
           )}
-          {rows.length > 5 && (
+          {activeRows.length > 5 && (
             <button className={s.breakdownMore} type="button" onClick={() => setExpanded((value) => !value)}>
-              {expanded ? 'Show fewer' : `Show all ${rows.length}`}
+              {expanded ? 'Show fewer' : `Show all ${activeRows.length}`}
             </button>
           )}
         </>
       ) : (
         <div className={s.emptyBlock}>
           <FileIcon />
-          <span>{empty}</span>
+          <span>{emptyLabel}</span>
         </div>
       )}
     </section>
@@ -1632,6 +1635,8 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
                               title="Devices"
                               icon={<MonitorIcon />}
                               rows={summary?.devices ?? []}
+                              browserRows={summary?.browsers ?? []}
+                              operatingSystemRows={summary?.operating_systems ?? []}
                               total={summary?.metrics.pageviews ?? 0}
                               empty="No device data yet."
                               deviceFacets

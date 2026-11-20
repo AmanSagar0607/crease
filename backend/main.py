@@ -25,6 +25,7 @@ from maxminddb.errors import InvalidDatabaseError
 from jwt import PyJWKClient
 from svix.webhooks import Webhook, WebhookVerificationError
 from dotenv import load_dotenv
+from ua_parser import parse as parse_user_agent
 from pathlib import Path
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse, StreamingResponse
@@ -96,6 +97,49 @@ BOT_USER_AGENT = re.compile(
 def is_bot(user_agent: str) -> bool:
     """Return True for obvious crawlers, monitors, and non-browser clients."""
     return bool(BOT_USER_AGENT.search(user_agent or ''))
+
+
+def parse_user_agent_families(value: str) -> tuple[str | None, str | None]:
+    """Return coarse browser and OS names; never retain the raw user-agent string."""
+    if not value:
+        return None, None
+    try:
+        parsed = parse_user_agent(value[:2048])
+    except Exception:
+        return None, None
+
+    browser = parsed.user_agent.family if parsed.user_agent else None
+    if browser:
+        lowered = browser.lower()
+        if lowered.startswith('chrome'):
+            browser = 'Chrome'
+        elif lowered.startswith('edge'):
+            browser = 'Edge'
+        elif lowered.startswith('firefox'):
+            browser = 'Firefox'
+        elif lowered.startswith('safari') or lowered == 'mobile safari':
+            browser = 'Safari'
+        elif lowered.startswith('opera'):
+            browser = 'Opera'
+
+    operating_system = parsed.os.family if parsed.os else None
+    if operating_system:
+        lowered = operating_system.lower()
+        if lowered.startswith(('mac os', 'macos', 'macintosh')):
+            operating_system = 'macOS'
+        elif lowered.startswith('windows'):
+            operating_system = 'Windows'
+        elif lowered.startswith('ios'):
+            operating_system = 'iOS'
+        elif lowered.startswith('android'):
+            operating_system = 'Android'
+        elif lowered.startswith(('chrome os', 'chromeos')):
+            operating_system = 'Chrome OS'
+        elif lowered.startswith('ubuntu'):
+            operating_system = 'Ubuntu'
+        elif lowered.startswith('linux'):
+            operating_system = 'Linux'
+    return browser, operating_system
 ISO_COUNTRIES = frozenset('AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW'.split())
 
 def geoip_country(ip_value: str | None) -> str | None:
@@ -849,6 +893,7 @@ async def ingest(data: Batch, request: Request):
             # Accepted by the protocol but deliberately not stored, so crawlers and
             # uptime monitors never inflate visitor or session counts.
             return {'accepted': 0, 'filtered': 'bot'}
+        browser, operating_system = parse_user_agent_families(user_agent)
         inserted = 0
         for e in data.events:
             if not e.path.startswith('/') or '?' in e.path or '#' in e.path: raise HTTPException(422, 'Invalid path')
@@ -859,7 +904,7 @@ async def ingest(data: Batch, request: Request):
             ua = user_agent.lower(); device = 'mobile' if 'mobile' in ua else 'desktop' if ua else 'unknown'
             referrer = e.referrer.lower() if e.referrer and re.fullmatch(r'[a-zA-Z0-9.-]+', e.referrer) else None
             session_id = resolve_session(db, data.projectId, e.visitorId, e.id, event_time)
-            result=db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,country,device,referrer,properties) VALUES (:project,:id,:name,:ts,:path,:visitor,:session,:country,:device,:referrer,:properties) ON CONFLICT (project_id,id) DO NOTHING'), {'project':data.projectId,'id':e.id,'name':e.name,'ts':stamp(event_time),'path':e.path,'visitor':e.visitorId,'session':session_id,'country':country,'device':device,'referrer':referrer,'properties':json.dumps(e.properties)})
+            result=db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,country,device,browser,operating_system,referrer,properties) VALUES (:project,:id,:name,:ts,:path,:visitor,:session,:country,:device,:browser,:operating_system,:referrer,:properties) ON CONFLICT (project_id,id) DO NOTHING'), {'project':data.projectId,'id':e.id,'name':e.name,'ts':stamp(event_time),'path':e.path,'visitor':e.visitorId,'session':session_id,'country':country,'device':device,'browser':browser,'operating_system':operating_system,'referrer':referrer,'properties':json.dumps(e.properties)})
             inserted += result.rowcount
             if result.rowcount and e.name == 'pageview' and e.visitorId and session_id:
                 external_referrer = referrer if referrer not in (domain, alternate) else None
@@ -1032,7 +1077,7 @@ async def summary(project_id: str, days: int = 30, start: date | None = None, en
             return [dict(r) for r in db.execute(text(f'SELECT COALESCE({column}, :unknown) AS label, COUNT(*) AS count FROM {source} WHERE project_id=:id AND occurred_at>=:since AND occurred_at<:until AND name=:name GROUP BY {column} ORDER BY count DESC LIMIT 10'), {**params,'unknown':'Unknown','name':'pageview'}).mappings()]
         country_visitors=[dict(r) for r in db.execute(text(f"SELECT COALESCE(country, :unknown) AS label, COUNT(DISTINCT visitor_id) AS count FROM {source} WHERE project_id=:id AND occurred_at>=:since AND occurred_at<:until AND name=:name AND visitor_id IS NOT NULL GROUP BY country ORDER BY count DESC LIMIT 10"), {**params,'unknown':'Unknown','name':'pageview'}).mappings()]
         event_names=[dict(r) for r in db.execute(text('SELECT name AS label, COUNT(*) AS count FROM events WHERE project_id=:id AND occurred_at>=:since AND occurred_at<:until GROUP BY name ORDER BY count DESC LIMIT 20'), params).mappings()]
-        return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'countries':breakdown('country'),'country_visitors':country_visitors,'referrers':breakdown('referrer'),'event_names':event_names,'days':days,'filter':{'property':property,'value':value},'average_session_duration_seconds':round(sum(durations)/len(durations)) if durations else 0}
+        return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'browsers':breakdown('browser'),'operating_systems':breakdown('operating_system'),'countries':breakdown('country'),'country_visitors':country_visitors,'referrers':breakdown('referrer'),'event_names':event_names,'days':days,'filter':{'property':property,'value':value},'average_session_duration_seconds':round(sum(durations)/len(durations)) if durations else 0}
 
 @app.get('/api/projects/{project_id}/overview')
 async def overview(project_id: str, start: date, end: date, model: str = 'first_touch', conversion_event: str | None = Query(default=None, min_length=1, max_length=64), user=Depends(session_user)):

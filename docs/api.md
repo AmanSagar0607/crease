@@ -32,6 +32,8 @@ Ingested numeric and boolean properties are indexed in `event_properties` and ea
 
 `GET /api/projects/{id}/events` returns recent events newest-first and accepts `days=7|30|90`, `event`, `path`, `property`, `value`, and `limit` (1-200). `GET /api/projects/{id}/summary` accepts the same `property` and `value` filters and applies them to metrics, series, breakdowns, and average session duration. `property` and `value` must be supplied together, and the key must exist in the project's registry or the API returns 422. Numeric filters match equivalent numeric values (`3` matches `3.0`). Property filters never span projects.
 
+The summary also returns `devices`, `browsers`, and `operating_systems` breakdowns. These rows count pageview events in the selected range. Browser and operating-system families are parsed from the request `User-Agent` during ingestion; the raw header is not stored. Events recorded before the browser/OS migration have no parsed values and appear under `Unknown` in those breakdowns.
+
 ## Funnels
 
 `GET /api/projects/{id}/funnel?first=<event>&second=<event>&days=7|30|90` remains available for two-step clients. It counts sessions that contain the first event and then the second at the same or a later timestamp within the range. The response includes `first_count`, `second_count`, `conversion` (second divided by first, rounded to four decimals), and the selected names and range.
