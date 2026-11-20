@@ -47,9 +47,9 @@ type StaticTabsProps = { label: string; tabs: readonly string[]; active: string 
 
 function StaticTabs({ label, tabs, active }: StaticTabsProps) {
   return (
-    <div className={s.tabs} role="tablist" aria-label={label}>
+    <div className={s.tabs} role="list" aria-label={label}>
       {tabs.map((tab) => (
-        <span className={s.tab} role="tab" aria-selected={tab === active} key={tab}>
+        <span className={s.tab} role="listitem" data-current={tab === active ? 'true' : undefined} key={tab}>
           {tab}
         </span>
       ))}
@@ -390,6 +390,16 @@ function FloatingPill() {
   );
 }
 
+function NetworkMark() {
+  return (
+    <svg className={s.networkMark} viewBox="0 0 180 112" fill="none" aria-hidden="true">
+      <path className={s.networkPath} d="M10 84 48 62 78 75 116 34 168 18M48 62 55 20 116 34 135 91 168 18M78 75 135 91" />
+      <circle cx="10" cy="84" r="3" /><circle cx="48" cy="62" r="4" /><circle cx="55" cy="20" r="3" />
+      <circle cx="78" cy="75" r="3" /><circle cx="116" cy="34" r="5" /><circle cx="135" cy="91" r="3" /><circle cx="168" cy="18" r="4" />
+    </svg>
+  );
+}
+
 export default function DesignLabView({ project, projects, selectedProjectId, summary, report, loading, error }: Props) {
   const channelRows: RankedRow[] = report?.acquisition.map((row) => ({
     label: row.medium ? `${row.source} · ${row.medium}` : row.source,
@@ -418,10 +428,23 @@ export default function DesignLabView({ project, projects, selectedProjectId, su
       </header>
 
       {error && <div className={s.errorBanner} role="alert">{error}</div>}
-      <KpiStrip report={report} summary={summary} loading={loading} />
-      <ChartPanel summary={summary} loading={loading} />
+      <div className={s.canvas}>
+        <section className={s.intro} aria-labelledby="design-lab-title">
+          <div className={s.introCopy}>
+            <span className={s.eyebrow}><i aria-hidden="true" /> ANALYTICS / OVERVIEW</span>
+            <h1 id="design-lab-title">Performance<br />at a glance<span>.</span></h1>
+            <p>Understand how visitors find, explore and engage with {project?.name || 'your site'}.</p>
+          </div>
+          <div className={s.introDiagram}>
+            <span>LIVE SIGNAL MAP</span><NetworkMark />
+            <small>01 — 07&nbsp;&nbsp; NETWORK NODES</small>
+          </div>
+        </section>
+        <div className={s.sectionHeading}><span>01</span><h2>Traffic overview</h2><i /></div>
+        <KpiStrip report={report} summary={summary} loading={loading} />
+        <ChartPanel summary={summary} loading={loading} />
 
-      <div className={s.twoColumnGrid}>
+      <div className={`${s.twoColumnGrid} ${s.primaryGrid}`}>
         <RankedCard
           label="Acquisition sources"
           tabs={ACQUISITION_TABS}
@@ -436,6 +459,7 @@ export default function DesignLabView({ project, projects, selectedProjectId, su
         <CountryMap countries={countryRows} loading={loading} />
       </div>
 
+      <div className={s.sectionHeading}><span>02</span><h2>Audience &amp; behavior</h2><i /></div>
       <div className={s.twoColumnGrid}>
         <RankedCard
           label="Pages"
@@ -461,8 +485,8 @@ export default function DesignLabView({ project, projects, selectedProjectId, su
         />
       </div>
 
-      <JourneyCard />
-      <AiTrafficCard />
+      <div className={s.detailGrid}><JourneyCard /><AiTrafficCard /></div>
+      </div>
       <FloatingPill />
     </div>
   );

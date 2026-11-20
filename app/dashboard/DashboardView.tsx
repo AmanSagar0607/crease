@@ -4,6 +4,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth, useClerk } from '@clerk/nextjs';
 import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { ComposableMap, Geography, Geographies } from 'react-simple-maps';
+import { feature } from 'topojson-client';
+import type { Topology } from 'topojson-specification';
+import { alpha2ToNumeric } from 'i18n-iso-countries';
+import worldAtlas from 'world-atlas/countries-110m.json';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
 import ThemeToggle from '../theme-toggle';
@@ -120,6 +125,7 @@ export type Summary = {
   pages: Breakdown[];
   devices: Breakdown[];
   countries: Breakdown[];
+  country_visitors: Breakdown[];
   referrers: Breakdown[];
   event_names: Breakdown[];
   days: number;
@@ -155,6 +161,8 @@ function saveWriteKey(projectId: string, key: string) {
 
 const SESSION_DEFINITION = 'Sessions end after 30 min idle or at UTC midnight';
 const NO_BREAKDOWNS: Breakdown[] = [];
+const dashboardWorldTopology = worldAtlas as unknown as Topology;
+const dashboardWorldGeography = feature(dashboardWorldTopology, dashboardWorldTopology.objects.countries);
 
 class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -386,6 +394,59 @@ function BreakdownCard({
           <FileIcon />
           <span>{empty}</span>
         </div>
+      )}
+    </section>
+  );
+}
+
+function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading: boolean }) {
+  const byNumericCode = new Map<string, number>();
+  let maxCount = 0;
+  for (const row of rows) {
+    const label = row.label.trim().toUpperCase();
+    const code = /^[A-Z]{2}$/.test(label) ? alpha2ToNumeric(label) : undefined;
+    if (!code) continue;
+    byNumericCode.set(code.padStart(3, '0'), row.count);
+    maxCount = Math.max(maxCount, row.count);
+  }
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  const visible = rows.slice(0, 6);
+  const unknown = rows.find((row) => row.label.trim().toLowerCase() === 'unknown');
+
+  return (
+    <section className={`${s.breakdownCard} ${s.countryDemographic}`} aria-labelledby="country-demographic-title">
+      <div className={s.cardTop}>
+        <h3 id="country-demographic-title"><GlobeIcon />Customers by country</h3>
+        <span className={s.cardCount}>{rows.length ? `${compact(total)} VISITORS` : 'NO DATA'}</span>
+      </div>
+      {loading && !rows.length ? (
+        <div className={s.countryMapEmpty} role="status">Loading country data</div>
+      ) : rows.length ? (
+        <>
+          <div className={s.demographicMap}>
+            <ComposableMap width={800} height={330} projection="geoEqualEarth" projectionConfig={{ scale: 140, center: [0, 10] }}>
+              <Geographies geography={dashboardWorldGeography}>
+                {({ geographies }) => geographies.map((geography) => {
+                  const count = byNumericCode.get(String(geography.id ?? '').padStart(3, '0')) ?? 0;
+                  const opacity = maxCount > 0 && count > 0 ? .28 + (count / maxCount) * .62 : 0;
+                  return <Geography key={geography.rsmKey} geography={geography} fill={count ? `color-mix(in srgb, var(--ink) ${Math.round(opacity * 100)}%, var(--soft2))` : 'var(--soft2)'} stroke="var(--paper)" strokeWidth={.65} style={{ default: { outline: 'none' }, hover: { outline: 'none', opacity: .78 }, pressed: { outline: 'none' } }} />;
+                })}
+              </Geographies>
+            </ComposableMap>
+            {unknown && <span className={s.countryMapNote}>Unknown locations · {compact(unknown.count)}</span>}
+          </div>
+          <ul className={s.countryLegend} aria-label="Top countries by visitors">
+            {visible.map((row) => (
+              <li key={row.label}>
+                <span className={s.countryLegendName}>{row.label || 'Unknown'}</span>
+                <span className={s.countryLegendTrack} aria-hidden="true"><i style={{ width: `${total ? Math.max(2, row.count / total * 100) : 0}%` }} /></span>
+                <span className={s.countryLegendValue}>{Math.round(total ? row.count / total * 100 : 0)}%</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <div className={s.emptyBlock}><FileIcon /><span>No country data yet.</span></div>
       )}
     </section>
   );
@@ -1380,13 +1441,7 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
                               total={summary?.metrics.pageviews ?? 0}
                               empty="No device data yet."
                             />
-                            <BreakdownCard
-                              title="Countries"
-                              icon={<GlobeIcon />}
-                              rows={summary?.countries ?? []}
-                              total={summary?.metrics.pageviews ?? 0}
-                              empty="No country data yet."
-                            />
+                            <CountryDemographicCard rows={summary?.country_visitors ?? summary?.countries ?? []} loading={summaryBusy} />
                           </div>
                         </>
                       )}
