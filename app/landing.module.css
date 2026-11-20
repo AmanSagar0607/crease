@@ -187,9 +187,16 @@
   object-fit: contain;
 }
 
-:global([data-theme='dark']) .wordmarkLight,
-:global([data-theme='light']) .wordmarkDark {
+:global([data-theme='dark']) .wordmarkLight {
   display: none;
+}
+
+.wordmarkDark {
+  display: none;
+}
+
+:global([data-theme='dark']) .wordmarkDark {
+  display: block;
 }
 
 .navLinks {
