@@ -13,7 +13,7 @@
 .sessions i { width: 8px; height: 8px; border-radius: 2px; background: var(--chart-muted); }
 .previous i { width: 17px; height: 0; border-top: 1.5px dashed var(--muted); }
 .sparseNote { margin: 10px 0 0; color: var(--muted); font-size: .8125rem; line-height: 1.45; }
-.plot { width: 100%; height: clamp(250px, 29vw, 340px); margin-top: 12px; }
+.plot { width: 100%; height: clamp(280px, 32vw, 360px); margin-top: 12px; }
 .chartContainer { width: 100%; height: 100%; aspect-ratio: auto; }
 .chartContainer :global(.recharts-surface:focus-visible) { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 8px; }
 .empty { display: grid; min-height: 250px; margin: 0; place-items: center; color: var(--muted); font-size: .875rem; text-align: center; }

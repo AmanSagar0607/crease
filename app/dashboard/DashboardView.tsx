@@ -459,7 +459,7 @@ function BreakdownCard({
                         : <Monitor aria-hidden="true" />;
                 return <li className={s.deviceBreakdownRow} key={`${row.label}-${index}`}>
                   <div className={s.deviceBarRow}>
-                    <span className={s.deviceBarFill} data-unknown={label === 'unknown'} style={{ width: `${Math.max(2, (row.count / max) * 68)}%` }} aria-hidden="true" />
+                    <span className={s.deviceBarFill} data-unknown={label === 'unknown'} style={{ width: `${Math.max(2, (row.count / max) * 100)}%` }} aria-hidden="true" />
                     <span className={s.deviceBarLabel}>{icon}<span>{row.label || 'Unknown'}</span></span>
                     <span className={s.deviceBarValue}>{compact(row.count)}</span>
                   </div>

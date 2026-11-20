@@ -1080,15 +1080,15 @@
 .deviceTab { min-height: 28px; padding: 0 11px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 10px; white-space: nowrap; cursor: pointer; transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease; }
 .deviceTab[data-state='active'] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px rgb(0 0 0 / 12%); }
 .deviceTab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.deviceBreakdownList { display: grid; gap: 7px; margin: 14px 0 0; padding: 0; list-style: none; }
-.deviceBarRow { position: relative; display: flex; min-height: 32px; align-items: center; justify-content: space-between; overflow: hidden; border-radius: 6px; background: var(--soft2); }
-.deviceBarFill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: color-mix(in srgb, var(--primary) 16%, var(--paper)); box-shadow: inset 3px 0 var(--primary); transition: width 360ms cubic-bezier(.2,.72,.24,1); }
-.deviceBarFill[data-unknown='true'] { background: color-mix(in srgb, var(--muted-foreground) 12%, var(--paper)); box-shadow: inset 3px 0 var(--muted-foreground); }
-.deviceBarLabel, .deviceBarValue { position: relative; z-index: 1; display: inline-flex; min-width: 0; align-items: center; gap: 7px; padding: 0 9px; font-size: 11px; }
+.deviceBreakdownList { display: grid; gap: 6px; margin: 14px 0 0; padding: 0; list-style: none; }
+.deviceBarRow { position: relative; display: flex; min-height: 34px; align-items: center; justify-content: space-between; overflow: hidden; border-radius: 5px; background: var(--device-track); }
+.deviceBarFill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--device-fill); box-shadow: inset 3px 0 var(--accent-line); transition: width 360ms cubic-bezier(.2,.72,.24,1); }
+.deviceBarFill[data-unknown='true'] { background: color-mix(in srgb, var(--muted-foreground) 28%, var(--paper)); box-shadow: inset 3px 0 var(--muted-foreground); }
+.deviceBarLabel, .deviceBarValue { position: relative; z-index: 1; display: inline-flex; min-width: 0; align-items: center; gap: 8px; padding: 0 10px; font-size: 12px; }
 .deviceBarLabel { color: var(--ink); }
 .deviceBarLabel svg { width: 14px; height: 14px; flex: none; }
 .deviceBarLabel > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.deviceBarValue { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; }
+.deviceBarValue { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 600; }
 .chromeBrowserMark, .safariBrowserMark, .firefoxBrowserMark, .edgeBrowserMark, .operaBrowserMark { display: inline-grid; width: 14px; height: 14px; flex: none; place-items: center; }
 .chromeBrowserMark { position: relative; border-radius: 50%; background: conic-gradient(#ea4335 0 120deg, #fbbc05 120deg 238deg, #34a853 238deg 360deg); }
 .chromeBrowserMark::after { position: absolute; inset: 3px; border: 1.5px solid #fff; border-radius: 50%; background: #4285f4; content: ''; }
@@ -4042,6 +4042,10 @@
   --chartThird: #28724b;
   --chartFourth: #79520b;
   --chartEmptyBg: rgba(255, 255, 255, .94);
+  --accent-line: #4b8fb8;
+  --chart-muted: #ce7259;
+  --device-fill: #c8dce7;
+  --device-track: #ead8d1;
   --dangerBg: #fffdfd;
   --sidebar: var(--surface);
   --sidebar-foreground: var(--foreground);
@@ -4070,6 +4074,10 @@
   --chartThird: #72c89a;
   --chartFourth: #e3bd6f;
   --chartEmptyBg: rgba(11, 11, 11, .94);
+  --accent-line: #8acbfa;
+  --chart-muted: #e78468;
+  --device-fill: #355269;
+  --device-track: #6b4339;
   --dangerBg: #1a0f0e;
   color-scheme: dark;
 }
