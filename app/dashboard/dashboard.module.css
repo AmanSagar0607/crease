@@ -4592,3 +4592,13 @@
 @media (max-width: 767px) {
   .overviewAudience { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Keep analytics content in a calm reading column centered in the workspace. */
+@media (min-width: 1024px) {
+  .analyticsDashboard .main,
+  .analyticsDashboard .footer {
+    width: min(1040px, calc(100% - 48px));
+    max-width: 1040px;
+    margin-inline: auto;
+  }
+}
