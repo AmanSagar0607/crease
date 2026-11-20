@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
+import { Bar, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import type { AnalyticsSection } from './navigation';
 import { compareLabel, display, displayPagePath, eventLabel, type AttributionModel, type Metrics, type Report } from './reporting';
@@ -266,9 +266,9 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                   <p>Daily activity compared with the preceding period</p>
                 </div>
                 <div className={s.legend}>
-                  <span>● Visitors</span>
-                  <span>● Sessions</span>
-                  <span>┄ Previous period</span>
+                  <span className={s.legendVisitors}><i aria-hidden="true" />Visitors</span>
+                  <span className={s.legendSessions}><i aria-hidden="true" />Sessions</span>
+                  <span className={s.legendPrevious}><i aria-hidden="true" />Previous period</span>
                 </div>
               </div>
               {report.series.every(
@@ -285,7 +285,7 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                     role="img"
                     aria-label="Daily visitors and sessions compared with the previous period"
                   >
-                    <LineChart data={report.series} margin={{ top: 12, right: 16, left: 0, bottom: 0 }}>
+                    <ComposedChart data={report.series} margin={{ top: 14, right: 14, left: 0, bottom: 0 }} barCategoryGap="34%">
                       <CartesianGrid stroke="var(--line)" vertical={false} />
                       <XAxis
                         dataKey="date"
@@ -297,11 +297,11 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                       />
                       <YAxis domain={[0, 'dataMax']} tickCount={5} allowDecimals={false} tick={{ fill: 'var(--muted)', fontSize: 13 }} tickLine={false} axisLine={false} />
                       <ChartTooltip
-                        cursor={false}
+                        cursor={{ stroke: 'var(--line)', strokeDasharray: '3 4', strokeWidth: 1 }}
                         content={<ChartTooltipContent labelFormatter={(label) => `${String(label)} UTC`} />}
                       />
-                      <Line type="monotone" dataKey="visitors" name="Visitors" stroke="var(--color-visitors)" strokeWidth={2.5} dot={sparse ? { r: 3 } : false} isAnimationActive={previewMotion ? chartVisible && !reducedMotion : undefined} animationBegin={previewMotion ? 650 : undefined} animationDuration={previewMotion ? 1250 : undefined} animationEasing={previewMotion ? 'ease-out' : undefined} activeDot={{ r: 5, strokeWidth: 2 }} />
-                      <Line type="monotone" dataKey="sessions" name="Sessions" stroke="var(--color-sessions)" strokeWidth={2} dot={sparse ? { r: 3 } : false} isAnimationActive={previewMotion ? chartVisible && !reducedMotion : undefined} animationBegin={previewMotion ? 780 : undefined} animationDuration={previewMotion ? 1200 : undefined} animationEasing={previewMotion ? 'ease-out' : undefined} activeDot={{ r: 5, strokeWidth: 2 }} />
+                      <Bar dataKey="sessions" name="Sessions" fill="var(--color-sessions)" fillOpacity={0.82} radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={previewMotion ? chartVisible && !reducedMotion : undefined} animationBegin={previewMotion ? 520 : undefined} animationDuration={previewMotion ? 850 : undefined} animationEasing={previewMotion ? 'ease-out' : undefined} />
+                      <Line type="monotone" dataKey="previous_sessions" name="Previous sessions" stroke="var(--color-previous_sessions)" strokeDasharray="3 5" strokeOpacity={0.55} strokeWidth={1.5} dot={false} isAnimationActive={previewMotion ? chartVisible && !reducedMotion : undefined} animationBegin={previewMotion ? 800 : undefined} animationDuration={previewMotion ? 950 : undefined} animationEasing={previewMotion ? 'ease-out' : undefined} />
                       <Line
                         type="monotone"
                         dataKey="previous_visitors"
@@ -315,20 +315,8 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                         animationDuration={previewMotion ? 1050 : undefined}
                         animationEasing={previewMotion ? 'ease-out' : undefined}
                       />
-                      <Line
-                        type="monotone"
-                        dataKey="previous_sessions"
-                        name="Previous sessions"
-                        stroke="var(--color-previous_sessions)"
-                        strokeDasharray="4 4"
-                        strokeOpacity={0.4}
-                        dot={false}
-                        isAnimationActive={previewMotion ? chartVisible && !reducedMotion : undefined}
-                        animationBegin={previewMotion ? 1120 : undefined}
-                        animationDuration={previewMotion ? 1050 : undefined}
-                        animationEasing={previewMotion ? 'ease-out' : undefined}
-                      />
-                    </LineChart>
+                      <Line type="monotone" dataKey="visitors" name="Visitors" stroke="var(--color-visitors)" strokeWidth={2.75} dot={sparse ? { r: 3, strokeWidth: 1.5 } : false} isAnimationActive={previewMotion ? chartVisible && !reducedMotion : undefined} animationBegin={previewMotion ? 650 : undefined} animationDuration={previewMotion ? 1250 : undefined} animationEasing={previewMotion ? 'ease-out' : undefined} activeDot={{ r: 5, strokeWidth: 2 }} />
+                    </ComposedChart>
                   </ChartContainer>
                 </div>
                 </>
