@@ -155,10 +155,8 @@ html[data-theme='dark'] {
 @theme inline {--color-sidebar-ring:var(--sidebar-ring);--color-sidebar-border:var(--sidebar-border);--color-sidebar-accent-foreground:var(--sidebar-accent-foreground);--color-sidebar-accent:var(--sidebar-accent);--color-sidebar-primary-foreground:var(--sidebar-primary-foreground);--color-sidebar-primary:var(--sidebar-primary);--color-sidebar-foreground:var(--sidebar-foreground);--color-sidebar:var(--sidebar);--color-chart-5:var(--chart-5);--color-chart-4:var(--chart-4);--color-chart-3:var(--chart-3);--color-chart-2:var(--chart-2);--color-chart-1:var(--chart-1);--color-ring:var(--ring);--color-input:var(--input);--color-border:var(--border);--color-destructive:var(--destructive);--color-accent-foreground:var(--accent-foreground);--color-accent:var(--accent);--color-muted-foreground:var(--muted-foreground);--color-muted:var(--muted);--color-secondary-foreground:var(--secondary-foreground);--color-secondary:var(--secondary);--color-primary-foreground:var(--primary-foreground);--color-primary:var(--primary);--color-popover-foreground:var(--popover-foreground);--color-popover:var(--popover);--color-card-foreground:var(--card-foreground);--color-card:var(--card);--color-foreground:var(--foreground);--color-background:var(--background);--radius-sm:calc(var(--radius) * 0.6);--radius-md:calc(var(--radius) * 0.8);--radius-lg:var(--radius);--radius-xl:calc(var(--radius) * 1.4);--radius-2xl:calc(var(--radius) * 1.8);--radius-3xl:calc(var(--radius) * 2.2);--radius-4xl:calc(var(--radius) * 2.6);}
 :root { --background: #f7f5ef; --foreground: #191917; --card: #fffefa; --card-foreground: #191917; --sidebar: #f0eee8; --sidebar-foreground: #191917; --sidebar-primary: #191917; --sidebar-primary-foreground: #fffefa; --sidebar-accent: #e9e6de; --sidebar-accent-foreground: #191917; --sidebar-border: #dfdcd3; --sidebar-ring: #b85436; --radius: .65rem; --ring: #b85436; --popover: #fffefa; --popover-foreground: #191917; --accent: #f1e9e4; --accent-foreground: #6f2e23; --input: #dfdcd3; --primary: #b85436; --primary-foreground: #fffefa; --secondary: #ece9e1; --secondary-foreground: #262522; --muted-foreground: #6f6d65; --destructive: #b42318; }
 
-
 /* Zappa Clerk authentication surfaces */
 .auth-page{--auth-bg:#111110;--auth-panel:#171715;--auth-line:#302e2a;--auth-ink:#f2f1ec;--auth-muted:#aaa69d;min-height:100vh;padding:48px 24px 64px;background:var(--auth-bg);color:var(--auth-ink);display:flex;align-items:center;flex-direction:column;text-align:center}.auth-wordmark{align-self:flex-start;width:min(100%,520px);margin:0 auto 64px;text-align:left;font-size:21px;font-weight:650;letter-spacing:-.055em}.auth-wordmark span{color:#d8c5a7}.auth-eyebrow{margin:0 0 14px;color:var(--auth-muted);font-size:10px;font-weight:650;letter-spacing:.17em}.auth-page h1{max-width:520px;margin:0;font-size:clamp(32px,5vw,44px);font-weight:550;letter-spacing:-.055em;line-height:1.08;text-wrap:balance}.auth-intro{max-width:430px;margin:14px 0 28px;color:var(--auth-muted);font-size:14px;line-height:1.6;text-wrap:pretty}.auth-footnote{max-width:360px;margin:22px 0 0;color:#89867f;font-size:11px;line-height:1.6}.account-page{padding-top:38px}.account-page .auth-wordmark{margin-bottom:40px}.account-page .auth-intro{margin-bottom:26px}.auth-page :focus-visible{outline:2px solid #d8c5a7;outline-offset:3px}@media(max-width:560px){.auth-page{padding:30px 18px 46px}.auth-wordmark{margin-bottom:44px}.account-page .auth-wordmark{margin-bottom:34px}.auth-page h1{font-size:32px}.auth-intro{font-size:13px}}@media(prefers-reduced-motion:reduce){.auth-page *{scroll-behavior:auto!important;transition:none!important}}
-
 
 /* Zappa v0 semantic theme tokens: warm chalk light surfaces, ink-dark mode, and a single vermilion action/chart accent. */
 :root,
@@ -385,3 +383,17 @@ html[data-theme='dark'] .analyticsDashboard.dashboard { color-scheme: dark; }
 @keyframes dashboard-loading-pulse { to { opacity: .55; } }
 @media (max-width: 600px) { .dashboard-route-loading__grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .dashboard-route-loading * { animation: none !important; } }
+
+@layer base {
+  .maplibregl-popup-content {
+    @apply bg-transparent! shadow-none! p-0! rounded-none!;}
+  .maplibregl-popup-tip {
+    @apply hidden!;}
+  .maplibregl-ctrl-attrib {
+    @apply bg-background! text-muted-foreground! border-border! rounded-md! border! shadow-sm!;}
+  .maplibregl-ctrl-attrib a {
+    @apply text-muted-foreground!;}
+  .maplibregl-ctrl-attrib a:hover {
+    @apply text-foreground!;}
+  .maplibregl-ctrl-attrib-button {
+    @apply bg-transparent! dark:invert;}}

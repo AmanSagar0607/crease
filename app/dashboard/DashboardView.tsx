@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth, useClerk } from '@clerk/nextjs';
-import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ComposableMap, Geography, Geographies } from 'react-simple-maps';
-import { feature } from 'topojson-client';
-import type { Topology } from 'topojson-specification';
-import { alpha2ToNumeric } from 'i18n-iso-countries';
-import worldAtlas from 'world-atlas/countries-110m.json';
+import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTheme } from 'next-themes';
+import { alpha2ToAlpha3, alpha2ToNumeric, getName, registerLocale } from 'i18n-iso-countries';
+import englishLocale from 'i18n-iso-countries/langs/en.json';
+import type * as GeoJSON from 'geojson';
+import { Map as InteractiveMap, MapControls, MapGeoJSON, MapPopup } from '@/components/ui/map';
+import { useWorldData } from '@/lib/use-world-data';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
 import ThemeToggle from '../theme-toggle';
@@ -44,6 +45,8 @@ import {
 } from './navigation';
 import { dateRange, displayPagePath, type AttributionModel, type Preset, type Range } from './reporting';
 import s from './dashboard.module.css';
+
+registerLocale(englishLocale);
 
 function ProjectNavigation({ children }: { children: ReactNode }) {
   const { isMobile, setOpenMobile } = useSidebar();
@@ -161,8 +164,10 @@ function saveWriteKey(projectId: string, key: string) {
 
 const SESSION_DEFINITION = 'Sessions end after 30 min idle or at UTC midnight';
 const NO_BREAKDOWNS: Breakdown[] = [];
-const dashboardWorldTopology = worldAtlas as unknown as Topology;
-const dashboardWorldGeography = feature(dashboardWorldTopology, dashboardWorldTopology.objects.countries);
+const COUNTRY_MAP_COLORS = {
+  dark: { base: '#1A1A1A', ramp: ['#30302E', '#6B6B6B', '#AAA69D', '#FF5A3A'], hover: '#FF5A3A', line: '#151412' },
+  light: { base: '#F7F6F2', ramp: ['#D9D8D3', '#B9B4AA', '#817D75', '#EB3514'], hover: '#EB3514', line: '#fffefa' },
+} as const;
 
 class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -400,18 +405,58 @@ function BreakdownCard({
 }
 
 function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading: boolean }) {
-  const byNumericCode = new Map<string, number>();
-  let maxCount = 0;
-  for (const row of rows) {
-    const label = row.label.trim().toUpperCase();
-    const code = /^[A-Z]{2}$/.test(label) ? alpha2ToNumeric(label) : undefined;
-    if (!code) continue;
-    byNumericCode.set(code.padStart(3, '0'), row.count);
-    maxCount = Math.max(maxCount, row.count);
-  }
-  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  const { resolvedTheme } = useTheme();
+  const theme = resolvedTheme === 'dark' ? 'dark' : 'light';
+  const world = useWorldData();
+  const [hover, setHover] = useState<{ name: string; visitors: number; lng: number; lat: number } | null>(null);
+  const { byAlpha3, maxCount, total } = useMemo(() => {
+    const countryCounts = new Map<string, number>();
+    let max = 0;
+    for (const row of rows) {
+      const label = row.label.trim().toUpperCase();
+      const code = /^[A-Z]{2}$/.test(label) ? alpha2ToAlpha3(label) : undefined;
+      if (!code) continue;
+      countryCounts.set(code, row.count);
+      max = Math.max(max, row.count);
+    }
+    return { byAlpha3: countryCounts, maxCount: max, total: rows.reduce((sum, row) => sum + row.count, 0) };
+  }, [rows]);
   const visible = rows.slice(0, 6);
   const unknown = rows.find((row) => row.label.trim().toLowerCase() === 'unknown');
+  const colors = COUNTRY_MAP_COLORS[theme];
+  const maxStop = Math.max(1, maxCount);
+  const fillPaint = useMemo(() => ({
+    'fill-color': [
+      'case',
+      ['all', ['boolean', ['feature-state', 'hover'], false], ['>', ['coalesce', ['get', 'visitors'], 0], 0]],
+      colors.hover,
+      [
+        'interpolate', ['linear'], ['coalesce', ['get', 'visitors'], 0],
+        0, colors.base,
+        maxStop * .25, colors.ramp[0],
+        maxStop * .5, colors.ramp[1],
+        maxStop * .75, colors.ramp[2],
+        maxStop, colors.ramp[3],
+      ],
+    ],
+    'fill-opacity': .94,
+  }), [colors, maxStop]);
+  const countries = useMemo(() => {
+    if (!world) return null;
+    return {
+      type: 'FeatureCollection' as const,
+      features: world.features.map((item) => {
+        const iso3 = item.properties.ISO_A3;
+        return {
+          ...item,
+          properties: {
+            NAME_LONG: item.properties.NAME_LONG,
+            visitors: typeof iso3 === 'string' ? byAlpha3.get(iso3) ?? 0 : 0,
+          },
+        };
+      }),
+    };
+  }, [world, byAlpha3]);
 
   return (
     <section className={`${s.breakdownCard} ${s.countryDemographic}`} aria-labelledby="country-demographic-title">
@@ -423,27 +468,49 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
         <div className={s.countryMapEmpty} role="status">Loading country data</div>
       ) : rows.length ? (
         <>
-          <div className={s.demographicMap}>
-            <ComposableMap width={800} height={330} projection="geoEqualEarth" projectionConfig={{ scale: 140, center: [0, 10] }}>
-              <Geographies geography={dashboardWorldGeography}>
-                {({ geographies }) => geographies.map((geography) => {
-                  const count = byNumericCode.get(String(geography.id ?? '').padStart(3, '0')) ?? 0;
-                  const opacity = maxCount > 0 && count > 0 ? .28 + (count / maxCount) * .62 : 0;
-                  return <Geography key={geography.rsmKey} geography={geography} fill={count ? `color-mix(in srgb, var(--ink) ${Math.round(opacity * 100)}%, var(--soft2))` : 'var(--soft2)'} stroke="var(--paper)" strokeWidth={.65} style={{ outline: 'none' }} />;
-                })}
-              </Geographies>
-            </ComposableMap>
+          <div className={s.demographicMap} role="region" aria-label="Interactive map of visitors by country">
+            <InteractiveMap
+              blank
+              theme={theme}
+              center={[12, 28]}
+              zoom={1.35}
+              minZoom={1}
+              maxZoom={5}
+              scrollZoom={false}
+              dragRotate={false}
+              pitchWithRotate={false}
+              loading={!countries}
+            >
+              {countries && <MapGeoJSON
+                data={countries as GeoJSON.FeatureCollection<GeoJSON.Geometry, { NAME_LONG: string; visitors: number }>}
+                promoteId="NAME_LONG"
+                fillPaint={fillPaint as never}
+                linePaint={{ 'line-color': colors.line, 'line-width': .65 }}
+                interactive
+                onHover={(event) => {
+                  const visitors = event?.feature.properties.visitors ?? 0;
+                  if (!event || visitors <= 0) { setHover(null); return; }
+                  setHover({ name: event.feature.properties.NAME_LONG, visitors, lng: event.longitude, lat: event.latitude });
+                }}
+              />}
+              <MapControls position="top-right" showZoom />
+              {hover && <MapPopup longitude={hover.lng} latitude={hover.lat} offset={12} className="pointer-events-none">
+                <div className="text-foreground text-xs font-semibold">{hover.name}</div>
+                <div className="text-muted-foreground mt-1 text-[11px]">{hover.visitors.toLocaleString()} visitors</div>
+              </MapPopup>}
+            </InteractiveMap>
             {unknown && <span className={s.countryMapNote}>Unknown locations · {compact(unknown.count)}</span>}
           </div>
           <ul className={s.countryLegend} aria-label="Top countries by visitors">
             {visible.map((row) => (
               <li key={row.label}>
-                <span className={s.countryLegendName}>{row.label || 'Unknown'}</span>
+                <span className={s.countryLegendName}>{/^[A-Z]{2}$/i.test(row.label) ? getName(row.label.toUpperCase(), 'en') ?? row.label : row.label || 'Unknown'}</span>
                 <span className={s.countryLegendTrack} aria-hidden="true"><i style={{ width: `${total ? Math.max(2, row.count / total * 100) : 0}%` }} /></span>
                 <span className={s.countryLegendValue}>{Math.round(total ? row.count / total * 100 : 0)}%</span>
               </li>
             ))}
           </ul>
+          <p className={s.countryMapAttribution}>This product includes GeoLite Data created by <a href="https://www.maxmind.com/" target="_blank" rel="noreferrer">MaxMind</a>.</p>
         </>
       ) : (
         <div className={s.emptyBlock}><FileIcon /><span>No country data yet.</span></div>

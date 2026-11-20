@@ -3,6 +3,7 @@ uvicorn==0.34.0
 SQLAlchemy==2.0.41
 alembic==1.16.5
 httpx==0.28.1
+maxminddb>=2.6,<3
 psycopg[binary]==3.2.9
 python-dotenv==1.2.2
 cryptography==49.0.0

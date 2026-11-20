@@ -2,6 +2,7 @@
 import asyncio
 import hashlib
 import ipaddress
+import io
 import json
 import logging
 import math
@@ -9,6 +10,9 @@ import os
 import re
 import secrets
 import socket
+import tarfile
+import tempfile
+import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlencode, urlsplit
@@ -16,6 +20,8 @@ from uuid import uuid4
 
 import httpx
 import jwt
+import maxminddb
+from maxminddb.errors import InvalidDatabaseError
 from jwt import PyJWKClient
 from svix.webhooks import Webhook, WebhookVerificationError
 from dotenv import load_dotenv
@@ -50,17 +56,24 @@ CLERK_JWKS_URL = os.getenv('CLERK_JWKS_URL', '')
 CLERK_AUTHORIZED_PARTIES = tuple(x.strip() for x in os.getenv('CLERK_AUTHORIZED_PARTIES', '').split(',') if x.strip())
 CLERK_WEBHOOK_SECRET = os.getenv('CLERK_WEBHOOK_SECRET', '')
 SECURE = os.getenv('COOKIE_SECURE', 'false').lower() == 'true'
-# Country data is accepted only on the authenticated internal ingestion route. That route
-# validates GEO_FORWARD_SECRET first, so a forwarded country is trusted by default. Set
-# TRUST_VERCEL_GEO=false only when an untrusted party can hold the forward secret.
-TRUST_VERCEL_GEO = os.getenv('TRUST_VERCEL_GEO', 'true').lower() == 'true'
+# Client IP is forwarded over the authenticated internal route, then resolved locally.
+# The collector never trusts a proxy-supplied country code.
 GEO_FORWARD_SECRET = os.getenv('GEO_FORWARD_SECRET', '')
+GEOIP_DATABASE_PATH = Path(os.getenv('GEOIP_DATABASE_PATH', str(Path(__file__).with_name('GeoLite2-Country.mmdb'))))
+MAXMIND_ACCOUNT_ID = os.getenv('MAXMIND_ACCOUNT_ID', '')
+MAXMIND_LICENSE_KEY = os.getenv('MAXMIND_LICENSE_KEY', '')
+GEOIP_UPDATE_INTERVAL_DAYS = max(1, int(os.getenv('GEOIP_UPDATE_INTERVAL_DAYS', '7')))
+_geoip_reader = None
+_geoip_reader_path = None
+_geoip_reader_mtime = None
+_geoip_reader_lock = threading.Lock()
 # Shared secret for POST /internal/retention. Optional: the API also runs retention on
 # its own schedule, so self-hosted and single-instance deployments need no external cron.
 RETENTION_SECRET = os.getenv('RETENTION_SECRET', '')
 RETENTION_INTERVAL_HOURS = float(os.getenv('RETENTION_INTERVAL_HOURS', '24'))
 RETENTION_START_DELAY_SECONDS = float(os.getenv('RETENTION_START_DELAY_SECONDS', '30'))
 retention_log = logging.getLogger('Zappa.retention')
+geoip_log = logging.getLogger('Zappa.geoip')
 if not retention_log.handlers:
     _retention_handler = logging.StreamHandler()
     _retention_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s'))
@@ -84,6 +97,83 @@ def is_bot(user_agent: str) -> bool:
     """Return True for obvious crawlers, monitors, and non-browser clients."""
     return bool(BOT_USER_AGENT.search(user_agent or ''))
 ISO_COUNTRIES = frozenset('AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW'.split())
+
+def geoip_country(ip_value: str | None) -> str | None:
+    """Resolve an IP to ISO alpha-2 using the locally installed country database."""
+    try:
+        address = ipaddress.ip_address((ip_value or '').strip())
+    except ValueError:
+        return None
+    if not address.is_global:
+        return None
+    global _geoip_reader, _geoip_reader_path, _geoip_reader_mtime
+    with _geoip_reader_lock:
+        try:
+            stat = GEOIP_DATABASE_PATH.stat()
+        except OSError:
+            return None
+        database_path = str(GEOIP_DATABASE_PATH)
+        if _geoip_reader is None or _geoip_reader_path != database_path or _geoip_reader_mtime != stat.st_mtime_ns:
+            try:
+                reader = maxminddb.open_database(database_path)
+            except (OSError, InvalidDatabaseError):
+                _geoip_reader = None
+                _geoip_reader_path = None
+                _geoip_reader_mtime = None
+                return None
+            previous_reader = _geoip_reader
+            _geoip_reader = reader
+            _geoip_reader_path = database_path
+            _geoip_reader_mtime = stat.st_mtime_ns
+            if previous_reader is not None:
+                previous_reader.close()
+        try:
+            record = _geoip_reader.get(str(address))
+        except (OSError, InvalidDatabaseError):
+            return None
+    if not record:
+        return None
+    country = (record.get('country') or {}).get('iso_code') or (record.get('registered_country') or {}).get('iso_code')
+    return country if country in ISO_COUNTRIES else None
+
+
+def update_geoip_database_if_due() -> bool:
+    """Download the country database on the backend host, never per visitor lookup."""
+    if not (MAXMIND_ACCOUNT_ID and MAXMIND_LICENSE_KEY):
+        return False
+    try:
+        if GEOIP_DATABASE_PATH.is_file() and time.time() - GEOIP_DATABASE_PATH.stat().st_mtime < GEOIP_UPDATE_INTERVAL_DAYS * 86400:
+            return False
+        response = httpx.get(
+            'https://download.maxmind.com/geoip/databases/GeoLite2-Country/download?suffix=tar.gz',
+            auth=(MAXMIND_ACCOUNT_ID, MAXMIND_LICENSE_KEY),
+            follow_redirects=True,
+            timeout=60,
+        )
+        response.raise_for_status()
+        with tarfile.open(fileobj=io.BytesIO(response.content), mode='r:gz') as archive:
+            database = next((member for member in archive.getmembers() if member.isfile() and member.name.endswith('/GeoLite2-Country.mmdb')), None)
+            if database is None:
+                raise ValueError('GeoLite2 download did not contain a country database')
+            source = archive.extractfile(database)
+            if source is None:
+                raise ValueError('GeoLite2 country database could not be read')
+            GEOIP_DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=GEOIP_DATABASE_PATH.parent, suffix='.mmdb', delete=False) as temporary:
+                temporary_path = Path(temporary.name)
+                temporary.write(source.read())
+        try:
+            candidate = maxminddb.open_database(str(temporary_path))
+            candidate.close()
+            os.replace(temporary_path, GEOIP_DATABASE_PATH)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+        return True
+    except (httpx.HTTPError, OSError, tarfile.TarError, InvalidDatabaseError, ValueError):
+        geoip_log.warning('GeoIP database update failed')
+        return False
+
+
 GITHUB_APP_SLUG = os.getenv('GITHUB_APP_SLUG', '')
 GITHUB_APP_CLIENT_ID = os.getenv('GITHUB_APP_CLIENT_ID', '')
 GITHUB_APP_CLIENT_SECRET = os.getenv('GITHUB_APP_CLIENT_SECRET', '')
@@ -107,7 +197,12 @@ async def health():
     return {
         'status': 'ok',
         'database': 'connected',
-        'ingestion': {'bot_filter': FILTER_BOTS, 'geo_forwarding': bool(GEO_FORWARD_SECRET) and TRUST_VERCEL_GEO},
+        'ingestion': {
+            'bot_filter': FILTER_BOTS,
+            'client_ip_forwarding': bool(GEO_FORWARD_SECRET),
+            'geoip_database': GEOIP_DATABASE_PATH.is_file(),
+            'geoip_auto_update': bool(MAXMIND_ACCOUNT_ID and MAXMIND_LICENSE_KEY),
+        },
         'retention': {
             'scheduled_hours': RETENTION_INTERVAL_HOURS,
             'external_trigger': bool(RETENTION_SECRET),
@@ -147,6 +242,12 @@ async def retention_loop():
         await asyncio.sleep(RETENTION_INTERVAL_HOURS * 3600)
 
 
+async def geoip_update_loop():
+    while True:
+        await asyncio.to_thread(update_geoip_database_if_due)
+        await asyncio.sleep(86400)
+
+
 @app.on_event('startup')
 async def start_retention_scheduler():
     if RETENTION_INTERVAL_HOURS <= 0:
@@ -155,11 +256,17 @@ async def start_retention_scheduler():
     app.state.retention_task = asyncio.create_task(retention_loop())
 
 
+@app.on_event('startup')
+async def start_geoip_updater():
+    app.state.geoip_task = asyncio.create_task(geoip_update_loop())
+
+
 @app.on_event('shutdown')
 async def stop_retention_scheduler():
-    task = getattr(app.state, 'retention_task', None)
-    if task:
-        task.cancel()
+    for task_name in ('retention_task', 'geoip_task'):
+        task = getattr(app.state, task_name, None)
+        if task:
+            task.cancel()
 
 def now(): return datetime.now(timezone.utc)
 def digest(value): return hashlib.sha256(value.encode()).hexdigest()
@@ -718,14 +825,10 @@ async def limits(request: Request, call_next):
 @app.post('/api/events')
 @app.post('/internal/events')
 async def ingest(data: Batch, request: Request):
-    country = None
+    client_ip = request.client.host if request.client else None
     if request.url.path == '/internal/events':
-        forwarded_country = request.headers.get('x-Zappa-country')
-        if forwarded_country is not None:
-            if forwarded_country not in ISO_COUNTRIES:
-                raise HTTPException(422, 'Invalid country code')
-            if TRUST_VERCEL_GEO:
-                country = forwarded_country
+        client_ip = request.headers.get('x-Zappa-client-ip')
+    country = geoip_country(client_ip)
     origin = request.headers.get('origin', '')
     with engine.begin() as db:
         project = db.execute(text('SELECT domain, write_key_hash, verified_at FROM projects WHERE id=:id'), {'id':data.projectId}).mappings().first()

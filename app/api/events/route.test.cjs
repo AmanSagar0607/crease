@@ -10,15 +10,16 @@ const { POST } = loaded.exports;
 test('forwarder bounds requests and copies only explicitly allowed headers', async () => {
   process.env.BACKEND_URL = 'https://render.example';
   process.env.GEO_FORWARD_SECRET = 'server-only';
-  delete process.env.VERCEL;
+  process.env.VERCEL = '1';
   let captured;
   global.fetch = async (url, options) => { captured = {url, options}; return new Response('{"accepted":1}', {status:200}); };
-  const request = new Request('https://Zappa.example/api/events', {method:'POST', headers:{origin:'https://example.com','x-Zappa-key':'key','x-vercel-ip-country':'US','x-Zappa-country':'CA','x-Zappa-forward-secret':'attacker'}, body:'{"projectId":"p","events":[]}'});
+  const request = new Request('https://Zappa.example/api/events', {method:'POST', headers:{origin:'https://example.com','x-Zappa-key':'key','x-forwarded-for':'203.0.113.8','x-vercel-ip-country':'US','x-Zappa-client-ip':'198.51.100.2','x-Zappa-country':'CA','x-Zappa-forward-secret':'attacker'}, body:'{"projectId":"p","events":[]}'});
   const response = await POST(request);
   assert.equal(response.status, 200);
   assert.equal(captured.url.pathname, '/internal/events');
   assert.equal(captured.options.headers.get('x-Zappa-forward-secret'), 'server-only');
   assert.equal(captured.options.headers.get('x-Zappa-country'), null);
+  assert.equal(captured.options.headers.get('x-Zappa-client-ip'), '203.0.113.8');
   assert.equal(captured.options.headers.get('x-vercel-ip-country'), null);
   assert.equal(response.headers.get('x-Zappa-forward-secret'), null);
   assert.equal((await POST(new Request('https://Zappa.example/api/events', {method:'POST',body:'x'.repeat(32769)}))).status, 413);

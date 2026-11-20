@@ -58,11 +58,10 @@ export async function POST(request: Request) {
   }
   if (secret) {
     forwarded.set('x-Zappa-forward-secret', secret);
-    // Only Vercel's trusted edge may supply these headers; never copy client forwarding headers.
+    // Vercel overwrites X-Forwarded-For with the public client IP. The backend
+    // resolves that IP against its local GeoIP database; it never trusts a country header.
     if (process.env.VERCEL === '1') {
-      const country = request.headers.get('x-vercel-ip-country');
-      const ip = request.headers.get('x-vercel-forwarded-for');
-      if (country) forwarded.set('x-Zappa-country', country);
+      const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
       if (ip) forwarded.set('x-Zappa-client-ip', ip);
     }
   }

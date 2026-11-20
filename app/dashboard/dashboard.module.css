@@ -1163,6 +1163,9 @@
 .countryLegendTrack { height: 4px; overflow: hidden; border-radius: 99px; background: var(--soft2); }
 .countryLegendTrack i { display: block; height: 100%; border-radius: inherit; background: var(--ink); }
 .countryLegendValue { grid-column: 2; grid-row: 1 / span 2; color: var(--ink2); font-size: 11px; font-variant-numeric: tabular-nums; }
+.countryMapAttribution { margin: 12px 0 0; color: var(--muted); font-size: 10px; }
+.countryMapAttribution a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.countryMapAttribution a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 .emptyBlock {
   display: grid;
