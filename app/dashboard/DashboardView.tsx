@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth, useClerk } from '@clerk/nextjs';
 import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from 'next-themes';
-import { alpha2ToAlpha3, alpha2ToNumeric, getName, registerLocale } from 'i18n-iso-countries';
+import { alpha2ToAlpha3, alpha3ToAlpha2, alpha2ToNumeric, getName, registerLocale } from 'i18n-iso-countries';
 import englishLocale from 'i18n-iso-countries/langs/en.json';
 import type * as GeoJSON from 'geojson';
 import { Compass, Flame, Globe, Monitor, Smartphone, Tablet } from 'lucide-react';
@@ -98,6 +98,8 @@ type Verification = {
   dns_name?: string;
 };
 type Breakdown = { label: string; count: number };
+type GeographyRow = { key: string; label: string; country_code: string | null; region_code: string | null; visitors: number; sessions: number; pageviews: number; conversions: number | null; verified_revenue: number | null; share: number };
+type GeographyResponse = { rows: GeographyRow[]; total_rows: number; total_visitors: number; conversion_configured: boolean; verified_revenue_available: boolean; page: number; page_size: number };
 type SeriesPoint = { date: string; events: number; pageviews: number; visitors: number; sessions: number };
 type Metrics = { events: number; pageviews: number; visitors: number; sessions: number };
 type PropertyValue = { value: string; count: number };
@@ -514,12 +516,19 @@ function FocusCountryOnOpen({ feature }: { feature: GeoJSON.Feature<GeoJSON.Geom
   return null;
 }
 
-function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading: boolean }) {
+function CountryDemographicCard({ rows, loading, projectId, range }: { rows: Breakdown[]; loading: boolean; projectId: string; range: Range | null }) {
   const { resolvedTheme } = useTheme();
   const theme = resolvedTheme === 'dark' ? 'dark' : 'light';
   const world = useWorldData();
   const [hover, setHover] = useState<{ name: string; visitors: number } | null>(null);
   const [view, setView] = useState('map');
+  const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
+  const [geoRows, setGeoRows] = useState<GeographyRow[]>([]);
+  const [geoTotalRows, setGeoTotalRows] = useState(0);
+  const [geoPage, setGeoPage] = useState(1);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState('');
   const { byAlpha3, maxCount, total } = useMemo(() => {
     const countryCounts = new Map<string, number>();
     let max = 0;
@@ -562,6 +571,7 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
           ...item,
           properties: {
             NAME_LONG: item.properties.NAME_LONG,
+            ISO_A3: item.properties.ISO_A3,
             visitors: typeof iso3 === 'string' ? byAlpha3.get(iso3) ?? 0 : 0,
           },
         };
@@ -577,6 +587,49 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
       .find((code) => code && world.features.some((feature) => feature.properties.ISO_A3 === code));
     return leadingCode ? world.features.find((feature) => feature.properties.ISO_A3 === leadingCode) ?? null : null;
   }, [rows, world]);
+
+  const activeGeoLevel = view === 'city' ? 'city' : view === 'region' ? 'region' : 'country';
+  const activeGeoCountry = view === 'city' || view === 'region' ? selectedCountry : null;
+  const activeGeoRegion = view === 'city' ? selectedRegion : null;
+  useEffect(() => {
+    if (!projectId || (view !== 'region' && view !== 'city') || (view === 'region' && !selectedCountry) || (view === 'city' && (!selectedCountry || !selectedRegion))) return;
+    let cancelled = false;
+    const params = new URLSearchParams({ level: activeGeoLevel, days: '30', timezone: 'UTC', page: String(geoPage), page_size: '20' });
+    if (range) { params.set('start', range.start); params.set('end', range.end); }
+    if (activeGeoCountry) params.set('country', activeGeoCountry);
+    if (activeGeoRegion) params.set('region_code', activeGeoRegion);
+    setGeoLoading(true);
+    setGeoError('');
+    api<GeographyResponse>(`/api/projects/${encodeURIComponent(projectId)}/geography?${params.toString()}`)
+      .then((result) => {
+        if (cancelled) return;
+        setGeoRows((current) => geoPage === 1 ? result.rows : [...current, ...result.rows]);
+        setGeoTotalRows(result.total_rows);
+      })
+      .catch((error) => { if (!cancelled) setGeoError(error instanceof Error ? error.message : 'Could not load location data.'); })
+      .finally(() => { if (!cancelled) setGeoLoading(false); });
+    return () => { cancelled = true; };
+  }, [projectId, range?.start, range?.end, view, activeGeoLevel, activeGeoCountry, activeGeoRegion, geoPage]);
+
+  useEffect(() => {
+    setGeoRows([]);
+    setGeoPage(1);
+  }, [range?.start, range?.end]);
+
+  function chooseCountry(code: string | null) {
+    setSelectedCountry(code);
+    setSelectedRegion(null);
+    setGeoRows([]);
+    setGeoPage(1);
+    setView('region');
+  }
+
+  function chooseRegion(code: string | null) {
+    setSelectedRegion(code);
+    setGeoRows([]);
+    setGeoPage(1);
+    setView('city');
+  }
 
   return (
     <section className={`${s.breakdownCard} ${s.countryDemographic}`} aria-labelledby="country-demographic-title">
@@ -611,7 +664,7 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
             >
               <FocusCountryOnOpen feature={focusFeature} />
               {countries && <MapGeoJSON
-                data={countries as GeoJSON.FeatureCollection<GeoJSON.Geometry, { NAME_LONG: string; visitors: number }>}
+                data={countries as GeoJSON.FeatureCollection<GeoJSON.Geometry, { NAME_LONG: string; ISO_A3?: string; visitors: number }>}
                 promoteId="NAME_LONG"
                 fillPaint={fillPaint as never}
                 linePaint={{ 'line-color': colors.line, 'line-width': .65 }}
@@ -620,6 +673,10 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
                   const visitors = event?.feature.properties.visitors ?? 0;
                   if (!event || visitors <= 0) { setHover(null); return; }
                   setHover({ name: event.feature.properties.NAME_LONG, visitors });
+                }}
+                onClick={(event) => {
+                  const alpha2 = event.feature.properties.ISO_A3 ? alpha3ToAlpha2(event.feature.properties.ISO_A3) : undefined;
+                  if (alpha2 && event.feature.properties.visitors > 0) chooseCountry(alpha2);
                 }}
               />}
               <MapControls position="top-right" showZoom />
@@ -646,7 +703,7 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
               );
             })}
           </ul>
-          <p className={s.countryMapAttribution}>This product includes GeoLite Data created by <a href="https://www.maxmind.com/" target="_blank" rel="noreferrer">MaxMind</a>.</p>
+          <p className={s.countryMapAttribution}>Locations are approximate. Legacy country data may include GeoLite Data created by <a href="https://www.maxmind.com/" target="_blank" rel="noreferrer">MaxMind</a>.</p>
           {unknown && <p className={s.countryDataNote}>Unknown means a country could not be resolved when those events arrived; older events aren’t backfilled.</p>}
           </TabsContent>
           <TabsContent value="country" className={s.countryTabPanel}>
@@ -655,21 +712,23 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
                 const countryCode = /^[A-Z]{2}$/i.test(row.label) ? row.label.toLowerCase() : null;
                 const countryName = countryCode ? getName(row.label.toUpperCase(), 'en') ?? row.label : row.label || 'Unknown';
                 return <li key={row.label}>
+                  <button type="button" className={s.geoRowButton} disabled={!countryCode} onClick={() => chooseCountry(countryCode?.toUpperCase() ?? null)} aria-label={`View regions for ${countryName}`}>
                   <span className={s.countryLegendName}>
                     {countryCode && <img src={`https://flagcdn.com/w20/${countryCode}.png`} alt="" aria-hidden="true" loading="lazy" onError={(event) => { event.currentTarget.hidden = true; }} />}
                     <span>{countryName}</span>
                   </span>
                   <span className={s.countryFullCount}>{compact(row.count)} <i>{Math.round(total ? row.count / total * 100 : 0)}%</i></span>
                   <span className={s.countryFullTrack} aria-hidden="true"><i style={{ width: `${total ? Math.max(2, row.count / total * 100) : 0}%` }} /></span>
+                  </button>
                 </li>;
               })}
             </ul>
           </TabsContent>
           <TabsContent value="region" className={s.countryTabPanel}>
-            <div className={s.geoLevelEmpty}><strong>Region data isn’t available yet</strong><span>Current GeoLite collection records country-level locations only.</span></div>
+            {!selectedCountry ? <div className={s.geoLevelEmpty}><strong>Select a country to view regions</strong><span>Choose a country from the map or Country tab.</span><button type="button" className={s.geoBackButton} onClick={() => setView('country')}>Browse countries</button></div> : <GeoList rows={geoRows} loading={geoLoading} error={geoError} totalRows={geoTotalRows} onPage={() => setGeoPage((value) => value + 1)} onBack={() => { setView('country'); setSelectedCountry(null); setSelectedRegion(null); }} backLabel={getName(selectedCountry, 'en') ?? selectedCountry} onChoose={(row) => chooseRegion(row.region_code)} />}
           </TabsContent>
           <TabsContent value="city" className={s.countryTabPanel}>
-            <div className={s.geoLevelEmpty}><strong>City data isn’t available yet</strong><span>Current GeoLite collection records country-level locations only.</span></div>
+            {!selectedCountry || !selectedRegion ? <div className={s.geoLevelEmpty}><strong>Select a region to view cities</strong><span>Drill down from a country to a region.</span><button type="button" className={s.geoBackButton} onClick={() => setView(selectedCountry ? 'region' : 'country')}>Back to {selectedCountry ? 'regions' : 'countries'}</button></div> : <GeoList rows={geoRows} loading={geoLoading} error={geoError} totalRows={geoTotalRows} onPage={() => setGeoPage((value) => value + 1)} onBack={() => { setView('region'); setSelectedRegion(null); setGeoRows([]); setGeoPage(1); }} backLabel={selectedRegion} />}
           </TabsContent>
           </>
         ) : (
@@ -678,6 +737,24 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
       </Tabs>
     </section>
   );
+}
+
+function GeoList({ rows, loading, error, totalRows, onPage, onBack, backLabel, onChoose }: { rows: GeographyRow[]; loading: boolean; error: string; totalRows: number; onPage: () => void; onBack: () => void; backLabel: string; onChoose?: (row: GeographyRow) => void }) {
+  return <div className={s.geoListWrap}>
+    <div className={s.geoListHeader}><button type="button" className={s.geoBackButton} onClick={onBack}>← {backLabel}</button><span>{rows.length} of {totalRows}</span></div>
+    {error ? <div className={s.geoLevelEmpty} role="alert"><strong>Couldn’t load geography</strong><span>{error}</span></div> : loading && !rows.length ? <div className={s.countryMapEmpty} role="status">Loading location data</div> : !rows.length ? <div className={s.geoLevelEmpty}><strong>No detailed locations yet</strong><span>New events will appear here when Cloudflare provides region and city data.</span></div> : <ul className={s.countryFullList} aria-label="Visitor locations">
+      {rows.map((row) => <li key={row.key}>
+        <div className={s.geoRowHead}>
+          {onChoose ? <button type="button" className={s.geoNameButton} disabled={!row.region_code} onClick={() => onChoose(row)}>{row.label}</button> : <span className={s.geoNameButton}>{row.label}</span>}
+          <span className={s.countryFullCount}>{row.visitors.toLocaleString()} <i>{row.share}%</i></span>
+        </div>
+        <div className={s.geoMetrics} aria-label={`${row.sessions} sessions, ${row.pageviews} page views`}><span>{row.sessions.toLocaleString()} sessions</span><span>{row.pageviews.toLocaleString()} pageviews</span>{row.conversions !== null && <span>{row.conversions.toLocaleString()} conversions</span>}</div>
+        <span className={s.countryFullTrack} aria-hidden="true"><i style={{ width: `${Math.max(2, row.share)}%` }} /></span>
+      </li>)}
+    </ul>}
+    {!error && rows.length < totalRows && <button type="button" className={s.geoBackButton} onClick={onPage} disabled={loading}>{loading ? 'Loading…' : 'Show more locations'}</button>}
+    <p className={s.countryDataNote}>Locations are approximate and may be incomplete.</p>
+  </div>;
 }
 
 /* ---------- Main component ---------- */
@@ -1213,7 +1290,7 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
   }
 
   const collectorOrigin = process.env.NEXT_PUBLIC_ZAPPA_ORIGIN || 'https://www.zappa.in';
-  const collector = `${collectorOrigin}/api/events`;
+  const collector = process.env.NEXT_PUBLIC_ZAPPA_GEO_ENDPOINT || 'https://zappa-geo-ingest.amansagar0307.workers.dev/api/events';
   const snippet = `<script src="${collectorOrigin}/Zappa.js" defer></script>
 <script>
   // Dispatch Zappa:consent after any required consent has been granted.
@@ -1673,7 +1750,7 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
                               empty="No device data yet."
                               deviceFacets
                             />
-                            <CountryDemographicCard rows={summary?.country_visitors ?? summary?.countries ?? []} loading={summaryBusy} />
+                            <CountryDemographicCard rows={summary?.country_visitors ?? summary?.countries ?? []} loading={summaryBusy} projectId={selected} range={reportRange} />
                           </div>
                         </>
                       )}

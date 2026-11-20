@@ -20,7 +20,7 @@ export default function Docs() {
     Zappa.init({
       projectId: 'YOUR_PROJECT_ID',
       writeKey: 'Zappa_YOUR_PROJECT_WRITE_KEY',
-      endpoint: 'https://www.zappa.in/api/events'
+      endpoint: process.env.NEXT_PUBLIC_ZAPPA_ENDPOINT || 'https://www.zappa.in/api/events'
     });
   }, { once: true });
 </script>`}</Code>
@@ -35,13 +35,13 @@ export default function Docs() {
     <p>Property values must be numbers or booleans, with at most 20 properties per event. Pages and referrers are recorded automatically.</p>
     <h2>Next.js and npm</h2>
     <p>Install <code>@aman-sagar06077/zappa-analytics</code> with <code>npm install @aman-sagar06077/zappa-analytics</code>. Then add its component to your app and pass the project ID and public write key shown in Installation.</p>
-    <p>Copy the project-specific <code>NEXT_PUBLIC_ZAPPA_*</code> values from your project’s Installation setup and add them to <code>.env.local</code> (and your hosting provider for production).</p>
+    <p>Copy the project-specific <code>NEXT_PUBLIC_ZAPPA_*</code> values from your project’s Installation setup and add them to <code>.env.local</code> (and your hosting provider for production). The endpoint is prefilled by Installation; it can point to Zappa’s standard collector or an enabled Cloudflare geolocation collector.</p>
     <Code>{`import { Analytics } from '@aman-sagar06077/zappa-analytics/next';
 
 <Analytics
   projectId={process.env.NEXT_PUBLIC_ZAPPA_PROJECT_ID!}
   writeKey={process.env.NEXT_PUBLIC_ZAPPA_WRITE_KEY!}
-  endpoint={process.env.NEXT_PUBLIC_ZAPPA_ORIGIN + '/api/events'}
+  endpoint={process.env.NEXT_PUBLIC_ZAPPA_ENDPOINT}
   enabled={consentGranted}
 />`}</Code>
   </main>;

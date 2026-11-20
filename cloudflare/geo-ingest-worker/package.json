@@ -1,0 +1,5 @@
+{
+  "name": "zappa-cloudflare-geo-ingest",
+  "private": true,
+  "type": "module"
+}
