@@ -8,7 +8,7 @@ import { useTheme } from 'next-themes';
 import { alpha2ToAlpha3, alpha2ToNumeric, getName, registerLocale } from 'i18n-iso-countries';
 import englishLocale from 'i18n-iso-countries/langs/en.json';
 import type * as GeoJSON from 'geojson';
-import { Map as InteractiveMap, MapControls, MapGeoJSON, MapPopup } from '@/components/ui/map';
+import { Map as InteractiveMap, MapControls, MapGeoJSON } from '@/components/ui/map';
 import { useWorldData } from '@/lib/use-world-data';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
@@ -408,7 +408,7 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
   const { resolvedTheme } = useTheme();
   const theme = resolvedTheme === 'dark' ? 'dark' : 'light';
   const world = useWorldData();
-  const [hover, setHover] = useState<{ name: string; visitors: number; lng: number; lat: number } | null>(null);
+  const [hover, setHover] = useState<{ name: string; visitors: number } | null>(null);
   const { byAlpha3, maxCount, total } = useMemo(() => {
     const countryCounts = new Map<string, number>();
     let max = 0;
@@ -490,15 +490,15 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
                 onHover={(event) => {
                   const visitors = event?.feature.properties.visitors ?? 0;
                   if (!event || visitors <= 0) { setHover(null); return; }
-                  setHover({ name: event.feature.properties.NAME_LONG, visitors, lng: event.longitude, lat: event.latitude });
+                  setHover({ name: event.feature.properties.NAME_LONG, visitors });
                 }}
               />}
               <MapControls position="top-right" showZoom />
-              {hover && <MapPopup longitude={hover.lng} latitude={hover.lat} offset={12} className="pointer-events-none">
-                <div className="text-foreground text-xs font-semibold">{hover.name}</div>
-                <div className="text-muted-foreground mt-1 text-[11px]">{hover.visitors.toLocaleString()} visitors</div>
-              </MapPopup>}
             </InteractiveMap>
+            {hover && <div className={s.countryMapTooltip} role="status" aria-live="polite">
+              <strong>{hover.name}</strong>
+              <span>{hover.visitors.toLocaleString()} {hover.visitors === 1 ? 'visitor' : 'visitors'}</span>
+            </div>}
             {unknown && <span className={s.countryMapNote}>Unknown locations · {compact(unknown.count)}</span>}
           </div>
           <ul className={s.countryLegend} aria-label="Top countries by visitors">
