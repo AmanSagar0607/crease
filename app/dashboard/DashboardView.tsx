@@ -15,6 +15,7 @@ import { useWorldData } from '@/lib/use-world-data';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
 import ThemeToggle from '../theme-toggle';
+import ZappaWordmark from '../zappa-wordmark';
 import VerifiedBadge from './VerifiedBadge';
 import ProjectOnboarding from './ProjectOnboarding';
 import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
@@ -1460,7 +1461,7 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
       <header className={`${s.header} ${project ? s.analyticsHeader : ''}`}>
         <div className={s.headerInner}>
           <div className={s.headerIdentity}>
-            <Link className={s.brand} href="/">Zappa</Link>
+            <Link className={s.brand} href="/" aria-label="Zappa home"><ZappaWordmark /></Link>
             <span className={s.headerDivider} aria-hidden="true" />
             {!project && user && (
               <span className={s.userChip}>

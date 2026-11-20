@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { ArrowUpRight, Menu, X } from 'lucide-react';
 import ThemeToggle from './theme-toggle';
+import ZappaWordmark from './zappa-wordmark';
 import s from './landing.module.css';
 
 export default function LandingNav() {
@@ -36,7 +37,7 @@ export default function LandingNav() {
   return (
     <div className={s.navWrap}>
       <nav className={s.nav} aria-label="Main navigation">
-        <Link className={s.brand} href="/" onClick={close}>Zappa</Link>
+        <Link className={s.brand} href="/" onClick={close} aria-label="Zappa home"><ZappaWordmark /></Link>
         <div className={s.navLinks}>
           <a href="#how">How it works</a>
           <Link href="/pricing">Pricing</Link>
@@ -72,7 +73,7 @@ export default function LandingNav() {
           <button className={s.mobileMenuBackdrop} type="button" aria-label="Close menu" onClick={close} />
           <div className={s.mobileMenuPanel} id="zappa-mobile-menu" role="dialog" aria-modal="true" aria-label="Site navigation" ref={panelRef}>
             <div className={s.mobileMenuHead}>
-              <span className={s.mobileMenuBrand}>Zappa</span>
+              <span className={s.mobileMenuBrand}><ZappaWordmark /></span>
               <button className={s.mobileMenuClose} type="button" aria-label="Close menu" onClick={close}><X aria-hidden="true" /></button>
             </div>
             <Link href="#how" onClick={close}>How it works</Link>

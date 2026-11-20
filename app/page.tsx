@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import PlatformLogo, { platforms } from './platform-logos';
+import ZappaWordmark from './zappa-wordmark';
 import LandingNav from './landing-nav';
 import InstallSnippet from './install-snippet';
 import LandingProductPreview from './v0-preview/LandingProductPreview';
@@ -443,9 +444,8 @@ export default function Home() {
       <footer className={s.footer}>
         <div className={s.footerInner}>
           <div>
-            <Link className={s.footerBrand} href="/">
-              <span aria-hidden="true">✳</span>
-              Zappa
+            <Link className={s.footerBrand} href="/" aria-label="Zappa home">
+              <ZappaWordmark variant="footer" />
             </Link>
             <p className={s.footerTagline}>Analytics for the things you make.</p>
           </div>
