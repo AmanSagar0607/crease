@@ -9,6 +9,7 @@ import { alpha2ToAlpha3, alpha2ToNumeric, getName, registerLocale } from 'i18n-i
 import englishLocale from 'i18n-iso-countries/langs/en.json';
 import type * as GeoJSON from 'geojson';
 import { Map as InteractiveMap, MapControls, MapGeoJSON, useMap } from '@/components/ui/map';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useWorldData } from '@/lib/use-world-data';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
@@ -452,6 +453,7 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
   const theme = resolvedTheme === 'dark' ? 'dark' : 'light';
   const world = useWorldData();
   const [hover, setHover] = useState<{ name: string; visitors: number } | null>(null);
+  const [view, setView] = useState('map');
   const { byAlpha3, maxCount, total } = useMemo(() => {
     const countryCounts = new Map<string, number>();
     let max = 0;
@@ -516,10 +518,18 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
         <h3 id="country-demographic-title"><GlobeIcon />Customers by country</h3>
         <span className={s.cardCount}>{rows.length ? `${compact(total)} VISITORS` : 'NO DATA'}</span>
       </div>
-      {loading && !rows.length ? (
-        <div className={s.countryMapEmpty} role="status">Loading country data</div>
-      ) : rows.length ? (
-        <>
+      <Tabs value={view} onValueChange={setView} className={s.countryTabs}>
+        <TabsList className={s.countryTabsList} aria-label="Visitor geography view">
+          <TabsTrigger className={s.countryTab} value="map">Map</TabsTrigger>
+          <TabsTrigger className={s.countryTab} value="country">Country</TabsTrigger>
+          <TabsTrigger className={s.countryTab} value="region">Region</TabsTrigger>
+          <TabsTrigger className={s.countryTab} value="city">City</TabsTrigger>
+        </TabsList>
+        {loading && !rows.length ? (
+          <div className={s.countryMapEmpty} role="status">Loading location data</div>
+        ) : rows.length ? (
+          <>
+          <TabsContent value="map" className={s.countryTabPanel}>
           <div className={s.demographicMap} role="region" aria-label="Interactive map of visitors by country">
             <InteractiveMap
               blank
@@ -571,10 +581,34 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
             })}
           </ul>
           <p className={s.countryMapAttribution}>This product includes GeoLite Data created by <a href="https://www.maxmind.com/" target="_blank" rel="noreferrer">MaxMind</a>.</p>
-        </>
-      ) : (
-        <div className={s.emptyBlock}><FileIcon /><span>No country data yet.</span></div>
-      )}
+          </TabsContent>
+          <TabsContent value="country" className={s.countryTabPanel}>
+            <ul className={s.countryFullList} aria-label="Visitors by country">
+              {rows.map((row) => {
+                const countryCode = /^[A-Z]{2}$/i.test(row.label) ? row.label.toLowerCase() : null;
+                const countryName = countryCode ? getName(row.label.toUpperCase(), 'en') ?? row.label : row.label || 'Unknown';
+                return <li key={row.label}>
+                  <span className={s.countryLegendName}>
+                    {countryCode && <img src={`https://flagcdn.com/w20/${countryCode}.png`} alt="" aria-hidden="true" loading="lazy" onError={(event) => { event.currentTarget.hidden = true; }} />}
+                    <span>{countryName}</span>
+                  </span>
+                  <span className={s.countryFullCount}>{compact(row.count)} <i>{Math.round(total ? row.count / total * 100 : 0)}%</i></span>
+                  <span className={s.countryFullTrack} aria-hidden="true"><i style={{ width: `${total ? Math.max(2, row.count / total * 100) : 0}%` }} /></span>
+                </li>;
+              })}
+            </ul>
+          </TabsContent>
+          <TabsContent value="region" className={s.countryTabPanel}>
+            <div className={s.geoLevelEmpty}><strong>Region data isn’t available yet</strong><span>Current GeoLite collection records country-level locations only.</span></div>
+          </TabsContent>
+          <TabsContent value="city" className={s.countryTabPanel}>
+            <div className={s.geoLevelEmpty}><strong>City data isn’t available yet</strong><span>Current GeoLite collection records country-level locations only.</span></div>
+          </TabsContent>
+          </>
+        ) : (
+          <div className={s.emptyBlock}><FileIcon /><span>No country data yet.</span></div>
+        )}
+      </Tabs>
     </section>
   );
 }

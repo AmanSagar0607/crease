@@ -1153,6 +1153,21 @@
 
 .countryDemographic { min-width: 0; }
 .countryDemographic .cardTop { margin-bottom: 8px; }
+.countryTabs { display: block; }
+.countryTabsList { display: inline-flex; max-width: 100%; align-items: center; gap: 2px; overflow-x: auto; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: var(--soft); }
+.countryTab { min-height: 30px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; white-space: nowrap; cursor: pointer; transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease; }
+.countryTab[data-state='active'] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px rgb(0 0 0 / 12%); }
+.countryTab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.countryTabPanel { min-height: 300px; padding-top: 10px; outline: none; }
+.countryFullList { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.countryFullList li { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 12px; padding: 4px 0 8px; border-bottom: 1px solid var(--line); }
+.countryFullCount { color: var(--ink2); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.countryFullCount i { margin-left: 5px; color: var(--muted); font-size: 10px; font-style: normal; }
+.countryFullTrack { grid-column: 1 / -1; height: 4px; overflow: hidden; border-radius: 99px; background: var(--soft2); }
+.countryFullTrack i { display: block; height: 100%; border-radius: inherit; background: var(--ink); }
+.geoLevelEmpty { display: grid; min-height: 270px; align-content: center; justify-items: center; gap: 7px; padding: 20px; text-align: center; }
+.geoLevelEmpty strong { color: var(--ink); font-size: 12px; font-weight: 550; }
+.geoLevelEmpty span { max-width: 260px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .demographicMap { position: relative; height: clamp(155px, 20vw, 225px); overflow: hidden; }
 .demographicMap svg { display: block; width: 100%; height: 100%; }
 .countryMapTooltip { position: absolute; z-index: 3; top: 50%; left: 50%; display: grid; max-width: calc(100% - 32px); gap: 3px; padding: 9px 12px; transform: translate(-50%, -50%); border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); box-shadow: 0 8px 24px rgb(0 0 0 / 12%); font-size: 12px; line-height: 1.35; pointer-events: none; }
@@ -1171,6 +1186,10 @@
 .countryMapAttribution { margin: 12px 0 0; color: var(--muted); font-size: 10px; }
 .countryMapAttribution a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .countryMapAttribution a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .countryTab { transition: none; }
+}
 
 .emptyBlock {
   display: grid;
