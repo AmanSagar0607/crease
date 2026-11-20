@@ -97,7 +97,7 @@ function Dock({ className, children }: DockProps) {
         ref={dockRef} // Reference to the dock element
         // className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-end h-14 p-2 gap-3 bg-neutral-50 dark:bg-black bg-opacity-90 rounded-xl"
         className={cn(
-          "absolute bottom-4 left-1/2 flex h-14 -translate-x-1/2 transform items-end gap-2 rounded-xl border border-border bg-background/90 p-2 text-foreground shadow-lg backdrop-blur-md",
+          "relative flex h-14 items-end gap-2 rounded-xl border border-border bg-background/90 p-2 text-foreground shadow-lg backdrop-blur-md",
           "no-underline transition-colors hover:bg-background",
           className
         )}
@@ -115,7 +115,6 @@ function Dock({ className, children }: DockProps) {
           setHovered(false) // Set hovered state to false
         }}
         style={{
-          x: "-50%", // Center the dock horizontally
           scale: zoomLevel, // Bind the zoom level to the scale style property
         }}
       >

@@ -4642,13 +4642,17 @@
   .dashboardDockLayer {
     position: fixed;
     z-index: 100;
-    inset: 0;
+    right: auto;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    left: 0;
+    display: flex;
+    width: 100vw;
+    justify-content: center;
     pointer-events: none;
   }
   .dashboardDock {
-    position: absolute !important;
-    bottom: max(14px, env(safe-area-inset-bottom)) !important;
-    left: 50% !important;
+    position: relative !important;
+    inset: auto !important;
     z-index: 1;
     display: flex;
     width: max-content;
@@ -4739,9 +4743,13 @@
   .dashboardDockItem { width: 48px !important; min-width: 48px; transform: none !important; }
 }
 
-/* Project identity, switcher and actions share the top line with the account menu. */
-.analyticsDashboard .analyticsHeader { position: relative; inset: auto; z-index: auto; }
-.analyticsDashboard .analyticsHeader .headerInner { width: min(1040px, 100%); }
+/* Project identity and controls sit inside the same framed column as the dashboard. */
+.analyticsDashboard .analyticsHeader { position: sticky; top: 0; inset-inline: auto; z-index: 80; background: var(--background); }
+.analyticsDashboard .analyticsHeader .headerInner {
+  width: min(1040px, 100%);
+  border-inline: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
 .analyticsDashboard .analyticsHeader .headerIdentity { display: flex; align-items: center; gap: clamp(12px, 2vw, 22px); min-width: 0; }
 .headerProjectControls { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .headerProjectSelect {
