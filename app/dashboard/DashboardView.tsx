@@ -429,7 +429,7 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
                 {({ geographies }) => geographies.map((geography) => {
                   const count = byNumericCode.get(String(geography.id ?? '').padStart(3, '0')) ?? 0;
                   const opacity = maxCount > 0 && count > 0 ? .28 + (count / maxCount) * .62 : 0;
-                  return <Geography key={geography.rsmKey} geography={geography} fill={count ? `color-mix(in srgb, var(--ink) ${Math.round(opacity * 100)}%, var(--soft2))` : 'var(--soft2)'} stroke="var(--paper)" strokeWidth={.65} style={{ default: { outline: 'none' }, hover: { outline: 'none', opacity: .78 }, pressed: { outline: 'none' } }} />;
+                  return <Geography key={geography.rsmKey} geography={geography} fill={count ? `color-mix(in srgb, var(--ink) ${Math.round(opacity * 100)}%, var(--soft2))` : 'var(--soft2)'} stroke="var(--paper)" strokeWidth={.65} style={{ outline: 'none' }} />;
                 })}
               </Geographies>
             </ComposableMap>
