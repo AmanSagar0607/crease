@@ -8,7 +8,7 @@ import { useTheme } from 'next-themes';
 import { alpha2ToAlpha3, alpha2ToNumeric, getName, registerLocale } from 'i18n-iso-countries';
 import englishLocale from 'i18n-iso-countries/langs/en.json';
 import type * as GeoJSON from 'geojson';
-import { Globe, Monitor, Smartphone, Tablet } from 'lucide-react';
+import { Compass, Flame, Globe, Monitor, Smartphone, Tablet } from 'lucide-react';
 import { Map as InteractiveMap, MapControls, MapGeoJSON, useMap } from '@/components/ui/map';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useWorldData } from '@/lib/use-world-data';
@@ -344,6 +344,26 @@ function relativeWhen(iso?: string | null) {
 
 /* ---------- Small building blocks ---------- */
 
+function BrowserMark({ label }: { label: string }) {
+  const family = label.toLowerCase();
+  if (family.includes('chrome') || family.includes('chromium')) {
+    return <span className={s.chromeBrowserMark} aria-hidden="true" />;
+  }
+  if (family.includes('safari')) {
+    return <span className={s.safariBrowserMark} aria-hidden="true"><Compass /></span>;
+  }
+  if (family.includes('firefox')) {
+    return <span className={s.firefoxBrowserMark} aria-hidden="true"><Flame /></span>;
+  }
+  if (family.includes('edge')) {
+    return <span className={s.edgeBrowserMark} aria-hidden="true"><Globe /></span>;
+  }
+  if (family.includes('opera')) {
+    return <span className={s.operaBrowserMark} aria-hidden="true">O</span>;
+  }
+  return <Globe aria-hidden="true" />;
+}
+
 function BreakdownCard({
   id,
   title,
@@ -394,11 +414,19 @@ function BreakdownCard({
             <ul className={s.deviceBreakdownList} aria-label={`Pageviews by ${deviceFacet === 'os' ? 'operating system' : deviceFacet}`}>
               {shown.map((row, index) => {
                 const label = row.label.toLowerCase();
-                const Icon = deviceFacet === 'browser' ? Globe : deviceFacet === 'os' ? Monitor : label === 'mobile' ? Smartphone : label === 'tablet' ? Tablet : Monitor;
+                const icon = deviceFacet === 'browser'
+                  ? <BrowserMark label={row.label} />
+                  : deviceFacet === 'os'
+                    ? <Monitor aria-hidden="true" />
+                    : label === 'mobile'
+                      ? <Smartphone aria-hidden="true" />
+                      : label === 'tablet'
+                        ? <Tablet aria-hidden="true" />
+                        : <Monitor aria-hidden="true" />;
                 return <li className={s.deviceBreakdownRow} key={`${row.label}-${index}`}>
                   <div className={s.deviceBarRow}>
-                    <span className={s.deviceBarFill} style={{ width: `${Math.max(2, (row.count / max) * 68)}%` }} aria-hidden="true" />
-                    <span className={s.deviceBarLabel}><Icon aria-hidden="true" /><span>{row.label || 'Unknown'}</span></span>
+                    <span className={s.deviceBarFill} data-unknown={label === 'unknown'} style={{ width: `${Math.max(2, (row.count / max) * 68)}%` }} aria-hidden="true" />
+                    <span className={s.deviceBarLabel}>{icon}<span>{row.label || 'Unknown'}</span></span>
                     <span className={s.deviceBarValue}>{compact(row.count)}</span>
                   </div>
                 </li>;
@@ -423,6 +451,9 @@ function BreakdownCard({
                 </li>
               ))}
             </ul>
+          )}
+          {deviceFacet === 'browser' && browserRows.some((row) => row.label.toLowerCase() === 'unknown') && (
+            <p className={s.deviceBreakdownNote}>Unknown includes older events or requests without a recognizable browser signature.</p>
           )}
           {activeRows.length > 5 && (
             <button className={s.breakdownMore} type="button" onClick={() => setExpanded((value) => !value)}>
@@ -616,6 +647,7 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
             })}
           </ul>
           <p className={s.countryMapAttribution}>This product includes GeoLite Data created by <a href="https://www.maxmind.com/" target="_blank" rel="noreferrer">MaxMind</a>.</p>
+          {unknown && <p className={s.countryDataNote}>Unknown means a country could not be resolved when those events arrived; older events aren’t backfilled.</p>}
           </TabsContent>
           <TabsContent value="country" className={s.countryTabPanel}>
             <ul className={s.countryFullList} aria-label="Visitors by country">

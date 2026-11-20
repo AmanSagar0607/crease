@@ -1079,12 +1079,21 @@
 .deviceTab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .deviceBreakdownList { display: grid; gap: 7px; margin: 14px 0 0; padding: 0; list-style: none; }
 .deviceBarRow { position: relative; display: flex; min-height: 32px; align-items: center; justify-content: space-between; overflow: hidden; border-radius: 6px; background: var(--soft2); }
-.deviceBarFill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--ink); opacity: .84; transition: width 360ms cubic-bezier(.2,.72,.24,1); }
+.deviceBarFill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: color-mix(in srgb, var(--primary) 16%, var(--paper)); box-shadow: inset 3px 0 var(--primary); transition: width 360ms cubic-bezier(.2,.72,.24,1); }
+.deviceBarFill[data-unknown='true'] { background: color-mix(in srgb, var(--muted-foreground) 12%, var(--paper)); box-shadow: inset 3px 0 var(--muted-foreground); }
 .deviceBarLabel, .deviceBarValue { position: relative; z-index: 1; display: inline-flex; min-width: 0; align-items: center; gap: 7px; padding: 0 9px; font-size: 11px; }
-.deviceBarLabel { color: var(--paper); }
+.deviceBarLabel { color: var(--ink); }
 .deviceBarLabel svg { width: 14px; height: 14px; flex: none; }
-.deviceBarLabel span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.deviceBarValue { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 550; }
+.deviceBarLabel > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deviceBarValue { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; }
+.chromeBrowserMark, .safariBrowserMark, .firefoxBrowserMark, .edgeBrowserMark, .operaBrowserMark { display: inline-grid; width: 14px; height: 14px; flex: none; place-items: center; }
+.chromeBrowserMark { position: relative; border-radius: 50%; background: conic-gradient(#ea4335 0 120deg, #fbbc05 120deg 238deg, #34a853 238deg 360deg); }
+.chromeBrowserMark::after { position: absolute; inset: 3px; border: 1.5px solid #fff; border-radius: 50%; background: #4285f4; content: ''; }
+.safariBrowserMark { border-radius: 50%; background: #168de2; color: #fff; }
+.firefoxBrowserMark { border-radius: 50%; background: #302441; color: #ff8b35; }
+.edgeBrowserMark { border-radius: 50%; background: linear-gradient(145deg, #27b8a5 5%, #1491d0 58%, #1768d2); color: #fff; }
+.operaBrowserMark { border: 2px solid #ff233f; border-radius: 50%; color: #ff233f; font-size: 10px; font-weight: 750; line-height: 10px; }
+.deviceBreakdownNote { margin: 9px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .deviceBreakdownUnavailable { display: grid; min-height: 190px; align-content: center; justify-items: center; gap: 7px; padding: 18px; text-align: center; }
 .deviceBreakdownUnavailable strong { font-size: 12px; font-weight: 550; }
 .deviceBreakdownUnavailable span { max-width: 220px; color: var(--muted); font-size: 11px; line-height: 1.5; }
@@ -1205,6 +1214,7 @@
 .countryLegendTrack i { display: block; height: 100%; border-radius: inherit; background: var(--ink); }
 .countryLegendValue { grid-column: 2; grid-row: 1 / span 2; color: var(--ink2); font-size: 11px; font-variant-numeric: tabular-nums; }
 .countryMapAttribution { margin: 12px 0 0; color: var(--muted); font-size: 10px; }
+.countryDataNote { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .countryMapAttribution a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .countryMapAttribution a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
