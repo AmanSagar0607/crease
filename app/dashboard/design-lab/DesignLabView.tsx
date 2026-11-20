@@ -15,7 +15,6 @@ import type { Topology } from 'topojson-specification';
 import { alpha2ToNumeric } from 'i18n-iso-countries';
 import worldAtlas from 'world-atlas/countries-110m.json';
 import { Activity, ArrowLeft, ArrowRight, ChevronDown, CircleHelp, RefreshCw, Search } from 'lucide-react';
-import { SidebarTrigger } from '@/components/ui/sidebar';
 import type { Report } from '../reporting';
 import type { Project, Summary } from '../DashboardView';
 import s from './design-lab.module.css';
@@ -412,7 +411,6 @@ export default function DesignLabView({ project, projects, selectedProjectId, su
   return (
     <div className={`${s.page} min-h-screen w-full`}>
       <header className={s.topbar}>
-        <SidebarTrigger className={s.mobileSidebarTrigger} aria-label="Open navigation" />
         <div className={s.brandAndSite}>
           <select className={s.siteSelect} value={selectedProjectId} disabled aria-label="Site switcher">
             {!project && <option value="">No website selected</option>}

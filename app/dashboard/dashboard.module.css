@@ -4738,3 +4738,69 @@
   .dashboardDockItem::after { transition: none !important; }
   .dashboardDockItem { width: 48px !important; min-width: 48px; transform: none !important; }
 }
+
+/* Project identity, switcher and actions share the top line with the account menu. */
+.analyticsDashboard .analyticsHeader { position: relative; inset: auto; z-index: auto; }
+.analyticsDashboard .analyticsHeader .headerInner { width: min(1040px, 100%); }
+.analyticsDashboard .analyticsHeader .headerIdentity { display: flex; align-items: center; gap: clamp(12px, 2vw, 22px); min-width: 0; }
+.headerProjectControls { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.headerProjectSelect {
+  position: relative;
+  display: flex;
+  flex: 0 1 232px;
+  align-items: center;
+  width: min(232px, 24vw);
+  min-width: 140px;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--foreground);
+}
+.headerProjectSelect select {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  appearance: none;
+  padding: 0 32px 0 11px;
+  border: 0;
+  border-radius: inherit;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.headerProjectSelect > svg { position: absolute; right: 10px; width: 14px; height: 14px; color: var(--muted-foreground); pointer-events: none; }
+.headerProjectSelect:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
+.headerProjectActions { display: flex; flex: none; align-items: center; gap: 5px; }
+
+@media (min-width: 1024px) {
+  .analyticsDashboard.dashboard:has(.analyticsHeader) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 64px minmax(0, 1fr) auto;
+  }
+  .analyticsDashboard.dashboard:has(.analyticsHeader) .analyticsHeader { grid-column: 1; grid-row: 1; }
+  .analyticsDashboard.dashboard:has(.analyticsHeader) .main { grid-column: 1; grid-row: 2; }
+  .analyticsDashboard.dashboard:has(.analyticsHeader) .footer { grid-column: 1; grid-row: 3; }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .analyticsDashboard.dashboard:has(.analyticsHeader) { grid-template-rows: 56px auto minmax(0, 1fr) auto; }
+  .analyticsDashboard.dashboard:has(.analyticsHeader) .analyticsHeader { grid-column: 1; grid-row: 1; }
+  .analyticsDashboard.dashboard:has(.analyticsHeader) .projectTopNavWrap { grid-column: 1; grid-row: 2; }
+  .analyticsDashboard.dashboard:has(.analyticsHeader) .main { grid-column: 1; grid-row: 3; }
+  .analyticsDashboard.dashboard:has(.analyticsHeader) .footer { grid-column: 1; grid-row: 4; }
+}
+
+@media (max-width: 767px) {
+  .analyticsDashboard .analyticsHeader .headerInner { gap: 8px; }
+  .analyticsDashboard .analyticsHeader .headerIdentity { gap: 8px; }
+  .headerProjectControls { gap: 5px; }
+  .headerProjectSelect { flex-basis: clamp(116px, 32vw, 168px); width: clamp(116px, 32vw, 168px); min-width: 116px; }
+  .headerProjectActions { gap: 2px; }
+  .headerProjectActions .utilityAction { min-height: 34px; padding-inline: 6px; font-size: 11px; }
+  .headerProjectActions .utilityActionPrimary { display: none; }
+}

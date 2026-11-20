@@ -106,7 +106,6 @@
 .toolbarControls { display: flex; align-items: center; min-width: 0; }
 .brandAndSite { gap: 6px; }
 .toolbarControls { gap: 5px; }
-.mobileSidebarTrigger { display: none; }
 .siteSelect {
   width: 112px;
   max-width: 22vw;
@@ -348,8 +347,6 @@
 @media (max-width: 520px) {
   .page { padding: 4px 5px 43px; }
   .topbar { min-height: 28px; gap: 4px; padding-bottom: 4px; }
-  .mobileSidebarTrigger { display: inline-flex; width: 20px; height: 20px; flex: none; padding: 0; border: 0; background: transparent; color: var(--dl-muted); }
-  .mobileSidebarTrigger svg { width: 13px; height: 13px; }
   .brandAndSite { gap: 4px; }
   .siteSelect { width: 85px; max-width: 18vw; padding-right: 12px; font-size: 8px !important; }
   .selectChevron { width: 8px; height: 8px; margin-left: -12px; }

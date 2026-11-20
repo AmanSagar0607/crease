@@ -29,11 +29,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList } from '@/components/ui/breadcrumb';
 import { CodeBlock, CodeBlockActions, CodeBlockContent, CodeBlockCopyButton, CodeBlockHeader, CodeBlockTitle } from '@/components/ui/code-block';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import OverviewV1 from './OverviewV1';
 import ReportToolbar from './ReportToolbar';
@@ -1415,6 +1413,38 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
         <div className={s.headerInner}>
           <div className={s.headerIdentity}>
             <Link className={s.brand} href="/" aria-label="Zappa home"><ZappaWordmark /></Link>
+            {project && !isDesignLab && (
+              <div className={s.headerProjectControls}>
+                <label className={s.headerProjectSelect}>
+                  <span className={s.srOnly}>Switch website</span>
+                  <select
+                    value={selected}
+                    onChange={(event) => {
+                      if (event.target.value === '__add__') {
+                        setShowProjects(true);
+                        setSelected('');
+                        router.push('/dashboard?view=projects#add-website');
+                      } else if (event.target.value === '__all__') {
+                        setShowProjects(true);
+                        setSelected('');
+                        router.push('/dashboard?view=projects');
+                      } else {
+                        router.push(`/dashboard/projects/${encodeURIComponent(event.target.value)}`);
+                      }
+                    }}
+                  >
+                    <option value="__all__">All websites…</option>
+                    <option value="__add__">+ Add website…</option>
+                    {projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}
+                  </select>
+                  <ChevronIcon />
+                </label>
+                <ButtonGroup className={s.headerProjectActions}>
+                  <Button variant="ghost" size="sm" asChild className={s.utilityAction}><Link href="/docs"><ExternalLink aria-hidden="true" />Docs</Link></Button>
+                  {user && <Button variant="outline" size="sm" asChild className={`${s.utilityAction} ${s.utilityActionPrimary}`}><Link href="/dashboard?view=projects#add-website" onClick={() => { setShowProjects(true); setSelected(''); }}>+ Website</Link></Button>}
+                </ButtonGroup>
+              </div>
+            )}
           </div>
           <div className={s.account}>
             <DropdownMenu>
@@ -1444,7 +1474,7 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
       </header>
       )}
 
-      {!isDesignLab && (
+      {!isDesignLab && !project && (
         <div className={s.utilityNavWrap}>
           <div className={s.utilityNav}>
             <Breadcrumb className={s.dashboardBreadcrumb}>
@@ -1452,11 +1482,6 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
                 <BreadcrumbItem>
                   <BreadcrumbLink asChild><Link href="/dashboard?view=projects" onClick={() => { setShowProjects(true); setSelected(''); }}>Projects</Link></BreadcrumbLink>
                 </BreadcrumbItem>
-                {project && <>
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem><BreadcrumbPage>{project.name}</BreadcrumbPage></BreadcrumbItem>
-                  {project.verified && <Badge variant="secondary" className={s.projectStatusBadge}>Verified</Badge>}
-                </>}
               </BreadcrumbList>
             </Breadcrumb>
             <ButtonGroup className={s.utilityActions}>
@@ -1470,20 +1495,6 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
       {project && !isDesignLab && (
         <div className={s.projectTopNavWrap}>
           <div className={s.projectTopNav}>
-            <Combobox
-              value={selected}
-              onValueChange={(value) => { if (typeof value === 'string') router.push(`/dashboard/projects/${encodeURIComponent(value)}`); }}
-              items={projects.map((item) => item.id)}
-              itemToStringValue={(value) => projects.find((item) => item.id === value)?.name ?? ''}
-            >
-              <ComboboxInput className={s.projectCombobox} placeholder={project.name} aria-label="Switch website" />
-              <ComboboxContent>
-                <ComboboxList>
-                  {projects.map((item) => <ComboboxItem key={item.id} value={item.id}>{item.name}<span className={s.projectComboDomain}>{item.domain}</span></ComboboxItem>)}
-                </ComboboxList>
-                <ComboboxEmpty>No websites found.</ComboboxEmpty>
-              </ComboboxContent>
-            </Combobox>
             <nav className={s.projectTopNavLinks} aria-label="Project analytics">
               {NAV_GROUPS.flatMap((group) => group.items).map((item) => (
                 <a

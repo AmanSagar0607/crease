@@ -875,9 +875,7 @@
 
 /* Report toolbar refresh: compact one-line ranges, disclosure filters, and explicit refresh/status affordances. */
 .toolbar {
-  position: sticky;
-  top: 56px;
-  z-index: 30;
+  position: relative;
   display: grid;
   gap: 10px;
   margin: 0 0 24px;
@@ -942,7 +940,7 @@
   .updatedStatus { flex: 1 1 150px; }
 }
 @media (max-width: 600px) {
-  .toolbar { top: 52px; gap: 8px; margin-bottom: 18px; }
+  .toolbar { gap: 8px; margin-bottom: 18px; }
   .toolbarRow { gap: 7px; }
   .rangeGroup { max-width: 100%; overflow-x: auto; }
   .rangeButton { min-height: 40px; padding-inline: 10px; }
