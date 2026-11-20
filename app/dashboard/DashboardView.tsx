@@ -8,7 +8,7 @@ import { useTheme } from 'next-themes';
 import { alpha2ToAlpha3, alpha2ToNumeric, getName, registerLocale } from 'i18n-iso-countries';
 import englishLocale from 'i18n-iso-countries/langs/en.json';
 import type * as GeoJSON from 'geojson';
-import { Map as InteractiveMap, MapControls, MapGeoJSON } from '@/components/ui/map';
+import { Map as InteractiveMap, MapControls, MapGeoJSON, useMap } from '@/components/ui/map';
 import { useWorldData } from '@/lib/use-world-data';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
@@ -404,6 +404,49 @@ function BreakdownCard({
   );
 }
 
+function countryFeatureCenter(feature: GeoJSON.Feature<GeoJSON.Geometry, { ISO_A3?: string }>): [number, number] | null {
+  const positions: [number, number][] = [];
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    if (typeof value[0] === 'number' && typeof value[1] === 'number') {
+      positions.push([value[0], value[1]]);
+      return;
+    }
+    value.forEach(collect);
+  };
+  const visitGeometry = (geometry: GeoJSON.Geometry) => {
+    if (geometry.type === 'GeometryCollection') geometry.geometries.forEach(visitGeometry);
+    else collect(geometry.coordinates);
+  };
+  visitGeometry(feature.geometry);
+  if (!positions.length) return null;
+  let minLongitude = Infinity;
+  let maxLongitude = -Infinity;
+  let minLatitude = Infinity;
+  let maxLatitude = -Infinity;
+  for (const [longitude, latitude] of positions) {
+    minLongitude = Math.min(minLongitude, longitude);
+    maxLongitude = Math.max(maxLongitude, longitude);
+    minLatitude = Math.min(minLatitude, latitude);
+    maxLatitude = Math.max(maxLatitude, latitude);
+  }
+  return [
+    (minLongitude + maxLongitude) / 2,
+    (minLatitude + maxLatitude) / 2,
+  ];
+}
+
+function FocusCountryOnOpen({ feature }: { feature: GeoJSON.Feature<GeoJSON.Geometry, { ISO_A3?: string }> | null }) {
+  const { map, isLoaded } = useMap();
+  const center = useMemo(() => feature ? countryFeatureCenter(feature) : null, [feature]);
+  useEffect(() => {
+    if (!map || !isLoaded || !center) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    map.flyTo({ center, zoom: 2.35, duration: reduceMotion ? 0 : 550 });
+  }, [center, isLoaded, map]);
+  return null;
+}
+
 function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading: boolean }) {
   const { resolvedTheme } = useTheme();
   const theme = resolvedTheme === 'dark' ? 'dark' : 'light';
@@ -457,6 +500,15 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
       }),
     };
   }, [world, byAlpha3]);
+  const focusFeature = useMemo(() => {
+    if (!world) return null;
+    const leadingCode = rows
+      .filter((row) => /^[A-Z]{2}$/i.test(row.label))
+      .sort((a, b) => b.count - a.count)
+      .map((row) => alpha2ToAlpha3(row.label.toUpperCase()))
+      .find((code) => code && world.features.some((feature) => feature.properties.ISO_A3 === code));
+    return leadingCode ? world.features.find((feature) => feature.properties.ISO_A3 === leadingCode) ?? null : null;
+  }, [rows, world]);
 
   return (
     <section className={`${s.breakdownCard} ${s.countryDemographic}`} aria-labelledby="country-demographic-title">
@@ -481,6 +533,7 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
               pitchWithRotate={false}
               loading={!countries}
             >
+              <FocusCountryOnOpen feature={focusFeature} />
               {countries && <MapGeoJSON
                 data={countries as GeoJSON.FeatureCollection<GeoJSON.Geometry, { NAME_LONG: string; visitors: number }>}
                 promoteId="NAME_LONG"
