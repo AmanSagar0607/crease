@@ -1,0 +1,33 @@
+.chartBody { min-width: 0; }
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  color: var(--muted);
+  font-size: .8125rem;
+}
+.legend span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.visitors { color: var(--ink); }
+.visitors i { width: 17px; height: 2px; border-radius: 2px; background: var(--accent-line); }
+.sessions i { width: 8px; height: 8px; border-radius: 2px; background: var(--chart-muted); }
+.previous i { width: 17px; height: 0; border-top: 1.5px dashed var(--muted); }
+.sparseNote { margin: 10px 0 0; color: var(--muted); font-size: .8125rem; line-height: 1.45; }
+.plot { width: 100%; height: clamp(250px, 29vw, 340px); margin-top: 12px; }
+.chartContainer { width: 100%; height: 100%; aspect-ratio: auto; }
+.chartContainer :global(.recharts-surface:focus-visible) { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 8px; }
+.empty { display: grid; min-height: 250px; margin: 0; place-items: center; color: var(--muted); font-size: .875rem; text-align: center; }
+
+@media (max-width: 700px) {
+  .legend { gap: 10px 14px; font-size: .75rem; }
+  .plot { height: 260px; }
+}
+
+@media (max-width: 380px) {
+  .legend { gap: 8px 10px; font-size: .7rem; }
+  .plot { height: 230px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chartBody *, .chartBody *::before, .chartBody *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

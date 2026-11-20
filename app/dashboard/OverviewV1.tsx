@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Bar, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from 'recharts';
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import type { AnalyticsSection } from './navigation';
 import { compareLabel, display, displayPagePath, eventLabel, type AttributionModel, type Metrics, type Report } from './reporting';
 import s from './overview-v1.module.css';
+import TrafficChart from './TrafficChart';
 
 type Props = {
   report: Report | null;
@@ -32,13 +31,6 @@ const SECONDARY_METRICS: { key: keyof Metrics; label: string; description: strin
   { key: 'returning_visitors', label: 'Returning visitors', description: 'Observed before this period in retained project history.' },
   { key: 'conversions', label: 'Converted visitors', description: 'Distinct visitors who triggered the selected conversion event.' },
 ];
-
-const OVERVIEW_CHART_CONFIG: ChartConfig = {
-  visitors: { label: 'Visitors', color: 'var(--accent-line)' },
-  sessions: { label: 'Sessions', color: 'var(--chart-muted)' },
-  previous_visitors: { label: 'Previous visitors', color: 'var(--accent-line)' },
-  previous_sessions: { label: 'Previous sessions', color: 'var(--chart-muted)' },
-};
 
 function formatMetric(value: number | null, rate = false) {
   if (value == null) return '—';
@@ -252,62 +244,14 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                   <h3>Visitors &amp; sessions</h3>
                   <p>Daily activity compared with the preceding period</p>
                 </div>
-                <div className={s.legend}>
-                  <span className={s.legendVisitors}><i aria-hidden="true" />Visitors</span>
-                  <span className={s.legendSessions}><i aria-hidden="true" />Sessions</span>
-                  <span className={s.legendPrevious}><i aria-hidden="true" />Previous period</span>
-                </div>
               </div>
-              {report.series.every(
-                (point) => !point.visitors && !point.sessions && !point.previous_visitors && !point.previous_sessions,
-              ) ? (
-                <div className={s.empty}>No traffic in this period. A chart will appear when activity arrives.</div>
-              ) : (
-                <>
-                {sparse && <p className={s.sparseNote}>Activity is sparse in this period; markers show observed days.</p>}
-                <div className={s.chartArea}>
-                  <ChartContainer
-                    config={OVERVIEW_CHART_CONFIG}
-                    className={s.chartContainer}
-                    role="img"
-                    aria-label="Daily visitors and sessions compared with the previous period"
-                  >
-                    <ComposedChart data={report.series} margin={{ top: 14, right: 14, left: 0, bottom: 0 }} barCategoryGap="34%">
-                      <CartesianGrid stroke="var(--line)" vertical={false} />
-                      <XAxis
-                        dataKey="date"
-                        interval={Math.max(0, Math.ceil(report.series.length / 6) - 1)}
-                        tick={{ fill: 'var(--muted)', fontSize: 13 }}
-                        tickFormatter={(x: string) => x.slice(5)}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis domain={[0, 'dataMax']} tickCount={5} allowDecimals={false} tick={{ fill: 'var(--muted)', fontSize: 13 }} tickLine={false} axisLine={false} />
-                      <ChartTooltip
-                        cursor={{ stroke: 'var(--line)', strokeDasharray: '3 4', strokeWidth: 1 }}
-                        content={<ChartTooltipContent labelFormatter={(label) => `${String(label)} UTC`} />}
-                      />
-                      <Bar dataKey="sessions" name="Sessions" fill="var(--color-sessions)" fillOpacity={0.82} radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={previewMotion ? chartVisible && !reducedMotion : undefined} animationBegin={previewMotion ? 520 : undefined} animationDuration={previewMotion ? 850 : undefined} animationEasing={previewMotion ? 'ease-out' : undefined} />
-                      <Line type="monotone" dataKey="previous_sessions" name="Previous sessions" stroke="var(--color-previous_sessions)" strokeDasharray="3 5" strokeOpacity={0.55} strokeWidth={1.5} dot={false} isAnimationActive={previewMotion ? chartVisible && !reducedMotion : undefined} animationBegin={previewMotion ? 800 : undefined} animationDuration={previewMotion ? 950 : undefined} animationEasing={previewMotion ? 'ease-out' : undefined} />
-                      <Line
-                        type="monotone"
-                        dataKey="previous_visitors"
-                        name="Previous visitors"
-                        stroke="var(--color-previous_visitors)"
-                        strokeDasharray="4 4"
-                        strokeOpacity={0.5}
-                        dot={false}
-                        isAnimationActive={previewMotion ? chartVisible && !reducedMotion : undefined}
-                        animationBegin={previewMotion ? 1050 : undefined}
-                        animationDuration={previewMotion ? 1050 : undefined}
-                        animationEasing={previewMotion ? 'ease-out' : undefined}
-                      />
-                      <Line type="monotone" dataKey="visitors" name="Visitors" stroke="var(--color-visitors)" strokeWidth={2.75} dot={sparse ? { r: 3, strokeWidth: 1.5 } : false} isAnimationActive={previewMotion ? chartVisible && !reducedMotion : undefined} animationBegin={previewMotion ? 650 : undefined} animationDuration={previewMotion ? 1250 : undefined} animationEasing={previewMotion ? 'ease-out' : undefined} activeDot={{ r: 5, strokeWidth: 2 }} />
-                    </ComposedChart>
-                  </ChartContainer>
-                </div>
-                </>
-              )}
+              <TrafficChart
+                data={report.series}
+                sparse={sparse}
+                animate={previewMotion}
+                animationActive={chartVisible}
+                reducedMotion={reducedMotion}
+              />
             </section>
 
             <div className={s.twoCol}>
