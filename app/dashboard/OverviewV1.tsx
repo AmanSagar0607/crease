@@ -340,8 +340,7 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                   </label>
                 </div>
                 <p className={s.sourceNote}>
-                  Previewing {acquisition.length} of up to 50 source groups — sorting, pagination and CSV export live in
-                  the acquisition section.
+                  Showing {acquisition.length} source {acquisition.length === 1 ? 'group' : 'groups'}. Open acquisition for filters, sorting, and export.
                 </p>
                 {acquisition.length ? (
                   <div className={s.scroll}>
@@ -349,24 +348,18 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                       <thead>
                         <tr>
                           <th>Source</th>
-                          <th>Medium</th>
                           <th>Campaign</th>
                           <th>Visitors</th>
                           <th>Sessions</th>
-                          <th>Conversions</th>
-                          <th>Rate</th>
                         </tr>
                       </thead>
                       <tbody>
                         {acquisition.slice(0, 8).map((row, index) => (
                           <tr key={`${row.source}-${row.medium}-${row.campaign}-${index}`}>
                             <td>{row.source}</td>
-                            <td>{row.medium || '—'}</td>
                             <td>{row.campaign || '—'}</td>
                             <td>{display(row.visitors)}</td>
                             <td>{display(row.sessions)}</td>
-                            <td>{display(row.conversions)}</td>
-                            <td>{display(row.conversion_rate, true)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -404,8 +397,6 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                           <th>Campaign</th>
                           <th>Source</th>
                           <th>Visitors</th>
-                          <th>Conversions</th>
-                          <th>Rate</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -414,8 +405,6 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                             <td>{row.campaign}</td>
                             <td>{row.source || 'Unknown'}</td>
                             <td>{display(row.visitors)}</td>
-                            <td>{display(row.conversions)}</td>
-                            <td>{display(row.conversion_rate, true)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -492,7 +481,7 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                 </div>
                 {report.recent_activity.length ? (
                   <ul className={s.activity}>
-                    {report.recent_activity.slice(0, 10).map((event, index) => (
+                    {report.recent_activity.slice(0, 6).map((event, index) => (
                       <li key={`${event.occurred_at}-${index}`}>
                         <div>
                           <strong>{eventLabel(event.name)}</strong>

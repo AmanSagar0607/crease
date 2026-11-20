@@ -396,7 +396,7 @@
   .kpi, .secondaryStats, .chart, .panel, .revenue, .unconfigured button { border-color: #a29d91; }
 }
 
-/* Data-first dashboard canvas: audience overview precedes traffic, details flow in three columns. */
+/* Data-first dashboard canvas: audience overview precedes traffic, details flow in two columns. */
 .overview {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -420,7 +420,7 @@
 .overview > .audience { min-width: 0; }
 .overview > .chart { margin-top: 0; }
 .overview .twoCol { display: contents; }
-.overview .panel { grid-column: span 4; min-height: 100%; margin-top: 0; }
+.overview .panel { grid-column: span 6; min-height: 100%; margin-top: 0; }
 .overview .inactiveSection { margin-top: 4px; }
 .inactiveHeading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; color: var(--muted); font-size: .8125rem; }
 .inactiveHeading .eyebrow { color: var(--muted); }
@@ -590,6 +590,9 @@
 
 .scroll { overscroll-behavior-inline: contain; }
 .scroll table { min-width: 520px; margin-top: 12px; font-size: .75rem; }
+.overview .scroll table { width: 100%; min-width: 0; table-layout: fixed; }
+.overview .scroll th,
+.overview .scroll td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scroll th { font-size: .7rem; }
 .scroll th, .scroll td { padding: 9px 10px 9px 0; }
 .scroll tbody tr:hover { background: var(--soft); }
