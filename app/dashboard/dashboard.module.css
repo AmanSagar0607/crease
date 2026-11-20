@@ -4376,8 +4376,8 @@
 .profileMenuIdentity strong { overflow: hidden; color: var(--foreground); font-size: 13px; text-overflow: ellipsis; }
 .profileMenuIdentity small { color: var(--muted-foreground); font-size: 11px; font-weight: 400; }
 
-.utilityNavWrap { width: 100%; padding: 0 24px; border-bottom: 1px solid var(--border); background: var(--background); }
-.utilityNav { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: min(1120px, 100%); min-height: 46px; margin-inline: auto; }
+.utilityNavWrap { width: 100%; padding: 0 24px; border-bottom: 0; background: var(--background); }
+.utilityNav { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: min(1040px, 100%); min-height: 46px; margin-inline: auto; }
 .dashboardBreadcrumb { min-width: 0; }
 .dashboardBreadcrumb [data-slot='breadcrumb-list'] { gap: 8px; font-size: 12px; }
 .projectStatusBadge { margin-left: 4px; height: 19px; border-color: var(--border); background: var(--surface); color: var(--muted-foreground); font-size: 10px; }
@@ -4546,7 +4546,7 @@
   .analyticsDashboard .analyticsHeader { height: 58px; padding: 0 14px; }
   .analyticsDashboard .analyticsHeader .headerInner { height: 58px; }
   .analyticsDashboard .analyticsHeader .headerMenuTrigger { display: inline-flex; }
-  .utilityNavWrap { padding: 0 12px; }
+  .utilityNavWrap { padding: 0 14px; }
   .utilityNav { min-height: 44px; }
   .utilityAction { padding-inline: 8px; }
   .analyticsDashboard .analyticsHeader .headerLink { display: none; }
@@ -4564,6 +4564,7 @@
 }
 
 @media (max-width: 1023px) {
+  .utilityNavWrap { padding-inline: 16px; }
   .analyticsDashboard.dashboard:has(.utilityNavWrap) { grid-template-rows: 56px 44px minmax(0, 1fr) auto; }
   .analyticsDashboard.dashboard:has(.utilityNavWrap) .utilityNavWrap { grid-column: 1; grid-row: 2; }
   .analyticsDashboard.dashboard:has(.utilityNavWrap) .main { grid-row: 3; }
@@ -4601,4 +4602,8 @@
     max-width: 1040px;
     margin-inline: auto;
   }
+}
+
+@media (max-width: 767px) {
+  .utilityNavWrap { padding-inline: 14px; }
 }
