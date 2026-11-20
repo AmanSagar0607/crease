@@ -127,7 +127,7 @@ function AnimatedMetric({ value, rate = false, active, delay = 0 }: {
   return <span ref={counterRef} aria-label={formatMetric(value, rate)}>{formatMetric(value == null ? null : current, rate)}</span>;
 }
 
-export default function OverviewV1({ report, loading, error, onRetry, model, conversionEvent, filtered, audience, previewMotion = false, onNavigate }: Props) {
+export default function OverviewV1({ report, loading, error, onRetry, model, conversionEvent, audience, previewMotion = false, onNavigate }: Props) {
   const [sourceSearch, setSourceSearch] = useState('');
   const [chartVisible, setChartVisible] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -179,24 +179,6 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
 
   return (
     <section ref={overviewRef} className={`${s.overview}${previewMotion ? ` ${s.previewMotion}` : ''}`} id="overview" tabIndex={-1} aria-label="Business overview">
-      <div className={s.header} data-preview-reveal data-preview-visible={previewMotion ? 'false' : undefined}>
-        <div>
-          <div className={s.eyebrow}>BUSINESS OVERVIEW</div>
-          <h2>Understand what brings people in.</h2>
-          <p>Observed traffic and conversion activity for this project.</p>
-        </div>
-      </div>
-      <details className={s.definitions}>
-        <summary>How these metrics are defined</summary>
-        <p>
-          Dates use UTC calendar days. Attribution: {model.replaceAll('_', ' ')}.
-          {filtered ? ' The detailed event property filter does not apply to these overview figures.' : ''}
-          {conversionEvent
-            ? ` Conversions count visitors who triggered “${conversionEvent}”; attribution can include touchpoints after conversion.`
-            : ' Select a conversion event in Filters or add a goal to configure conversion metrics.'}
-        </p>
-      </details>
-
       {loading ? (
         <div className={s.skeletonGrid} aria-busy="true" role="status">
           <span>Loading overview…</span>
@@ -510,7 +492,7 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                 </div>
                 {report.recent_activity.length ? (
                   <ul className={s.activity}>
-                    {report.recent_activity.slice(0, 8).map((event, index) => (
+                    {report.recent_activity.slice(0, 10).map((event, index) => (
                       <li key={`${event.occurred_at}-${index}`}>
                         <div>
                           <strong>{eventLabel(event.name)}</strong>
