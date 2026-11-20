@@ -502,13 +502,20 @@ function CountryDemographicCard({ rows, loading }: { rows: Breakdown[]; loading:
             {unknown && <span className={s.countryMapNote}>Unknown locations · {compact(unknown.count)}</span>}
           </div>
           <ul className={s.countryLegend} aria-label="Top countries by visitors">
-            {visible.map((row) => (
-              <li key={row.label}>
-                <span className={s.countryLegendName}>{/^[A-Z]{2}$/i.test(row.label) ? getName(row.label.toUpperCase(), 'en') ?? row.label : row.label || 'Unknown'}</span>
-                <span className={s.countryLegendTrack} aria-hidden="true"><i style={{ width: `${total ? Math.max(2, row.count / total * 100) : 0}%` }} /></span>
-                <span className={s.countryLegendValue}>{Math.round(total ? row.count / total * 100 : 0)}%</span>
-              </li>
-            ))}
+            {visible.map((row) => {
+              const countryCode = /^[A-Z]{2}$/i.test(row.label) ? row.label.toLowerCase() : null;
+              const countryName = countryCode ? getName(row.label.toUpperCase(), 'en') ?? row.label : row.label || 'Unknown';
+              return (
+                <li key={row.label}>
+                  <span className={s.countryLegendName}>
+                    {countryCode && <img src={`https://flagcdn.com/w20/${countryCode}.png`} alt="" aria-hidden="true" loading="lazy" onError={(event) => { event.currentTarget.hidden = true; }} />}
+                    <span>{countryName}</span>
+                  </span>
+                  <span className={s.countryLegendTrack} aria-hidden="true"><i style={{ width: `${total ? Math.max(2, row.count / total * 100) : 0}%` }} /></span>
+                  <span className={s.countryLegendValue}>{Math.round(total ? row.count / total * 100 : 0)}%</span>
+                </li>
+              );
+            })}
           </ul>
           <p className={s.countryMapAttribution}>This product includes GeoLite Data created by <a href="https://www.maxmind.com/" target="_blank" rel="noreferrer">MaxMind</a>.</p>
         </>
