@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Bar, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import type { AnalyticsSection } from './navigation';
@@ -15,6 +15,7 @@ type Props = {
   model: AttributionModel;
   conversionEvent: string;
   filtered: boolean;
+  audience?: ReactNode;
   previewMotion?: boolean;
   onNavigate: (section: AnalyticsSection) => void;
 };
@@ -126,7 +127,7 @@ function AnimatedMetric({ value, rate = false, active, delay = 0 }: {
   return <span ref={counterRef} aria-label={formatMetric(value, rate)}>{formatMetric(value == null ? null : current, rate)}</span>;
 }
 
-export default function OverviewV1({ report, loading, error, onRetry, model, conversionEvent, filtered, previewMotion = false, onNavigate }: Props) {
+export default function OverviewV1({ report, loading, error, onRetry, model, conversionEvent, filtered, audience, previewMotion = false, onNavigate }: Props) {
   const [sourceSearch, setSourceSearch] = useState('');
   const [chartVisible, setChartVisible] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -214,8 +215,8 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
       ) : (
         report && (
           <>
-            <div className={s.kpis} aria-label="Primary metrics" data-preview-reveal data-preview-visible={previewMotion ? 'false' : undefined}>
-              {PRIMARY_METRICS.map((metric, index) => (
+            <div className={`${s.kpis} ${conversionEvent ? s.kpisWithConversion : ''}`} aria-label="Primary metrics" data-preview-reveal data-preview-visible={previewMotion ? 'false' : undefined}>
+              {PRIMARY_METRICS.filter((metric) => metric.key !== 'conversion_rate' || Boolean(conversionEvent)).map((metric, index) => (
                 <div className={s.kpi} key={metric.key}>
                   <span title={metric.description}>
                     {metric.label}{' '}
@@ -233,15 +234,17 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                       <strong>{previewMotion
                         ? <AnimatedMetric value={report.metrics[metric.key]} rate={metric.rate} active={previewMotion} delay={560 + index * 100} />
                         : display(report.metrics[metric.key], metric.rate)}</strong>
-                      <small>{compareLabel(report.metrics[metric.key], report.previous[metric.key])}</small>
+                      <small>{metric.key === 'visitors'
+                        ? `${display(report.metrics.new_visitors)} new · ${display(report.metrics.returning_visitors)} returning`
+                        : compareLabel(report.metrics[metric.key], report.previous[metric.key])}</small>
                     </>
                   )}
                 </div>
               ))}
             </div>
 
-            <div className={s.secondaryStats} aria-label="Audience metrics" data-preview-reveal data-preview-visible={previewMotion ? 'false' : undefined}>
-              {SECONDARY_METRICS.map((metric, index) => (
+            {conversionEvent && <div className={s.secondaryStats} aria-label="Audience metrics" data-preview-reveal data-preview-visible={previewMotion ? 'false' : undefined}>
+              {SECONDARY_METRICS.filter((metric) => metric.key === 'conversions').map((metric, index) => (
                 <div className={s.secondaryStat} key={metric.key}>
                   <span title={metric.description}>{metric.label}</span>
                   {metric.key === 'conversions' && !conversionEvent ? (
@@ -256,7 +259,9 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                   )}
                 </div>
               ))}
-            </div>
+            </div>}
+
+            {audience && <div className={s.audience}>{audience}</div>}
 
             <section ref={chartRef} className={s.chart} data-preview-reveal data-preview-visible={previewMotion ? 'false' : undefined}>
               <div className={s.sectionHead}>
@@ -392,7 +397,7 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                 )}
               </section>
 
-              <section className={s.panel} id="campaigns" data-preview-reveal data-preview-visible={previewMotion ? 'false' : undefined}>
+              {report.campaigns.length > 0 && <section className={s.panel} id="campaigns" data-preview-reveal data-preview-visible={previewMotion ? 'false' : undefined}>
                 <div className={s.sectionHead}>
                   <div>
                     <span className={s.eyebrow}>CAMPAIGNS</span>
@@ -434,10 +439,8 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                       </tbody>
                     </table>
                   </div>
-                ) : (
-                  <div className={s.empty}>Campaigns appear when visitors arrive with UTM campaign parameters.</div>
-                )}
-              </section>
+                ) : null}
+              </section>}
             </div>
 
             <div className={s.twoCol}>
@@ -532,28 +535,29 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
               </section>
             </div>
 
-            <div className={s.revenue} id="revenue" data-preview-reveal data-preview-visible={previewMotion ? 'false' : undefined}>
-              <div>
-                <span className={s.eyebrow}>REVENUE</span>
-                <h3>Revenue reporting unavailable</h3>
-                <p>
-                  No verified revenue has been recorded for this project, and browser events are never treated as
-                  revenue. See what is required before this page can show totals.
-                </p>
+            <section className={s.inactiveSection} aria-label="Not active yet" data-preview-reveal data-preview-visible={previewMotion ? 'false' : undefined}>
+              <div className={s.inactiveHeading}>
+                <span className={s.eyebrow}>NOT ACTIVE YET · {Number(!conversionEvent) + Number(report.campaigns.length === 0) + 1}</span>
+                <span>These move up when matching data arrives.</span>
               </div>
-              <div className={s.revenueActions}>
-                <strong>—</strong>
-                <a
-                  href="#revenue"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    onNavigate('revenue');
-                  }}
-                >
-                  Why →
-                </a>
+              <div className={s.inactiveCards}>
+                {!conversionEvent && <article className={s.inactiveCard}>
+                  <h3>Conversion goals</h3>
+                  <p>Not configured. Add a goal to measure converted visitors and conversion rate.</p>
+                  <a href="#goals" onClick={(event) => { event.preventDefault(); onNavigate('goals'); }}>Add a goal →</a>
+                </article>}
+                {report.campaigns.length === 0 && <article className={s.inactiveCard}>
+                  <h3>Campaigns</h3>
+                  <p>Campaign reporting appears when visitors arrive with UTM campaign parameters.</p>
+                  <a href="#campaigns" onClick={(event) => { event.preventDefault(); onNavigate('campaigns'); }}>Campaign setup →</a>
+                </article>}
+                <article className={s.inactiveCard} id="revenue">
+                  <h3>Revenue</h3>
+                  <p>No verified revenue recorded. Browser events are never treated as revenue.</p>
+                  <a href="#revenue" onClick={(event) => { event.preventDefault(); onNavigate('revenue'); }}>What’s required →</a>
+                </article>
               </div>
-            </div>
+            </section>
           </>
         )
       )}

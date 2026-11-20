@@ -1053,6 +1053,9 @@
   margin-top: 12px;
 }
 
+.overviewAudience { min-width: 0; grid-template-columns: minmax(0, 1.35fr) minmax(260px, 1fr); margin-top: 0; }
+.overviewAudience .breakdownCard { border-radius: 16px; }
+
 .breakdownCard {
   padding: 20px;
   border: 1px solid var(--line);
@@ -4584,4 +4587,8 @@
   margin: 0;
   padding: 0;
   background: #1f1f1f;
+}
+
+@media (max-width: 767px) {
+  .overviewAudience { grid-template-columns: minmax(0, 1fr); }
 }

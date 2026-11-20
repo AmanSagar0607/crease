@@ -522,7 +522,7 @@ function FocusCountryOnOpen({ feature }: { feature: GeoJSON.Feature<GeoJSON.Geom
   useEffect(() => {
     if (!map || !isLoaded || !center) return;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    map.flyTo({ center, zoom: 2.35, duration: reduceMotion ? 0 : 550 });
+    map.flyTo({ center, zoom: 1.55, duration: reduceMotion ? 0 : 550 });
   }, [center, isLoaded, map]);
   return null;
 }
@@ -665,7 +665,7 @@ function CountryDemographicCard({ rows, loading, projectId, range }: { rows: Bre
               blank
               theme={theme}
               center={[12, 28]}
-              zoom={1.35}
+              zoom={1.25}
               minZoom={1}
               maxZoom={5}
               scrollZoom={false}
@@ -1756,22 +1756,24 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
                             model={model}
                             conversionEvent={conversionEvent}
                             filtered={Boolean(activeFilter)}
+                            audience={(
+                              <div className={`${s.breakdownGrid} ${s.overviewAudience}`} aria-label="Audience breakdowns">
+                                <CountryDemographicCard rows={summary?.country_visitors ?? summary?.countries ?? []} loading={summaryBusy} projectId={selected} range={reportRange} />
+                                <BreakdownCard
+                                  id="devices"
+                                  title="Devices"
+                                  icon={<MonitorIcon />}
+                                  rows={summary?.devices ?? []}
+                                  browserRows={summary?.browsers ?? []}
+                                  operatingSystemRows={summary?.operating_systems ?? []}
+                                  total={summary?.metrics.pageviews ?? 0}
+                                  empty="No device data yet."
+                                  deviceFacets
+                                />
+                              </div>
+                            )}
                             onNavigate={selectAnalyticsSection}
                           />
-                          <div className={s.breakdownGrid} aria-label="Audience breakdowns">
-                            <BreakdownCard
-                              id="devices"
-                              title="Devices"
-                              icon={<MonitorIcon />}
-                              rows={summary?.devices ?? []}
-                              browserRows={summary?.browsers ?? []}
-                              operatingSystemRows={summary?.operating_systems ?? []}
-                              total={summary?.metrics.pageviews ?? 0}
-                              empty="No device data yet."
-                              deviceFacets
-                            />
-                            <CountryDemographicCard rows={summary?.country_visitors ?? summary?.countries ?? []} loading={summaryBusy} projectId={selected} range={reportRange} />
-                          </div>
                         </>
                       )}
 

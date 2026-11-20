@@ -396,6 +396,59 @@
   .kpi, .secondaryStats, .chart, .panel, .revenue, .unconfigured button { border-color: #a29d91; }
 }
 
+/* Data-first dashboard canvas: audience overview precedes traffic, details flow in three columns. */
+.overview {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-content: start;
+  gap: 12px;
+}
+.overview > .header,
+.overview > .definitions,
+.overview > .kpis,
+.overview > .secondaryStats,
+.overview > .audience,
+.overview > .skeletonGrid,
+.overview > .error,
+.overview > .chart,
+.overview > .inactiveSection { grid-column: 1 / -1; }
+.overview > .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: auto; }
+.overview > .kpisWithConversion { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.overview > .kpis .kpi:nth-child(n) { grid-area: auto; min-height: 142px; padding: 20px; }
+.overview > .kpis .kpi:nth-child(1) { min-height: 142px; padding: 20px; background: var(--paper); }
+.overview > .kpis .kpi:nth-child(1) strong { margin-top: 12px; font-size: 2rem; }
+.overview > .audience { min-width: 0; }
+.overview > .chart { margin-top: 0; }
+.overview .twoCol { display: contents; }
+.overview .panel { grid-column: span 4; min-height: 100%; margin-top: 0; }
+.overview .inactiveSection { margin-top: 4px; }
+.inactiveHeading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; color: var(--muted); font-size: .8125rem; }
+.inactiveHeading .eyebrow { color: var(--muted); }
+.inactiveCards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.inactiveCard { display: flex; min-height: 150px; flex-direction: column; align-items: flex-start; padding: 18px; border: 1px dashed var(--lineStrong); border-radius: 14px; background: color-mix(in srgb, var(--paper) 72%, var(--soft)); }
+.inactiveCard h3 { margin: 0; color: var(--ink); font-size: 1rem; font-weight: 550; }
+.inactiveCard p { margin: 8px 0 14px; color: var(--muted); font-size: .875rem; line-height: 1.5; }
+.inactiveCard a { margin-top: auto; color: var(--accent-line); font-size: .875rem; text-decoration: none; }
+.inactiveCard a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.inactiveCard a:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+
+@media (max-width: 1000px) {
+  .overview > .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview .panel { grid-column: span 6; }
+}
+@media (max-width: 640px) {
+  .overview { gap: 10px; }
+  .overview > .kpis,
+  .overview > .kpisWithConversion { grid-template-columns: 1fr 1fr; }
+  .overview > .kpis .kpi:nth-child(n) { min-height: 124px; padding: 15px 13px; }
+  .overview .panel { grid-column: 1 / -1; }
+  .inactiveCards { grid-template-columns: 1fr; }
+  .inactiveCard { min-height: 126px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inactiveCard a { transition: none; }
+}
+
 
 /* shadcn/Recharts wrapper sizing and semantic series colors. */
 .chartContainer { width: 100%; height: 100%; aspect-ratio: auto; }
