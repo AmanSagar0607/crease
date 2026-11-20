@@ -121,6 +121,7 @@ function AnimatedMetric({ value, rate = false, active, delay = 0 }: {
 
 export default function OverviewV1({ report, loading, error, onRetry, model, conversionEvent, audience, previewMotion = false, onNavigate }: Props) {
   const [sourceSearch, setSourceSearch] = useState('');
+  const [overviewTab, setOverviewTab] = useState<'acquisition' | 'pages' | 'activity'>('acquisition');
   const [chartVisible, setChartVisible] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const overviewRef = useRef<HTMLElement>(null);
@@ -253,6 +254,56 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                 reducedMotion={reducedMotion}
               />
             </section>
+
+            <div className={s.insightsBento}>
+              <section className={`${s.panel} ${s.quickInsights}`} aria-labelledby="quick-insights-title">
+                <div className={s.sectionHead}>
+                  <div><span className={s.eyebrow}>EXPLORE</span><h3 id="quick-insights-title">Traffic details</h3><p>Switch between your top sources, entry pages, and latest activity.</p></div>
+                </div>
+                <div className={s.insightTabs} role="tablist" aria-label="Traffic details" onKeyDown={(event) => {
+                  const tabs = ['acquisition', 'pages', 'activity'] as const;
+                  const current = tabs.indexOf(overviewTab);
+                  const next = event.key === 'ArrowRight' ? (current + 1) % tabs.length : event.key === 'ArrowLeft' ? (current + tabs.length - 1) % tabs.length : -1;
+                  if (next >= 0) {
+                    event.preventDefault();
+                    setOverviewTab(tabs[next]);
+                    event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+                  }
+                }}>
+                  {([['acquisition', 'Acquisition'], ['pages', 'Landing pages'], ['activity', 'Recent activity']] as const).map(([key, label]) => (
+                    <button key={key} type="button" role="tab" id={`insight-tab-${key}`} aria-controls="insight-tab-panel" aria-selected={overviewTab === key} tabIndex={overviewTab === key ? 0 : -1} onClick={() => setOverviewTab(key)}>{label}</button>
+                  ))}
+                </div>
+                <div className={s.insightRows} role="tabpanel" id="insight-tab-panel" aria-labelledby={`insight-tab-${overviewTab}`}>
+                  {overviewTab === 'acquisition' && (report.acquisition.length ? report.acquisition.slice(0, 5).map((row, index) => (
+                    <div className={s.insightRow} key={`${row.source}-${row.medium}-${row.campaign}-${index}`}><span><strong>{row.source || 'Direct / unknown'}</strong><small>{row.medium || 'No medium'}{row.campaign ? ` · ${row.campaign}` : ''}</small></span><b>{display(row.visitors)}<small>visitors</small></b></div>
+                  )) : <p className={s.insightEmpty}>No acquisition data for this period yet.</p>)}
+                  {overviewTab === 'pages' && (report.landing_pages.length ? report.landing_pages.slice(0, 5).map((row) => (
+                    <div className={s.insightRow} key={row.path}><span><strong>{displayPagePath(row.path)}</strong><small>Landing page</small></span><b>{display(row.visitors)}<small>visitors</small></b></div>
+                  )) : <p className={s.insightEmpty}>No landing page data for this period yet.</p>)}
+                  {overviewTab === 'activity' && (report.recent_activity.length ? report.recent_activity.slice(0, 5).map((row, index) => (
+                    <div className={s.insightRow} key={`${row.occurred_at}-${row.path}-${index}`}><span><strong>{row.name || 'Page view'}</strong><small>{displayPagePath(row.path)}</small></span><b className={s.insightTime}>{new Date(row.occurred_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</b></div>
+                  )) : <p className={s.insightEmpty}>No recent activity for this period yet.</p>)}
+                </div>
+              </section>
+
+              <section className={`${s.panel} ${s.aiPreview}`} aria-labelledby="ai-preview-title">
+                <div className={s.sectionHead}><div><span className={s.eyebrow}>COMING SOON · DEMO</span><h3 id="ai-preview-title">AI answers</h3><p>Example traffic from AI assistants</p></div></div>
+                <div className={s.aiPreviewChart} aria-label="Sample AI referral trend">
+                  <svg viewBox="0 0 360 126" role="img" aria-hidden="true" preserveAspectRatio="none">
+                    <path className={s.aiGridLine} d="M0 24H360M0 60H360M0 96H360" />
+                    <path className={s.aiLineOne} d="M0 70 C20 42 34 84 54 62 S84 50 100 74 S128 78 146 39 S174 60 194 58 S220 100 240 58 S268 75 286 54 S320 47 336 30 S350 61 360 24" />
+                    <path className={s.aiLineTwo} d="M0 108 C20 106 32 82 48 99 S76 113 92 104 S120 106 138 80 S166 97 184 104 S210 92 228 100 S256 112 274 83 S304 101 320 88 S344 100 360 72" />
+                    <path className={s.aiLineThree} d="M0 115 C28 115 40 109 58 112 S90 105 110 114 S146 108 164 112 S198 117 216 108 S246 111 266 114 S300 104 318 110 S344 102 360 105" />
+                  </svg>
+                  <div className={s.aiAxis}><span>Oct 24</span><span>Nov 5</span><span>Nov 20</span></div>
+                </div>
+                <div className={s.aiSourceList}>
+                  {([['ChatGPT', '386'], ['Claude', '30'], ['Gemini', '23'], ['DuckDuckGo', '6']] as const).map(([name, count], index) => <div className={s.aiSource} key={name}><span><i data-tone={index} />{name}</span><b>{count}</b></div>)}
+                </div>
+                <p className={s.demoNote}>Illustrative sample values. Live AI referral reporting is not connected yet.</p>
+              </section>
+            </div>
 
             <div className={s.twoCol}>
               <section className={s.panel} id="acquisition" data-preview-reveal data-preview-visible={previewMotion ? 'false' : undefined}>

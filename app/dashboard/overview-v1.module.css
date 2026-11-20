@@ -717,3 +717,44 @@
   .overview .activity li { align-items: flex-start; flex-wrap: wrap; }
   .overview .activity time { white-space: normal; }
 }
+
+.insightsBento { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1.35fr) minmax(250px, .8fr); gap: 12px; min-width: 0; }
+.insightsBento > .panel { min-width: 0; margin: 0; }
+.quickInsights, .aiPreview { padding: 18px; }
+.insightTabs { display: flex; gap: 4px; max-width: 100%; margin: 4px 0 10px; overflow-x: auto; }
+.insightTabs button { min-height: 32px; padding: 0 11px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; white-space: nowrap; cursor: pointer; }
+.insightTabs button[aria-selected='true'] { border-color: var(--line); background: var(--soft); color: var(--ink); }
+.insightTabs button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.insightRows { display: grid; min-height: 224px; align-content: start; }
+.insightRow { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 2px; border-bottom: 1px solid var(--line); }
+.insightRow > span { display: grid; min-width: 0; gap: 4px; }
+.insightRow strong { overflow: hidden; color: var(--ink2); font-size: 12px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.insightRow small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.insightRow > b { display: grid; flex: none; justify-items: end; color: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 550; }
+.insightRow > b small { font-weight: 400; }
+.insightRow .insightTime { display: block; color: var(--muted); font-size: 10px; font-weight: 450; }
+.insightEmpty { display: grid; min-height: 180px; place-items: center; color: var(--muted); font-size: 12px; }
+.aiPreviewChart { margin-top: 4px; padding: 8px 0 2px; }
+.aiPreviewChart svg { display: block; width: 100%; height: 126px; overflow: visible; }
+.aiGridLine { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
+.aiLineOne, .aiLineTwo, .aiLineThree { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.aiLineOne { stroke: #6c8ff0; }
+.aiLineTwo { stroke: #df805d; }
+.aiLineThree { stroke: #8f8b85; }
+.aiAxis { display: flex; justify-content: space-between; color: var(--muted); font-size: 9px; }
+.aiSourceList { display: grid; gap: 1px; margin-top: 12px; }
+.aiSource { display: flex; align-items: center; justify-content: space-between; min-height: 32px; padding: 0 8px; border-radius: 6px; color: var(--ink2); font-size: 11px; }
+.aiSource:first-child { background: var(--soft); }
+.aiSource > span { display: flex; align-items: center; gap: 8px; }
+.aiSource i { width: 8px; height: 8px; border-radius: 50%; background: #6c8ff0; }
+.aiSource i[data-tone='1'] { background: #df805d; }
+.aiSource i[data-tone='2'] { background: #7e9c82; }
+.aiSource i[data-tone='3'] { background: #a18bb8; }
+.aiSource b { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 550; }
+.demoNote { margin: 9px 0 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
+@media (max-width: 760px) {
+  .insightsBento { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .insightTabs button { transition: none; }
+}
