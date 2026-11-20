@@ -54,7 +54,7 @@ class ApiTest(unittest.TestCase):
         self._verifier_patch = patch.object(main, 'verify_clerk_token', side_effect=lambda token: self._verified_claims[token] if token in self._verified_claims else (_ for _ in ()).throw(__import__('fastapi').HTTPException(401, 'Invalid test token')))
         self._verifier_patch.start()
         with main.engine.begin() as db:
-            for table in ('waitlist_signups', 'rate_limits', 'project_goals', 'event_properties', 'project_property_keys', 'analytics_sessions', 'events', 'project_repositories', 'project_vercel', 'vercel_connections', 'github_connections', 'projects', 'clerk_profiles'): db.execute(text('DELETE FROM '+table))
+            for table in ('geo_forward_replays', 'waitlist_signups', 'rate_limits', 'project_goals', 'event_properties', 'project_property_keys', 'analytics_sessions', 'events', 'project_repositories', 'project_vercel', 'vercel_connections', 'github_connections', 'projects', 'clerk_profiles'): db.execute(text('DELETE FROM '+table))
 
     def tearDown(self):
         self._verifier_patch.stop()
@@ -63,6 +63,89 @@ class ApiTest(unittest.TestCase):
     def verify_project(self, project_id):
         with main.engine.begin() as db:
             db.execute(text('UPDATE projects SET verified_at=:at WHERE id=:id'), {'at':main.stamp(main.now()),'id':project_id})
+
+    def signed_geo_request(self, project_id, write_key, event_id, country='IN', region_code='KA', city='Bengaluru', nonce=None):
+        from uuid import uuid4
+        nonce = nonce or str(uuid4())
+        timestamp = str(int(wall_time.time()))
+        event = {'id':event_id,'name':'pageview','timestamp':main.stamp(main.now()),'path':'/geo-test','visitorId':'geo-visitor','sessionId':str(uuid4()),'properties':{}}
+        payload = {'projectId':project_id,'events':[event]}
+        body = json.dumps(payload, separators=(',', ':')).encode()
+        country_names = {'IN':'India','US':'United States'}
+        geo = {'country':country,'country_name':country_names.get(country.upper(), 'India'),'region_code':region_code,'region_name':'Karnataka','city_name':city,'continent_code':'AS','timezone':'Asia/Kolkata','latitude':12.97,'longitude':77.59,'postal_code':'560001','geo_source':'cloudflare'}
+        envelope = base64.urlsafe_b64encode(json.dumps(geo, separators=(',', ':')).encode()).decode().rstrip('=')
+        payload_hash = hashlib.sha256(body).hexdigest()
+        canonical = f'zappa-geo-v1\n{timestamp}\n{nonce}\n{project_id}\n{payload_hash}\n{envelope}'.encode()
+        signature = hmac.new(b'test-cloudflare-secret-with-at-least-32-bytes', canonical, hashlib.sha256).hexdigest()
+        headers = {'origin':'https://example.com','x-Zappa-key':write_key,'x-zappa-geo-timestamp':timestamp,'x-zappa-geo-nonce':nonce,'x-zappa-geo-envelope':envelope,'x-zappa-geo-signature':signature}
+        return body, headers
+
+    def test_cloudflare_geo_hmac_stores_normalized_snapshot_and_rejects_replay(self):
+        self.client.cookies.set('__session', 'token')
+        with patch.object(main, 'GEO_CF_HMAC_SECRET', 'test-cloudflare-secret-with-at-least-32-bytes'):
+            project = self.client.post('/api/projects', json={'name':'Geo site','domain':'example.com'}, headers={'origin':main.FRONTEND_URL}).json()
+            self.verify_project(project['id'])
+            body, headers = self.signed_geo_request(project['id'], project['write_key'], 'geo-event-1')
+            response = self.client.post('/internal/events/geo', content=body, headers=headers)
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['accepted'], 1)
+            replay = self.client.post('/internal/events/geo', content=body, headers=headers)
+            self.assertEqual(replay.status_code, 401)
+        with main.engine.connect() as db:
+            row = db.execute(text('SELECT country,country_name,region_code,city_name,continent_code,timezone,latitude,longitude,postal_code,geo_source FROM events WHERE id=:id'), {'id':'geo-event-1'}).mappings().one()
+        self.assertEqual((row['country'], row['country_name'], row['region_code'], row['city_name'], row['geo_source']), ('IN', 'India', 'KA', 'Bengaluru', 'cloudflare'))
+        self.assertEqual((row['continent_code'], row['timezone'], row['latitude'], row['longitude'], row['postal_code']), ('AS', 'Asia/Kolkata', 12.97, 77.59, '560001'))
+
+    def test_cloudflare_geo_bad_hmac_and_browser_supplied_metadata_are_ignored(self):
+        self.client.cookies.set('__session', 'token')
+        with patch.object(main, 'GEO_CF_HMAC_SECRET', 'test-cloudflare-secret-with-at-least-32-bytes'):
+            project = self.client.post('/api/projects', json={'name':'Geo trust','domain':'example.com'}, headers={'origin':main.FRONTEND_URL}).json()
+            self.verify_project(project['id'])
+            body, headers = self.signed_geo_request(project['id'], project['write_key'], 'geo-event-bad')
+            headers['x-zappa-geo-signature'] = '0' * 64
+            self.assertEqual(self.client.post('/internal/events/geo', content=body, headers=headers).status_code, 401)
+            public = self.client.post('/api/events', content=body, headers={'origin':'https://example.com','x-Zappa-key':project['write_key'],'x-zappa-geo-envelope':headers['x-zappa-geo-envelope'],'x-zappa-geo-signature':headers['x-zappa-geo-signature']})
+            self.assertEqual(public.status_code, 200, public.text)
+        with main.engine.connect() as db:
+            row = db.execute(text('SELECT geo_source,city_name,region_name FROM events WHERE id=:id'), {'id':'geo-event-bad'}).mappings().one()
+        self.assertIsNone(row['geo_source'])
+        self.assertIsNone(row['city_name'])
+        self.assertIsNone(row['region_name'])
+        today = main.now().date().isoformat()
+        unknown = self.client.get(f"/api/projects/{project['id']}/geography?level=country&start={today}&end={today}")
+        self.assertEqual(unknown.json()['rows'][0]['label'], 'Unknown')
+
+    def test_geography_drilldown_is_date_and_project_scoped(self):
+        self.client.cookies.set('__session', 'token')
+        with patch.object(main, 'GEO_CF_HMAC_SECRET', 'test-cloudflare-secret-with-at-least-32-bytes'):
+            project = self.client.post('/api/projects', json={'name':'Geo drilldown','domain':'example.com'}, headers={'origin':main.FRONTEND_URL}).json()
+            other = self.client.post('/api/projects', json={'name':'Other geo','domain':'other.example'}, headers={'origin':main.FRONTEND_URL}).json()
+            self.verify_project(project['id'])
+            self.verify_project(other['id'])
+            for event_id, country, region, city in [('g1','in','ka','Bengaluru'),('g2','IN','MH','मुंबई'),('g3','US','CA','San Francisco')]:
+                body, headers = self.signed_geo_request(project['id'], project['write_key'], event_id, country, region, city)
+                response = self.client.post('/internal/events/geo', content=body, headers=headers)
+                self.assertEqual(response.status_code, 200, response.text)
+            body, headers = self.signed_geo_request(other['id'], other['write_key'], 'g4', 'IN', 'KA', 'Bengaluru')
+            headers['origin'] = 'https://other.example'
+            self.assertEqual(self.client.post('/internal/events/geo', content=body, headers=headers).status_code, 200)
+        today = main.now().date().isoformat()
+        countries = self.client.get(f"/api/projects/{project['id']}/geography?level=country&timezone=Asia%2FKolkata&start={today}&end={today}&page_size=1")
+        self.assertEqual(countries.status_code, 200, countries.text)
+        self.assertEqual(countries.json()['timezone'], 'Asia/Kolkata')
+        self.assertEqual(len(countries.json()['rows']), 1)
+        self.assertEqual(countries.json()['total_rows'], 2)
+        self.assertEqual(countries.json()['rows'][0]['country_code'], 'IN')
+        countries_page_two = self.client.get(f"/api/projects/{project['id']}/geography?level=country&timezone=Asia%2FKolkata&start={today}&end={today}&page_size=1&page=2")
+        self.assertEqual(countries_page_two.json()['rows'][0]['country_code'], 'US')
+        regions = self.client.get(f"/api/projects/{project['id']}/geography?level=region&country=IN&start={today}&end={today}")
+        self.assertEqual({row['region_code'] for row in regions.json()['rows']}, {'KA','MH'})
+        city = self.client.get(f"/api/projects/{project['id']}/geography?level=city&country=IN&region_code=KA&start={today}&end={today}")
+        self.assertEqual([row['label'] for row in city.json()['rows']], ['Bengaluru'])
+        self.assertEqual(city.json()['rows'][0]['visitors'], 1)
+        unicode_city = self.client.get(f"/api/projects/{project['id']}/geography?level=city&country=IN&region_code=MH&start={today}&end={today}")
+        self.assertEqual([row['label'] for row in unicode_city.json()['rows']], ['मुंबई'])
+        self.assertEqual(self.client.get(f"/api/projects/{other['id']}/geography?level=city&country=IN&region_code=KA&start={today}&end={today}").json()['total_visitors'], 1)
 
     def test_waitlist_requires_valid_email_and_consent_and_deduplicates(self):
         first = self.client.post('/api/waitlist', json={'email':'  Maker@Example.com ', 'consent':True})

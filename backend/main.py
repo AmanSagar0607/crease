@@ -1,6 +1,8 @@
 """Zappa analytics API. Configure Clerk and a PostgreSQL URL before deployment."""
 import asyncio
+import base64
 import hashlib
+import hmac
 import ipaddress
 import io
 import json
@@ -15,6 +17,7 @@ import tempfile
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
@@ -60,6 +63,7 @@ SECURE = os.getenv('COOKIE_SECURE', 'false').lower() == 'true'
 # Client IP is forwarded over the authenticated internal route, then resolved locally.
 # The collector never trusts a proxy-supplied country code.
 GEO_FORWARD_SECRET = os.getenv('GEO_FORWARD_SECRET', '')
+GEO_CF_HMAC_SECRET = os.getenv('GEO_CF_HMAC_SECRET', '')
 GEOIP_DATABASE_PATH = Path(os.getenv('GEOIP_DATABASE_PATH', str(Path(__file__).with_name('GeoLite2-Country.mmdb'))))
 MAXMIND_ACCOUNT_ID = os.getenv('MAXMIND_ACCOUNT_ID', '')
 MAXMIND_LICENSE_KEY = os.getenv('MAXMIND_LICENSE_KEY', '')
@@ -68,6 +72,8 @@ _geoip_reader = None
 _geoip_reader_path = None
 _geoip_reader_mtime = None
 _geoip_reader_lock = threading.Lock()
+_geo_replay_cleanup_lock = threading.Lock()
+_geo_replay_cleanup_at = 0
 # Shared secret for POST /internal/retention. Optional: the API also runs retention on
 # its own schedule, so self-hosted and single-instance deployments need no external cron.
 RETENTION_SECRET = os.getenv('RETENTION_SECRET', '')
@@ -244,6 +250,7 @@ async def health():
         'ingestion': {
             'bot_filter': FILTER_BOTS,
             'client_ip_forwarding': bool(GEO_FORWARD_SECRET),
+            'cloudflare_geo_forwarding': len(GEO_CF_HMAC_SECRET) >= 32,
             'geoip_database': GEOIP_DATABASE_PATH.is_file(),
             'geoip_auto_update': bool(MAXMIND_ACCOUNT_ID and MAXMIND_LICENSE_KEY),
         },
@@ -810,7 +817,7 @@ async def limits(request: Request, call_next):
     clerk_webhook_request = request.url.path == '/api/clerk-webhook'
     if request.url.path == '/api/events' and request.method == 'OPTIONS':
         return Response(status_code=204, headers={'Access-Control-Allow-Origin': origin or 'null', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Zappa-Key', 'Vary': 'Origin'})
-    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events', '/internal/retention', '/api/clerk-webhook') and not payment_webhook and origin != FRONTEND_URL:
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events', '/internal/events/geo', '/internal/retention', '/api/clerk-webhook') and not payment_webhook and origin != FRONTEND_URL:
         return Response(status_code=403)
     if payment_webhook or clerk_webhook_request:
         peer = request.client.host if request.client else 'unknown'
@@ -824,7 +831,7 @@ async def limits(request: Request, call_next):
             if size > 262144: return Response(status_code=413)
             chunks.append(chunk)
         request._body = b''.join(chunks)
-    if request.url.path in ('/api/events', '/internal/events'):
+    if request.url.path in ('/api/events', '/internal/events', '/internal/events/geo'):
         if request.url.path == '/internal/events':
             peer = request.client.host if request.client else 'unknown'
             if not limiter.consume('forward-peer:' + peer, RATE_LIMIT_PROJECT_PER_MINUTE):
@@ -832,6 +839,8 @@ async def limits(request: Request, call_next):
             supplied_secret = request.headers.get('x-Zappa-forward-secret', '')
             if not GEO_FORWARD_SECRET or not secrets.compare_digest(digest(supplied_secret), digest(GEO_FORWARD_SECRET)):
                 return Response(status_code=401)
+        elif request.url.path == '/internal/events/geo' and len(GEO_CF_HMAC_SECRET) < 32:
+            return Response(status_code=503)
         length = request.headers.get('content-length')
         if length and (not length.isdigit() or int(length)>32768): return Response(status_code=413)
         chunks, size = [], 0
@@ -854,7 +863,7 @@ async def limits(request: Request, call_next):
                 client_key = str(ipaddress.ip_address(forwarded_ip))
             except ValueError:
                 client_key = 'proxy-unknown'
-        if not limiter.consume('ip:' + client_key, RATE_LIMIT_IP_PER_MINUTE):
+        if request.url.path != '/internal/events/geo' and not limiter.consume('ip:' + client_key, RATE_LIMIT_IP_PER_MINUTE):
             return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
         if isinstance(project_id, str) and 0 < len(project_id) <= 36 and not limiter.consume('project:' + project_id, RATE_LIMIT_PROJECT_PER_MINUTE):
             return Response(status_code=429, headers={'Retry-After': str(RATE_WINDOW_SECONDS)})
@@ -866,15 +875,88 @@ async def limits(request: Request, call_next):
         response.headers['Vary'] = 'Origin'
     return response
 
+def normalized_geo_envelope(request: Request, data: Batch) -> dict | None:
+    if request.url.path != '/internal/events/geo':
+        return None
+    timestamp = request.headers.get('x-zappa-geo-timestamp', '')
+    nonce = request.headers.get('x-zappa-geo-nonce', '')
+    envelope = request.headers.get('x-zappa-geo-envelope', '')
+    supplied = request.headers.get('x-zappa-geo-signature', '')
+    if len(GEO_CF_HMAC_SECRET) < 32 or not re.fullmatch(r'\d{10}', timestamp) or not re.fullmatch(r'[0-9a-f-]{36}', nonce, re.I) or not re.fullmatch(r'[A-Za-z0-9_-]{1,2048}', envelope) or not re.fullmatch(r'[0-9a-f]{64}', supplied):
+        raise HTTPException(401, 'Invalid geolocation forwarding signature')
+    issued_at = int(timestamp)
+    if abs(int(time.time()) - issued_at) > 300:
+        raise HTTPException(401, 'Expired geolocation forwarding request')
+    try:
+        raw = base64.urlsafe_b64decode(envelope + '=' * (-len(envelope) % 4))
+        geo = json.loads(raw.decode('utf-8'))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        raise HTTPException(401, 'Invalid geolocation forwarding envelope')
+    if not isinstance(geo, dict) or geo.get('geo_source') != 'cloudflare':
+        raise HTTPException(401, 'Invalid geolocation forwarding envelope')
+    body = request._body if hasattr(request, '_body') else b''
+    payload_hash = hashlib.sha256(body).hexdigest()
+    canonical = f'zappa-geo-v1\n{timestamp}\n{nonce}\n{data.projectId}\n{payload_hash}\n{envelope}'.encode()
+    expected = hmac.new(GEO_CF_HMAC_SECRET.encode(), canonical, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, supplied):
+        raise HTTPException(401, 'Invalid geolocation forwarding signature')
+    country = str(geo.get('country') or '').upper()
+    continent = str(geo.get('continent_code') or '').upper()
+    latitude, longitude = geo.get('latitude'), geo.get('longitude')
+    def clean(value, max_length):
+        return value.strip()[:max_length] if isinstance(value, str) and value.strip() else None
+    def coordinate(value, limit):
+        try:
+            number = float(value)
+            return round(number, 2) if math.isfinite(number) and abs(number) <= limit else None
+        except (TypeError, ValueError):
+            return None
+    normalized_country = country if country in ISO_COUNTRIES else None
+    return {
+        'country': normalized_country,
+        'country_name': clean(geo.get('country_name'), 96) if normalized_country else None,
+        'region_code': clean(geo.get('region_code'), 32).upper() if clean(geo.get('region_code'), 32) else None,
+        'region_name': clean(geo.get('region_name'), 128),
+        'city_name': clean(geo.get('city_name'), 128),
+        'continent_code': continent if continent in {'AF','AN','AS','EU','NA','OC','SA'} else None,
+        'timezone': clean(geo.get('timezone'), 64),
+        'latitude': coordinate(latitude, 90),
+        'longitude': coordinate(longitude, 180),
+        'postal_code': clean(geo.get('postal_code'), 24),
+        'geo_source': 'cloudflare',
+        'nonce': nonce,
+        'issued_at': issued_at,
+    }
+
+
+def geo_replay_cleanup_due() -> bool:
+    global _geo_replay_cleanup_at
+    current = int(time.time())
+    with _geo_replay_cleanup_lock:
+        if current - _geo_replay_cleanup_at < 60:
+            return False
+        _geo_replay_cleanup_at = current
+        return True
+
+
 @app.post('/api/events')
 @app.post('/internal/events')
+@app.post('/internal/events/geo')
 async def ingest(data: Batch, request: Request):
     client_ip = request.client.host if request.client else None
     if request.url.path == '/internal/events':
         client_ip = request.headers.get('x-Zappa-client-ip')
-    country = geoip_country(client_ip)
+    geo = normalized_geo_envelope(request, data)
+    country = geo['country'] if geo else geoip_country(client_ip)
     origin = request.headers.get('origin', '')
     with engine.begin() as db:
+        if geo:
+            if geo_replay_cleanup_due():
+                db.execute(text('DELETE FROM geo_forward_replays WHERE issued_at < :cutoff'), {'cutoff': int(time.time()) - 600})
+            try:
+                db.execute(text('INSERT INTO geo_forward_replays (nonce,issued_at) VALUES (:nonce,:issued_at)'), {'nonce':geo['nonce'],'issued_at':geo['issued_at']})
+            except IntegrityError:
+                raise HTTPException(401, 'Geolocation forwarding request was already used')
         project = db.execute(text('SELECT domain, write_key_hash, verified_at FROM projects WHERE id=:id'), {'id':data.projectId}).mappings().first()
         if not project: raise HTTPException(404, 'Project not found')
         supplied = request.headers.get('x-Zappa-key', '')
@@ -904,7 +986,9 @@ async def ingest(data: Batch, request: Request):
             ua = user_agent.lower(); device = 'mobile' if 'mobile' in ua else 'desktop' if ua else 'unknown'
             referrer = e.referrer.lower() if e.referrer and re.fullmatch(r'[a-zA-Z0-9.-]+', e.referrer) else None
             session_id = resolve_session(db, data.projectId, e.visitorId, e.id, event_time)
-            result=db.execute(text('INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,country,device,browser,operating_system,referrer,properties) VALUES (:project,:id,:name,:ts,:path,:visitor,:session,:country,:device,:browser,:operating_system,:referrer,:properties) ON CONFLICT (project_id,id) DO NOTHING'), {'project':data.projectId,'id':e.id,'name':e.name,'ts':stamp(event_time),'path':e.path,'visitor':e.visitorId,'session':session_id,'country':country,'device':device,'browser':browser,'operating_system':operating_system,'referrer':referrer,'properties':json.dumps(e.properties)})
+            result=db.execute(text('''INSERT INTO events (project_id,id,name,occurred_at,path,visitor_id,session_id,country,device,browser,operating_system,referrer,properties,country_name,region_code,region_name,city_name,continent_code,timezone,latitude,longitude,postal_code,geo_source)
+                VALUES (:project,:id,:name,:ts,:path,:visitor,:session,:country,:device,:browser,:operating_system,:referrer,:properties,:country_name,:region_code,:region_name,:city_name,:continent_code,:timezone,:latitude,:longitude,:postal_code,:geo_source)
+                ON CONFLICT (project_id,id) DO NOTHING'''), {'project':data.projectId,'id':e.id,'name':e.name,'ts':stamp(event_time),'path':e.path,'visitor':e.visitorId,'session':session_id,'country':country,'device':device,'browser':browser,'operating_system':operating_system,'referrer':referrer,'properties':json.dumps(e.properties), **({key:geo[key] for key in ('country_name','region_code','region_name','city_name','continent_code','timezone','latitude','longitude','postal_code','geo_source')} if geo else {key:None for key in ('country_name','region_code','region_name','city_name','continent_code','timezone','latitude','longitude','postal_code','geo_source')})})
             inserted += result.rowcount
             if result.rowcount and e.name == 'pageview' and e.visitorId and session_id:
                 external_referrer = referrer if referrer not in (domain, alternate) else None
@@ -1078,6 +1162,112 @@ async def summary(project_id: str, days: int = 30, start: date | None = None, en
         country_visitors=[dict(r) for r in db.execute(text(f"SELECT COALESCE(country, :unknown) AS label, COUNT(DISTINCT visitor_id) AS count FROM {source} WHERE project_id=:id AND occurred_at>=:since AND occurred_at<:until AND name=:name AND visitor_id IS NOT NULL GROUP BY country ORDER BY count DESC LIMIT 10"), {**params,'unknown':'Unknown','name':'pageview'}).mappings()]
         event_names=[dict(r) for r in db.execute(text('SELECT name AS label, COUNT(*) AS count FROM events WHERE project_id=:id AND occurred_at>=:since AND occurred_at<:until GROUP BY name ORDER BY count DESC LIMIT 20'), params).mappings()]
         return {'metrics':metrics,'previous':previous,'series':series,'last_event_at':last_event_at,'pages':breakdown('path'),'devices':breakdown('device'),'browsers':breakdown('browser'),'operating_systems':breakdown('operating_system'),'countries':breakdown('country'),'country_visitors':country_visitors,'referrers':breakdown('referrer'),'event_names':event_names,'days':days,'filter':{'property':property,'value':value},'average_session_duration_seconds':round(sum(durations)/len(durations)) if durations else 0}
+
+
+@app.get('/api/projects/{project_id}/geography')
+async def geography(
+    project_id: str,
+    level: str = 'country',
+    days: int = 30,
+    start: date | None = None,
+    end: date | None = None,
+    timezone_name: str = Query(default='UTC', alias='timezone', min_length=1, max_length=64),
+    country: str | None = Query(default=None, min_length=2, max_length=2),
+    region_code: str | None = Query(default=None, max_length=32),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=50),
+    user=Depends(session_user),
+):
+    if level not in ('country', 'region', 'city'):
+        raise HTTPException(422, 'Unsupported geography level')
+    if level == 'city' and (not country or not region_code):
+        raise HTTPException(422, 'Choose a country and region before viewing cities')
+    if country and country.upper() not in ISO_COUNTRIES:
+        raise HTTPException(422, 'Invalid country code')
+    try:
+        report_timezone = ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise HTTPException(422, 'Invalid timezone')
+    if (start is None) != (end is None):
+        raise HTTPException(422, 'start and end must be provided together')
+    if start is None:
+        if days not in (7, 30, 90):
+            raise HTTPException(422, 'Unsupported date range')
+        end = datetime.now(report_timezone).date()
+        start = end - timedelta(days=days - 1)
+    if end < start or (end - start).days >= 90 or end > datetime.now(report_timezone).date():
+        raise HTTPException(422, 'Date range must cover 1 to 90 days and end no later than today in the selected timezone')
+    start_at = datetime.combine(start, datetime.min.time(), report_timezone).astimezone(timezone.utc)
+    end_at = datetime.combine(end + timedelta(days=1), datetime.min.time(), report_timezone).astimezone(timezone.utc)
+    days = (end - start).days + 1
+    params = {'id': project_id, 'since': stamp(start_at), 'until': stamp(end_at)}
+    filters = ''
+    if country:
+        filters += ' AND country=:country'
+        params['country'] = country.upper()
+    if region_code:
+        filters += ' AND region_code=:region_code'
+        params['region_code'] = region_code.strip().upper()
+    if level == 'country':
+        label = "COALESCE(country_name,country,'Unknown')"
+        key = "COALESCE(country,'')"
+        group = 'country,country_name'
+    elif level == 'region':
+        label = "COALESCE(region_name,region_code,'Unknown region')"
+        key = "COALESCE(country,'') || ':' || COALESCE(region_code,'')"
+        group = 'country,region_code,region_name'
+    else:
+        label = "COALESCE(city_name,'Unknown city')"
+        key = "COALESCE(country,'') || ':' || COALESCE(region_code,'') || ':' || COALESCE(city_name,'')"
+        group = 'country,region_code,city_name'
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        total_visitors = int(db.execute(text('SELECT COUNT(DISTINCT visitor_id) FROM events WHERE project_id=:id AND occurred_at>=:since AND occurred_at<:until AND visitor_id IS NOT NULL'), params).scalar_one() or 0)
+        goals = [row[0] for row in db.execute(text('SELECT DISTINCT event_name FROM project_goals WHERE project_id=:id ORDER BY event_name LIMIT 50'), {'id':project_id}).all()]
+        query_params = {**params, 'limit':page_size, 'offset':(page - 1) * page_size}
+        if goals:
+            goal_keys = []
+            for index, goal in enumerate(goals):
+                key_name = f'goal_{index}'
+                goal_keys.append(':' + key_name)
+                query_params[key_name] = goal
+            conversions = f"COUNT(DISTINCT CASE WHEN name IN ({','.join(goal_keys)}) THEN session_id END)"
+            configured = True
+        else:
+            conversions = 'NULL'
+            configured = False
+        rows = db.execute(text(f'''
+            SELECT {label} AS label,{key} AS key,MAX(country) AS country_code,MAX(region_code) AS region_code,COUNT(DISTINCT visitor_id) AS visitors,
+                   COUNT(DISTINCT session_id) AS sessions,
+                   SUM(CASE WHEN name='pageview' THEN 1 ELSE 0 END) AS pageviews,
+                   {conversions} AS conversions
+            FROM events
+            WHERE project_id=:id AND occurred_at>=:since AND occurred_at<:until {filters}
+            GROUP BY {group}
+            ORDER BY visitors DESC,label ASC
+            LIMIT :limit OFFSET :offset
+        '''), query_params).mappings().all()
+        count_row = db.execute(text(f'''SELECT COUNT(*) FROM (
+            SELECT 1 FROM events WHERE project_id=:id AND occurred_at>=:since AND occurred_at<:until {filters}
+            GROUP BY {group}
+        ) AS location_groups'''), params).scalar_one()
+    results = []
+    for row in rows:
+        results.append({
+            'key': row['key'], 'label': row['label'],
+            'country_code': row.get('country_code'), 'region_code': row.get('region_code'),
+            'visitors': int(row['visitors'] or 0), 'sessions': int(row['sessions'] or 0),
+            'pageviews': int(row['pageviews'] or 0),
+            'conversions': int(row['conversions']) if row['conversions'] is not None else None,
+            'verified_revenue': None,
+            'share': round((int(row['visitors'] or 0) / total_visitors) * 100, 1) if total_visitors else 0,
+        })
+    return {
+        'level': level, 'start': start.isoformat(), 'end': end.isoformat(), 'timezone': timezone_name,
+        'total_visitors': total_visitors, 'conversion_configured': configured,
+        'verified_revenue_available': False, 'page': page, 'page_size': page_size,
+        'total_rows': int(count_row), 'rows': results,
+    }
 
 @app.get('/api/projects/{project_id}/overview')
 async def overview(project_id: str, start: date, end: date, model: str = 'first_touch', conversion_event: str | None = Query(default=None, min_length=1, max_length=64), user=Depends(session_user)):
