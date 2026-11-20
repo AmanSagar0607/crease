@@ -1072,6 +1072,27 @@
   color: var(--muted);
 }
 
+.deviceTabs { margin-top: 12px; }
+.deviceTabsList { display: inline-flex; max-width: 100%; align-items: center; gap: 2px; overflow-x: auto; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
+.deviceTab { min-height: 28px; padding: 0 11px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 10px; white-space: nowrap; cursor: pointer; transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease; }
+.deviceTab[data-state='active'] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px rgb(0 0 0 / 12%); }
+.deviceTab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.deviceBreakdownList { display: grid; gap: 7px; margin: 14px 0 0; padding: 0; list-style: none; }
+.deviceBarRow { position: relative; display: flex; min-height: 32px; align-items: center; justify-content: space-between; overflow: hidden; border-radius: 6px; background: var(--soft2); }
+.deviceBarFill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--ink); opacity: .84; transition: width 360ms cubic-bezier(.2,.72,.24,1); }
+.deviceBarLabel, .deviceBarValue { position: relative; z-index: 1; display: inline-flex; min-width: 0; align-items: center; gap: 7px; padding: 0 9px; font-size: 11px; }
+.deviceBarLabel { color: var(--paper); }
+.deviceBarLabel svg { width: 14px; height: 14px; flex: none; }
+.deviceBarLabel span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deviceBarValue { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 550; }
+.deviceBreakdownUnavailable { display: grid; min-height: 190px; align-content: center; justify-items: center; gap: 7px; padding: 18px; text-align: center; }
+.deviceBreakdownUnavailable strong { font-size: 12px; font-weight: 550; }
+.deviceBreakdownUnavailable span { max-width: 220px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .deviceTab, .deviceBarFill { transition: none; }
+}
+
 .cardCount {
   color: var(--muted);
   font-size: 9px;
