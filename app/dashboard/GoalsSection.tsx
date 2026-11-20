@@ -4,6 +4,7 @@ import { useState, type FormEvent, type KeyboardEvent } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 import type { Range } from './reporting';
 import s from './sections.module.css';
+import { Table } from '@/components/ui/table';
 
 type Goal = {
   id: string;
@@ -149,7 +150,7 @@ export default function GoalsSection({ projectId, range }: Props) {
         <div className={s.panel}>
           <div className={s.panelHead}><h3>Progress</h3><span>{range.start} – {range.end} UTC</span></div>
           <div className={s.scroll}>
-            <table className={s.table}>
+            <Table className={s.table}>
               <thead><tr><th scope="col">Goal</th><th scope="col">Event</th><th scope="col" className={s.num}>Current</th><th scope="col" className={s.num}>Target</th><th scope="col">Progress</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>{goals.map((goal) => <tr key={goal.id}>
                 <th scope="row">{goal.name}</th>
@@ -159,7 +160,7 @@ export default function GoalsSection({ projectId, range }: Props) {
                 <td><progress aria-label={`${goal.name} progress`} value={goal.progress} max={1}>{Math.round(goal.progress * 100)}%</progress> {Math.round(goal.progress * 100)}%</td>
                 <td><div className={s.pager}><button className={s.applyButton} type="button" onClick={() => editGoal(goal)}>Edit</button><button className={s.applyButton} type="button" onClick={() => void removeGoal(goal)} aria-label={`Delete ${goal.name}`}>Delete</button></div></td>
               </tr>)}</tbody>
-            </table>
+            </Table>
           </div>
         </div>
       ) : <div className={s.panel}>

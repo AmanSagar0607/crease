@@ -5,6 +5,7 @@ import AnalyticsCharts from './AnalyticsCharts';
 import { csvRows } from './csv';
 import { display, type LandingRow, type Range, type Report } from './reporting';
 import s from './sections.module.css';
+import { Table } from '@/components/ui/table';
 
 type BreakdownRow = { label: string; count: number };
 type SeriesPoint = { date: string; events: number; pageviews: number; visitors: number; sessions: number };
@@ -133,7 +134,7 @@ export default function PagesSection({ range, report, loading, error, onRetry, p
               </div>
               {filteredPages.length ? (
                 <div className={s.scroll}>
-                  <table className={s.table}>
+                  <Table className={s.table}>
                     <thead>
                       <tr>
                         <th>Page</th>
@@ -150,7 +151,7 @@ export default function PagesSection({ range, report, loading, error, onRetry, p
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </Table>
                 </div>
               ) : (
                 <div className={s.empty}>
@@ -193,7 +194,7 @@ export default function PagesSection({ range, report, loading, error, onRetry, p
                 <div className={s.empty}>No landing pages match “{landingQuery}”.</div>
               ) : (
                 <div className={s.scroll}>
-                  <table className={s.table}>
+                  <Table className={s.table}>
                     <thead>
                       <tr>
                         {landingColumns.map((column) => (
@@ -221,7 +222,7 @@ export default function PagesSection({ range, report, loading, error, onRetry, p
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </Table>
                 </div>
               )}
               <p className={s.note}>

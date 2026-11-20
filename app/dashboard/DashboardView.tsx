@@ -8,13 +8,12 @@ import { useTheme } from 'next-themes';
 import { alpha2ToAlpha3, alpha3ToAlpha2, alpha2ToNumeric, getName, registerLocale } from 'i18n-iso-countries';
 import englishLocale from 'i18n-iso-countries/langs/en.json';
 import type * as GeoJSON from 'geojson';
-import { Compass, Flame, Globe, Monitor, Smartphone, Tablet } from 'lucide-react';
+import { Compass, Flame, Globe, Monitor, Smartphone, Tablet, UserRound, LogOut, SlidersHorizontal, ExternalLink, Sun, Moon } from 'lucide-react';
 import { Map as InteractiveMap, MapControls, MapGeoJSON, useMap } from '@/components/ui/map';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useWorldData } from '@/lib/use-world-data';
 import GitHubInstall from './GitHubInstall';
 import VercelGitSettings from './VercelGitSettings';
-import ThemeToggle from '../theme-toggle';
 import ZappaWordmark from '../zappa-wordmark';
 import VerifiedBadge from './VerifiedBadge';
 import ProjectOnboarding from './ProjectOnboarding';
@@ -24,8 +23,19 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { ButtonGroup } from '@/components/ui/button-group';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+import { CodeBlock, CodeBlockActions, CodeBlockContent, CodeBlockCopyButton, CodeBlockHeader, CodeBlockTitle } from '@/components/ui/code-block';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import OverviewV1 from './OverviewV1';
 import ReportToolbar from './ReportToolbar';
 import AcquisitionSection from './AcquisitionSection';
@@ -765,6 +775,7 @@ type DashboardViewProps = { projectId?: string; mode?: 'standard' | 'design-lab'
 export default function DashboardView({ projectId, mode = 'standard' }: DashboardViewProps) {
   const isDesignLab = mode === 'design-lab';
   const router = useRouter();
+  const { resolvedTheme, setTheme } = useTheme();
   const { signOut } = useClerk();
   const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
   const handleUnauthorized = useCallback((setMessage: (message: string) => void) => {
@@ -806,6 +817,7 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
   const [retention, setRetention] = useState(30);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [deletingProjectId, setDeletingProjectId] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [settingsMessage, setSettingsMessage] = useState('');
   const [keyNotice, setKeyNotice] = useState('');
   const [writeKey, setWriteKey] = useState('');
@@ -1260,34 +1272,36 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
   }
 
   async function deleteProject() {
-    if (!project || !window.confirm(`Delete ${project.name} and its analytics data? This cannot be undone.`)) return;
+    if (!project) return;
+    setDeleteTarget(project);
+  }
+
+  async function confirmDeleteProject() {
+    const target = deleteTarget;
+    if (!target) return;
     setError('');
     setSettingsMessage('');
     setSettingsBusy(true);
+    setDeletingProjectId(target.id);
     try {
-      await api(`/api/projects/${encodeURIComponent(project.id)}`, { method: 'DELETE' });
-      setProjects((list) => list.filter((item) => item.id !== project.id));
-      setSelected('');
-      router.push('/dashboard');
+      await api(`/api/projects/${encodeURIComponent(target.id)}`, { method: 'DELETE' });
+      setProjects((list) => list.filter((item) => item.id !== target.id));
+      setDeleteTarget(null);
+      if (selected === target.id) {
+        setSelected('');
+        setShowProjects(true);
+        router.push('/dashboard?view=projects');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not delete the project.');
     } finally {
       setSettingsBusy(false);
+      setDeletingProjectId('');
     }
   }
 
   async function deleteProjectFromList(item: Project) {
-    if (!window.confirm(`Delete “${item.name}” and all its analytics data? This cannot be undone.`)) return;
-    setError('');
-    setDeletingProjectId(item.id);
-    try {
-      await api(`/api/projects/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
-      setProjects((list) => list.filter((projectItem) => projectItem.id !== item.id));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : `Could not delete ${item.name}.`);
-    } finally {
-      setDeletingProjectId('');
-    }
+    setDeleteTarget(item);
   }
 
   const collectorOrigin = process.env.NEXT_PUBLIC_ZAPPA_ORIGIN || 'https://www.zappa.in';
@@ -1378,9 +1392,6 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
         <Sidebar collapsible="icon" className={s.sidebar16}>
         <ProjectNavigation>
           <div className={s.sidebarTop}>
-            <div className={s.sidebarBrandRow}>
-              <SidebarTrigger className={s.sidebarCollapse} aria-label="Collapse or expand sidebar" />
-            </div>
             <label className={s.sidebarSwitcher}>
               <span className={s.srOnly}>Switch website</span>
               <span className={s.sidebarSwitcherMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
@@ -1404,8 +1415,9 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
           </div>
           <div className={s.sidebarNavScroll}>
           {NAV_GROUPS.map((group) => (
-            <div className={s.sidebarGroup} key={group.label}>
-              <span className={s.sidebarCaption}>{group.label}</span>
+            <Collapsible className={s.sidebarGroup} defaultOpen key={group.label}>
+              <CollapsibleTrigger className={s.sidebarCaption}>{group.label}</CollapsibleTrigger>
+              <CollapsibleContent>
               <nav className={s.sidebarNav} aria-label={`${group.label} sections`}>
                 {group.items.map((item) => (
                   <a
@@ -1425,7 +1437,8 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
                   </a>
                 ))}
               </nav>
-            </div>
+              </CollapsibleContent>
+            </Collapsible>
           ))}
           <div className={s.sidebarGroup}>
           <span className={s.sidebarCaption}>Project</span>
@@ -1442,17 +1455,6 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
           </nav>
           </div>
           </div>
-          <details className={s.sidebarAccount}>
-            <summary className={s.sidebarAccountSummary} aria-label="Open account menu">
-              <span className={s.avatar} aria-hidden="true">{user?.login.slice(0, 1).toUpperCase() ?? 'A'}</span>
-              <span className={s.sidebarUserName}>{user?.login ?? 'Account'}</span>
-              <ChevronIcon />
-            </summary>
-            <div className={s.sidebarAccountMenu}>
-              <Link href="/account">Account settings</Link>
-              <button className={s.signOut} type="button" onClick={logout}>Sign out</button>
-            </div>
-          </details>
         </ProjectNavigation>
         </Sidebar>
       )}
@@ -1461,60 +1463,77 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
       <header className={`${s.header} ${project ? s.analyticsHeader : ''}`}>
         <div className={s.headerInner}>
           <div className={s.headerIdentity}>
+            {project && <SidebarTrigger className={s.headerMenuTrigger} aria-label="Toggle dashboard navigation" />}
             <Link className={s.brand} href="/" aria-label="Zappa home"><ZappaWordmark /></Link>
-            <span className={s.headerDivider} aria-hidden="true" />
-            {!project && user && (
-              <span className={s.userChip}>
-                <span className={s.avatar} aria-hidden="true">{user.login.slice(0, 1).toUpperCase()}</span>
-                <span>{user.login}</span>
-              </span>
-            )}
           </div>
-          {project && (
-            <nav className={s.breadcrumb} aria-label="Breadcrumb">
-              <Link
-                className={s.crumbRoot}
-                href="/dashboard?view=projects"
-                onClick={() => {
-                  setShowProjects(true);
-                  setSelected('');
-                }}
-              >
-                Projects
-              </Link>
-            </nav>
-          )}
           <div className={s.account}>
-            <ThemeToggle iconOnly />
-            <Link className={s.headerLink} href="/docs">
-              Docs
-            </Link>
-            {user && <Link className={`${s.headerLink} ${s.headerPrimary}`} href="/dashboard?view=projects#add-website" onClick={() => { setShowProjects(true); setSelected(''); }}>+ Website</Link>}
-            {!project && <Link className={s.headerLink} href="/account">Account</Link>}
-            {!project && user && (
-              <button className={s.signOut} type="button" onClick={logout}>
-                Sign out
-              </button>
-            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className={s.headerAvatarButton} type="button" aria-label={`Open account menu for ${user?.login ?? 'Account'}`}>
+                  <span className={s.avatar} aria-hidden="true">{user?.login.slice(0, 1).toUpperCase() ?? 'A'}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" sideOffset={8} className={s.profileMenu}>
+                <DropdownMenuLabel className={s.profileMenuIdentity}>
+                  <span className={s.avatar} aria-hidden="true">{user?.login.slice(0, 1).toUpperCase() ?? 'A'}</span>
+                  <span><strong>{user?.login ?? 'Account'}</strong><small>Zappa workspace</small></span>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild><Link href="/account"><UserRound aria-hidden="true" />My account</Link></DropdownMenuItem>
+                {project && <DropdownMenuItem onSelect={() => selectTab('settings')}><SlidersHorizontal aria-hidden="true" />Project settings</DropdownMenuItem>}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
+                  {resolvedTheme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+                  Use {resolvedTheme === 'dark' ? 'light' : 'dark'} appearance
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={logout}><LogOut aria-hidden="true" />Sign out</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
       )}
 
+      {!isDesignLab && (
+        <div className={s.utilityNavWrap}>
+          <div className={s.utilityNav}>
+            <Breadcrumb className={s.dashboardBreadcrumb}>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink asChild><Link href="/dashboard?view=projects" onClick={() => { setShowProjects(true); setSelected(''); }}>Projects</Link></BreadcrumbLink>
+                </BreadcrumbItem>
+                {project && <>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem><BreadcrumbPage>{project.name}</BreadcrumbPage></BreadcrumbItem>
+                  {project.verified && <Badge variant="secondary" className={s.projectStatusBadge}>Verified</Badge>}
+                </>}
+              </BreadcrumbList>
+            </Breadcrumb>
+            <ButtonGroup className={s.utilityActions}>
+              <Button variant="ghost" size="sm" asChild className={s.utilityAction}><Link href="/docs"><ExternalLink aria-hidden="true" />Docs</Link></Button>
+              {user && <Button variant="outline" size="sm" asChild className={`${s.utilityAction} ${s.utilityActionPrimary}`}><Link href="/dashboard?view=projects#add-website" onClick={() => { setShowProjects(true); setSelected(''); }}>+ Website</Link></Button>}
+            </ButtonGroup>
+          </div>
+        </div>
+      )}
+
       {project && !isDesignLab && (
         <div className={s.projectTopNavWrap}>
           <div className={s.projectTopNav}>
-            <label className={s.topProjectSwitcher}>
-              <span className={s.srOnly}>Switch website</span>
-              <span className={s.sidebarSwitcherMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
-              <select
-                value={selected}
-                onChange={(event) => router.push(`/dashboard/projects/${encodeURIComponent(event.target.value)}`)}
-              >
-                {projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}
-              </select>
-              <ChevronIcon />
-            </label>
+            <Combobox
+              value={selected}
+              onValueChange={(value) => { if (typeof value === 'string') router.push(`/dashboard/projects/${encodeURIComponent(value)}`); }}
+              items={projects.map((item) => item.id)}
+              itemToStringValue={(value) => projects.find((item) => item.id === value)?.name ?? ''}
+            >
+              <ComboboxInput className={s.projectCombobox} placeholder={project.name} aria-label="Switch website" />
+              <ComboboxContent>
+                <ComboboxList>
+                  {projects.map((item) => <ComboboxItem key={item.id} value={item.id}>{item.name}<span className={s.projectComboDomain}>{item.domain}</span></ComboboxItem>)}
+                </ComboboxList>
+                <ComboboxEmpty>No websites found.</ComboboxEmpty>
+              </ComboboxContent>
+            </Combobox>
             <nav className={s.projectTopNavLinks} aria-label="Project analytics">
               {NAV_GROUPS.flatMap((group) => group.items).map((item) => (
                 <a
@@ -2149,16 +2168,15 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
                           )}
                         </div>
                         <div className={s.codeCard}>
-                          <div className={s.codeTop}>
-                            <span>INSTALLATION CODE</span>
-                            <button className={s.copyButton} type="button" onClick={copySnippet} disabled={!writeKey}>
-                              {copied ? <CheckIcon /> : <CopyIcon />}
-                              {copied ? 'Copied' : 'Copy'}
-                            </button>
-                          </div>
-                          <pre className={s.code} tabIndex={0}>
-                            <code>{snippet}</code>
-                          </pre>
+                          <CodeBlock className={`${s.code} ${s.installCodeBlock}`}>
+                            <CodeBlockHeader className={s.installCodeHeader}>
+                              <CodeBlockTitle>INSTALLATION CODE</CodeBlockTitle>
+                              <CodeBlockActions>
+                                <CodeBlockCopyButton value={snippet} disabled={!writeKey} />
+                              </CodeBlockActions>
+                            </CodeBlockHeader>
+                            <CodeBlockContent>{snippet}</CodeBlockContent>
+                          </CodeBlock>
                           <div className={s.codeMeta}>
                             <span>Project {project.id.slice(0, 8)}</span>
                             <span>Async · defer</span>
@@ -2278,7 +2296,9 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
                     {projects.map((item) => {
                       const live = Boolean(item.last_event_at) && Date.now() - new Date(item.last_event_at!).getTime() < 7 * 864e5;
                       return (
-                        <div className={s.projectCardShell} key={item.id}>
+                        <ContextMenu key={item.id}>
+                        <ContextMenuTrigger asChild>
+                        <div className={s.projectCardShell}>
                         <Link className={s.projectCard} href={`/dashboard/projects/${encodeURIComponent(item.id)}`}>
                           <span className={s.projectCardTop}>
                             <span className={s.projectCardMark} aria-hidden="true">
@@ -2337,6 +2357,15 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
                           </DropdownMenuContent>
                         </DropdownMenu>
                         </div>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuItem asChild><Link href={`/dashboard/projects/${encodeURIComponent(item.id)}`}>Open dashboard</Link></ContextMenuItem>
+                          <ContextMenuItem asChild><Link href={`/dashboard/projects/${encodeURIComponent(item.id)}#settings`}>Project settings</Link></ContextMenuItem>
+                          <ContextMenuItem asChild><Link href={`/dashboard/projects/${encodeURIComponent(item.id)}#events`}>Recent activity</Link></ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem variant="destructive" onSelect={() => void deleteProjectFromList(item)}><TrashIcon />Delete project</ContextMenuItem>
+                        </ContextMenuContent>
+                        </ContextMenu>
                       );
                     })}
                   </div>
@@ -2386,6 +2415,22 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
           </>
         )}
       </main>
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open && !deletingProjectId) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {deleteTarget?.name}?</DialogTitle>
+            <DialogDescription>This permanently removes project and its analytics data. This action cannot be undone.</DialogDescription>
+          </DialogHeader>
+          {error && <p className={s.dialogError} role="alert">{error}</p>}
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setDeleteTarget(null)} disabled={Boolean(deletingProjectId)}>Cancel</Button>
+            <Button variant="destructive" type="button" onClick={() => void confirmDeleteProject()} disabled={Boolean(deletingProjectId)}>
+              {deletingProjectId ? 'Deleting…' : 'Delete project'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {!isDesignLab && (
       <footer className={s.footer}>

@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { csvRows } from './csv';
 import { display, type CampaignRow, type Range, type Report } from './reporting';
 import s from './sections.module.css';
+import { Table } from '@/components/ui/table';
 
 type SortKey = 'campaign' | 'source' | 'visitors' | 'conversions' | 'conversion_rate';
 type SortDir = 'asc' | 'desc';
@@ -126,7 +127,7 @@ export default function CampaignsSection({ range, report, loading, error, onRetr
         <div className={s.empty}>No campaigns match “{query}”.</div>
       ) : (
         <div className={s.scroll}>
-          <table className={s.table}>
+          <Table className={s.table}>
             <thead>
               <tr>
                 {columns.map((column) => (
@@ -162,7 +163,7 @@ export default function CampaignsSection({ range, report, loading, error, onRetr
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         </div>
       )}
     </section>

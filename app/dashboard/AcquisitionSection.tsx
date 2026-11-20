@@ -5,6 +5,7 @@ import { csvRows } from './csv';
 import { compareLabel, display, type AcquisitionRow, type AttributionModel, type Range, type Report } from './reporting';
 import useOverviewReport from './useOverviewReport';
 import s from './sections.module.css';
+import { Table } from '@/components/ui/table';
 
 type SortKey = 'source' | 'medium' | 'campaign' | 'visitors' | 'sessions' | 'conversions' | 'conversion_rate';
 type SortDir = 'asc' | 'desc';
@@ -223,7 +224,7 @@ export default function AcquisitionSection({
       ) : (
         <>
           <div className={s.scroll}>
-            <table className={s.table}>
+            <Table className={s.table}>
               <thead>
                 <tr>
                   {columns.map((column) => (
@@ -267,7 +268,7 @@ export default function AcquisitionSection({
                   );
                 })}
               </tbody>
-            </table>
+            </Table>
           </div>
           <div className={s.footerRow}>
             <span>
