@@ -88,6 +88,19 @@ function ProjectNavigation({ children }: { children: ReactNode }) {
   );
 }
 
+function DashboardSidebarToggle() {
+  const { state, isMobile, openMobile } = useSidebar();
+  const expanded = isMobile ? openMobile : state === 'expanded';
+  return (
+    <SidebarTrigger
+      className={s.headerMenuTrigger}
+      aria-label={expanded ? 'Collapse dashboard navigation' : 'Expand dashboard navigation'}
+      aria-expanded={expanded}
+      title={expanded ? 'Collapse navigation' : 'Expand navigation'}
+    />
+  );
+}
+
 type User = { id: string; login: string };
 export type Project = {
   id: string;
@@ -1382,7 +1395,7 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
 
   return (
     <TooltipProvider>
-    <SidebarProvider defaultOpen={false} className={s.sidebarProvider} style={{ '--sidebar-width': '64px', '--sidebar-width-icon': '64px' } as CSSProperties}>
+    <SidebarProvider defaultOpen={false} className={s.sidebarProvider} style={{ '--sidebar-width': '248px', '--sidebar-width-icon': '64px' } as CSSProperties}>
     <div className={`${s.dashboard} ${project || isDesignLab ? s.analyticsDashboard : ''}`}>
       <a className={s.skip} href="#main">
         Skip to content
@@ -1463,7 +1476,7 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
       <header className={`${s.header} ${project ? s.analyticsHeader : ''}`}>
         <div className={s.headerInner}>
           <div className={s.headerIdentity}>
-            {project && <SidebarTrigger className={s.headerMenuTrigger} aria-label="Toggle dashboard navigation" />}
+            {project && <DashboardSidebarToggle />}
             <Link className={s.brand} href="/" aria-label="Zappa home"><ZappaWordmark /></Link>
           </div>
           <div className={s.account}>

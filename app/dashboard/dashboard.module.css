@@ -3616,7 +3616,7 @@
     min-height: 100dvh;
     transition: grid-template-columns 350ms cubic-bezier(.22, 1, .36, 1);
   }
-  .analyticsDashboard.dashboard:has(.sidebar16[data-collapsible='icon']) {
+  .analyticsDashboard.dashboard:has(.sidebar16[data-state='collapsed']) {
     grid-template-columns: 64px minmax(0, 1fr);
   }
   .analyticsDashboard .sidebar16 {
@@ -4606,4 +4606,64 @@
 
 @media (max-width: 767px) {
   .utilityNavWrap { padding-inline: 14px; }
+}
+
+/* Sidebar rail expands into the labeled project menu on desktop. */
+@media (min-width: 1024px) {
+  .analyticsDashboard.dashboard { --sidebar-width: 248px; grid-template-columns: 248px minmax(0, 1fr); }
+  .analyticsDashboard.dashboard:has(> [data-slot='sidebar'][data-state='collapsed']) { grid-template-columns: 64px minmax(0, 1fr); }
+  .analyticsDashboard .analyticsHeader [data-sidebar='trigger'] { display: inline-flex; }
+
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] { width: 248px; min-width: 248px; }
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] [data-slot='sidebar-gap'],
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] [data-slot='sidebar-container'] { width: 248px !important; }
+  .analyticsDashboard > [data-slot='sidebar'][data-state='collapsed'] { width: 64px; min-width: 64px; }
+  .analyticsDashboard > [data-slot='sidebar'][data-state='collapsed'] [data-slot='sidebar-gap'],
+  .analyticsDashboard > [data-slot='sidebar'][data-state='collapsed'] [data-slot='sidebar-container'] { width: 64px !important; }
+
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] .projectSidebar {
+    width: 248px;
+    padding: 14px 12px;
+    overflow: hidden;
+  }
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] .sidebarSwitcher {
+    width: 100%;
+    height: 44px;
+    margin: 4px 0 12px;
+    padding: 0 10px;
+    justify-content: flex-start;
+    border-color: var(--border);
+    background: var(--surface-raised);
+  }
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] .sidebarSwitcher select {
+    position: static;
+    width: 100%;
+    height: 42px;
+    padding: 0 22px 0 0;
+    opacity: 1;
+    cursor: pointer;
+  }
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] .sidebarSwitcher > svg { display: block; }
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] .sidebarCaption,
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] .sidebarNavItem > span {
+    display: flex !important;
+  }
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] .sidebarCaption {
+    width: calc(100% - 20px);
+    min-height: 22px;
+    font: inherit;
+    font-size: 10px;
+    letter-spacing: .1em;
+  }
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] .sidebarNavScroll { padding: 0 0 8px; }
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] .sidebarNav { margin-top: 4px; }
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] .sidebarNavItem {
+    width: 100%;
+    min-height: 40px;
+    justify-content: flex-start;
+    margin: 0;
+    padding: 0 12px;
+  }
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] .sidebarNavItem::after { display: none; }
+  .analyticsDashboard > [data-slot='sidebar'][data-state='expanded'] .navIcon { width: 17px; height: 17px; }
 }
