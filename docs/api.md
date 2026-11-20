@@ -12,7 +12,9 @@ The collector responds with `{ "accepted": n }`, where `n` is the number of newl
 
 For cross-origin browser requests, the preflight allows `Content-Type` and `X-Zappa-Key`. Origin checks reduce accidental cross-site use but do not authenticate a visitor and do not make public browser events unforgeable.
 
-Country is accepted only on `/internal/events`, which authenticates `GEO_FORWARD_SECRET` first. Forwarded values must be ISO 3166-1 alpha-2 and are stored when `TRUST_VERCEL_GEO` is true (the default). Public `/api/events` never trusts country headers. Missing, disabled, or unrecognized country is stored as unknown; malformed values are rejected with 422.
+Country is resolved by the API from the request IP using a local MaxMind GeoLite2 Country database; no country header is read, and the IP itself is not stored. For requests sent through the Vercel app proxy, the proxy forwards the client IP in `X-Zappa-Client-IP` over `/internal/events`, which requires the same `GEO_FORWARD_SECRET` on Vercel and the API. Vercel's standard `X-Forwarded-For` supplies the client IP; the country lookup itself is local and independent of Vercel's country geolocation. Direct `/api/events` requests use the connected client IP when available.
+
+Set `GEOIP_DATABASE_PATH` to the deployed `GeoLite2-Country.mmdb` file. To let the API install and update it automatically, set server-only `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY`; updates run locally on the API host and default to every seven days. MaxMind requires an account and license key to download GeoLite databases; keep the database updated and follow its license/attribution terms. The backend `/health` response reports `ingestion.client_ip_forwarding`, `ingestion.geoip_database`, and `ingestion.geoip_auto_update` so missing setup is visible. If forwarding or the database is unavailable, new event country values remain null. Previously stored null values cannot be reconstructed from events.
 
 Requests whose `User-Agent` matches a known crawler, uptime monitor, or automation client are acknowledged with `{ "accepted": 0, "filtered": "bot" }` and are not stored. Set `FILTER_BOTS=false` only while debugging.
 
@@ -29,6 +31,8 @@ Authenticated project routes require the Zappa session cookie and check project 
 Ingested numeric and boolean properties are indexed in `event_properties` and each project keeps a declared-key registry in `project_property_keys`. `GET /api/projects/{id}/properties` returns each key with its type (`number`, `boolean`, or `mixed`), first/last seen timestamps, event count, distinct value count, and up to 20 top values.
 
 `GET /api/projects/{id}/events` returns recent events newest-first and accepts `days=7|30|90`, `event`, `path`, `property`, `value`, and `limit` (1-200). `GET /api/projects/{id}/summary` accepts the same `property` and `value` filters and applies them to metrics, series, breakdowns, and average session duration. `property` and `value` must be supplied together, and the key must exist in the project's registry or the API returns 422. Numeric filters match equivalent numeric values (`3` matches `3.0`). Property filters never span projects.
+
+The summary also returns `devices`, `browsers`, and `operating_systems` breakdowns. These rows count pageview events in the selected range. Browser and operating-system families are parsed from the request `User-Agent` during ingestion; the raw header is not stored. Events recorded before the browser/OS migration have no parsed values and appear under `Unknown` in those breakdowns.
 
 ## Funnels
 

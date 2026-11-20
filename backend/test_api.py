@@ -512,7 +512,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel?first=view_pricing&second=signup').status_code, 404)
         self.assertEqual(self.client.get('/api/projects/'+p['id']+'/funnel/multi?steps=view_pricing&steps=signup').status_code, 404)
 
-    def test_authenticated_country_forwarding_and_direct_spoofing(self):
+    def test_local_ip_geolocation_ignores_country_headers_and_direct_spoofing(self):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Geo','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
@@ -520,19 +520,18 @@ class ApiTest(unittest.TestCase):
         def send(event_id, path, extra):
             event = {'id':event_id,'name':'pageview','timestamp':main.stamp(main.now()),'path':'/','visitorId':'v'}
             return self.client.post(path, json={'projectId':p['id'],'events':[event]}, headers={**base, **extra})
-        with patch.object(main, 'TRUST_VERCEL_GEO', True), patch.object(main, 'GEO_FORWARD_SECRET', 'test-secret'):
+        def resolve(ip):
+            return 'US' if ip == '203.0.113.5' else None
+        with patch.object(main, 'geoip_country', side_effect=resolve), patch.object(main, 'GEO_FORWARD_SECRET', 'test-secret'):
             self.assertEqual(send('direct', '/api/events', {'x-vercel-ip-country':'US', 'x-Zappa-country':'US'}).status_code, 200)
-            self.assertEqual(send('no-secret', '/internal/events', {'x-Zappa-country':'US'}).status_code, 401)
-            self.assertEqual(send('bad-secret', '/internal/events', {'x-Zappa-forward-secret':'wrong','x-Zappa-country':'US'}).status_code, 401)
-            self.assertEqual(send('invalid', '/internal/events', {'x-Zappa-forward-secret':'test-secret','x-Zappa-country':'ZZ'}).status_code, 422)
-            self.assertEqual(send('malformed', '/internal/events', {'x-Zappa-forward-secret':'test-secret','x-Zappa-country':'us'}).status_code, 422)
+            self.assertEqual(send('no-secret', '/internal/events', {'x-Zappa-client-ip':'203.0.113.5'}).status_code, 401)
+            self.assertEqual(send('bad-secret', '/internal/events', {'x-Zappa-forward-secret':'wrong','x-Zappa-client-ip':'203.0.113.5'}).status_code, 401)
+            self.assertEqual(send('country-header-only', '/internal/events', {'x-Zappa-forward-secret':'test-secret','x-Zappa-country':'US'}).status_code, 200)
             self.assertEqual(send('missing', '/internal/events', {'x-Zappa-forward-secret':'test-secret'}).status_code, 200)
-            self.assertEqual(send('valid', '/internal/events', {'x-Zappa-forward-secret':'test-secret','x-Zappa-country':'US'}).status_code, 200)
-        with patch.object(main, 'TRUST_VERCEL_GEO', False), patch.object(main, 'GEO_FORWARD_SECRET', 'test-secret'):
-            self.assertEqual(send('disabled', '/internal/events', {'x-Zappa-forward-secret':'test-secret','x-Zappa-country':'US'}).status_code, 200)
+            self.assertEqual(send('resolved', '/internal/events', {'x-Zappa-forward-secret':'test-secret','x-Zappa-client-ip':'203.0.113.5'}).status_code, 200)
         with main.engine.connect() as db:
             rows = dict(db.execute(text('SELECT id, country FROM events WHERE project_id=:id'), {'id':p['id']}).all())
-        self.assertEqual(rows, {'direct':None, 'missing':None, 'valid':'US', 'disabled':None})
+        self.assertEqual(rows, {'direct':None, 'country-header-only':None, 'missing':None, 'resolved':'US'})
 
     def test_bot_user_agents_are_acknowledged_but_not_stored(self):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
@@ -553,15 +552,16 @@ class ApiTest(unittest.TestCase):
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT COUNT(*) FROM events WHERE project_id=:id'), {'id':p['id']}).scalar_one(), 1)
 
-    def test_forwarded_country_is_trusted_when_the_secret_is_configured(self):
+    def test_forwarded_client_ip_is_resolved_locally_when_secret_is_configured(self):
         headers = {'origin':main.FRONTEND_URL}; self.client.cookies.set('__session','token')
         p = self.client.post('/api/projects', json={'name':'Geo default','domain':'example.com'}, headers=headers).json()
         self.verify_project(p['id'])
         base = {'origin':'https://example.com','x-Zappa-key':p['write_key']}
         event = {'id':'geo-1','name':'pageview','timestamp':main.stamp(main.now()),'path':'/','visitorId':'v'}
-        with patch.object(main, 'GEO_FORWARD_SECRET', 'test-secret'):
-            response = self.client.post('/internal/events', json={'projectId':p['id'],'events':[event]}, headers={**base,'x-Zappa-forward-secret':'test-secret','x-Zappa-country':'DE'})
+        with patch.object(main, 'GEO_FORWARD_SECRET', 'test-secret'), patch.object(main, 'geoip_country', return_value='DE') as resolver:
+            response = self.client.post('/internal/events', json={'projectId':p['id'],'events':[event]}, headers={**base,'x-Zappa-forward-secret':'test-secret','x-Zappa-client-ip':'203.0.113.10','x-Zappa-country':'US'})
         self.assertEqual(response.status_code, 200)
+        resolver.assert_called_once_with('203.0.113.10')
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT country FROM events WHERE id=:id'), {'id':'geo-1'}).scalar_one(), 'DE')
 

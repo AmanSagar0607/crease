@@ -14,7 +14,7 @@ This checklist records known work before a broad public launch. The tracker and 
 - [ ] Complete tenant isolation, write-key rotation, CORS/preflight, request size, quotas, and abuse testing.
 - [ ] Verify SPA navigation and session expiry for the standalone SDK and npm package in real supported frameworks.
 - [ ] Validate event counts and session definitions against real traffic without labeling approximations as exact.
-- [ ] Verify on the deployed Vercel site that the proxy overwrites `X-Vercel-IP-Country` and that `/internal/events` rejects requests without `GEO_FORWARD_SECRET`. Until that secret is set on both services, country stays `Unknown`; direct `/api/events` never trusts country headers.
+- [ ] Install and update the GeoLite2 Country database on the API host, configure `GEOIP_DATABASE_PATH`, and verify `ingestion.geoip_database` is true. Set the same `GEO_FORWARD_SECRET` on Vercel and the API so `/internal/events` can receive the client IP from `X-Forwarded-For`; verify a new production event stores an ISO country code without storing the IP.
 - [ ] Complete Vercel project discovery and report useful authorization/scope errors while preserving manual domain setup.
 - [ ] Add safe custom-property filters with parameterized queries; do not expose arbitrary SQL execution.
 - [ ] Document retention, account deletion, integration credential cleanup, and backup deletion limitations.
