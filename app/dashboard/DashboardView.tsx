@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth, useClerk } from '@clerk/nextjs';
-import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { alpha2ToAlpha3, alpha3ToAlpha2, alpha2ToNumeric, getName, registerLocale } from 'i18n-iso-countries';
 import englishLocale from 'i18n-iso-countries/langs/en.json';
@@ -17,8 +17,8 @@ import VercelGitSettings from './VercelGitSettings';
 import ZappaWordmark from '../zappa-wordmark';
 import VerifiedBadge from './VerifiedBadge';
 import ProjectOnboarding from './ProjectOnboarding';
-import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { Dock, DockCard } from '@/components/ui/dock';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,7 +35,6 @@ import { CodeBlock, CodeBlockActions, CodeBlockContent, CodeBlockCopyButton, Cod
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import OverviewV1 from './OverviewV1';
 import ReportToolbar from './ReportToolbar';
 import AcquisitionSection from './AcquisitionSection';
@@ -61,43 +60,54 @@ import s from './dashboard.module.css';
 
 registerLocale(englishLocale);
 
-function ProjectNavigation({ children }: { children: ReactNode }) {
-  const { isMobile, setOpenMobile } = useSidebar();
+function DashboardDock({
+  tab,
+  activeSection,
+  onSelectAnalytics,
+  onSelectTab,
+}: {
+  tab: Tab;
+  activeSection: AnalyticsSection;
+  onSelectAnalytics: (section: AnalyticsSection) => void;
+  onSelectTab: (section: Tab) => void;
+}) {
+  const analyticsItems = NAV_GROUPS.flatMap((group) => group.items);
   return (
-    <aside
-      className={s.projectSidebar}
-      aria-label="Project navigation"
-      onClick={(event) => {
-        if (isMobile && (event.target as Element).closest('a, button')) setOpenMobile(false);
-      }}
-      onChange={(event) => {
-        if (isMobile && (event.target as Element).matches('select')) setOpenMobile(false);
-      }}
-      onKeyDown={(event) => {
-        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-        const items = Array.from(event.currentTarget.querySelectorAll<HTMLAnchorElement>('nav a[href]'));
-        const current = items.indexOf(document.activeElement as HTMLAnchorElement);
-        if (current < 0 || !items.length) return;
-        event.preventDefault();
-        const next = (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
-        items[next]?.focus();
-      }}
-    >
-      {children}
-    </aside>
-  );
-}
-
-function DashboardSidebarToggle() {
-  const { state, isMobile, openMobile } = useSidebar();
-  const expanded = isMobile ? openMobile : state === 'expanded';
-  return (
-    <SidebarTrigger
-      className={s.headerMenuTrigger}
-      aria-label={expanded ? 'Collapse dashboard navigation' : 'Expand dashboard navigation'}
-      aria-expanded={expanded}
-      title={expanded ? 'Collapse navigation' : 'Expand navigation'}
-    />
+    <nav className={s.dashboardDockLayer} aria-label="Dashboard navigation">
+      <Dock className={s.dashboardDock}>
+        {analyticsItems.map((item, index) => (
+          <DockCard
+            key={item.id}
+            id={String(index)}
+            href={`#${item.id}`}
+            label={item.label}
+            active={tab === 'analytics' && activeSection === item.id}
+            className={s.dashboardDockItem}
+            onClick={(event) => { event.preventDefault(); onSelectAnalytics(item.id); }}
+          >
+            <item.icon aria-hidden="true" />
+          </DockCard>
+        ))}
+        <span className={s.dashboardDockDivider} aria-hidden="true" />
+        {PROJECT_NAV.map((section, index) => {
+          const Icon = PROJECT_ICONS[section];
+          const label = section[0].toUpperCase() + section.slice(1);
+          return (
+            <DockCard
+              key={section}
+              id={String(analyticsItems.length + index)}
+              href={`#${section}`}
+              label={label}
+              active={tab === section}
+              className={s.dashboardDockItem}
+              onClick={(event) => { event.preventDefault(); onSelectTab(section); }}
+            >
+              <Icon aria-hidden="true" />
+            </DockCard>
+          );
+        })}
+      </Dock>
+    </nav>
   );
 }
 
@@ -1395,88 +1405,15 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
 
   return (
     <TooltipProvider>
-    <SidebarProvider defaultOpen={false} className={s.sidebarProvider} style={{ '--sidebar-width': '248px', '--sidebar-width-icon': '64px' } as CSSProperties}>
     <div className={`${s.dashboard} ${project || isDesignLab ? s.analyticsDashboard : ''}`}>
       <a className={s.skip} href="#main">
         Skip to content
       </a>
 
-      {project && (
-        <Sidebar collapsible="icon" className={s.sidebar16}>
-        <ProjectNavigation>
-          <div className={s.sidebarTop}>
-            <label className={s.sidebarSwitcher}>
-              <span className={s.srOnly}>Switch website</span>
-              <span className={s.sidebarSwitcherMark} aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span>
-              <select
-                value={selected}
-                onChange={(event) => {
-                  if (event.target.value === '__all__') {
-                    setShowProjects(true);
-                    setSelected('');
-                    router.push('/dashboard?view=projects');
-                  } else {
-                    router.push(`/dashboard/projects/${encodeURIComponent(event.target.value)}`);
-                  }
-                }}
-              >
-                <option value="__all__">All websites…</option>
-                {projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}
-              </select>
-              <ChevronIcon />
-            </label>
-          </div>
-          <div className={s.sidebarNavScroll}>
-          {NAV_GROUPS.map((group) => (
-            <Collapsible className={s.sidebarGroup} defaultOpen key={group.label}>
-              <CollapsibleTrigger className={s.sidebarCaption}>{group.label}</CollapsibleTrigger>
-              <CollapsibleContent>
-              <nav className={s.sidebarNav} aria-label={`${group.label} sections`}>
-                {group.items.map((item) => (
-                  <a
-                    key={item.id}
-                    href={`#${item.id}`}
-                    className={s.sidebarNavItem}
-                    aria-label={item.label}
-                    title={item.label}
-                    aria-current={tab === 'analytics' && activeSection === item.id ? 'page' : undefined}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      selectAnalyticsSection(item.id);
-                    }}
-                  >
-                    <item.icon className={s.navIcon} aria-hidden="true" />
-                    <span>{item.label}</span>
-                  </a>
-                ))}
-              </nav>
-              </CollapsibleContent>
-            </Collapsible>
-          ))}
-          <div className={s.sidebarGroup}>
-          <span className={s.sidebarCaption}>Project</span>
-          <nav className={s.sidebarNav} aria-label="Project settings">
-            {PROJECT_NAV.map((section) => {
-              const Icon = PROJECT_ICONS[section];
-              return (
-                <a key={section} href={`#${section}`} className={s.sidebarNavItem} aria-label={section[0].toUpperCase() + section.slice(1)} title={section[0].toUpperCase() + section.slice(1)} aria-current={tab === section ? 'page' : undefined} onClick={(event) => { event.preventDefault(); selectTab(section); }}>
-                  <Icon className={s.navIcon} aria-hidden="true" />
-                  <span>{section[0].toUpperCase() + section.slice(1)}</span>
-                </a>
-              );
-            })}
-          </nav>
-          </div>
-          </div>
-        </ProjectNavigation>
-        </Sidebar>
-      )}
-
       {!isDesignLab && (
       <header className={`${s.header} ${project ? s.analyticsHeader : ''}`}>
         <div className={s.headerInner}>
           <div className={s.headerIdentity}>
-            {project && <DashboardSidebarToggle />}
             <Link className={s.brand} href="/" aria-label="Zappa home"><ZappaWordmark /></Link>
           </div>
           <div className={s.account}>
@@ -2458,8 +2395,15 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
         </div>
       </footer>
       )}
+      {project && !isDesignLab && (
+        <DashboardDock
+          tab={tab}
+          activeSection={activeSection}
+          onSelectAnalytics={selectAnalyticsSection}
+          onSelectTab={selectTab}
+        />
+      )}
     </div>
-    </SidebarProvider>
     </TooltipProvider>
   );
 }
