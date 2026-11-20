@@ -137,6 +137,8 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
     () => (report?.series.filter((point) => point.visitors || point.sessions).length ?? 0) <= 2,
     [report],
   );
+  const acquisitionMax = Math.max(1, ...(report?.acquisition.slice(0, 5).map((row) => row.visitors) ?? []));
+  const landingPageMax = Math.max(1, ...(report?.landing_pages.slice(0, 5).map((row) => row.visitors) ?? []));
 
   useEffect(() => {
     const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -276,10 +278,16 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
                 </div>
                 <div className={s.insightRows} role="tabpanel" id="insight-tab-panel" aria-labelledby={`insight-tab-${overviewTab}`}>
                   {overviewTab === 'acquisition' && (report.acquisition.length ? report.acquisition.slice(0, 5).map((row, index) => (
-                    <div className={s.insightRow} key={`${row.source}-${row.medium}-${row.campaign}-${index}`}><span><strong>{row.source || 'Direct / unknown'}</strong><small>{row.medium || 'No medium'}{row.campaign ? ` · ${row.campaign}` : ''}</small></span><b>{display(row.visitors)}<small>visitors</small></b></div>
+                    <div className={`${s.insightRow} ${s.insightBarRow}`} key={`${row.source}-${row.medium}-${row.campaign}-${index}`}>
+                      <span className={s.insightBar} aria-hidden="true"><i style={{ width: `${Math.max(2, (row.visitors / acquisitionMax) * 100)}%` }} /></span>
+                      <span><strong>{row.source || 'Direct / unknown'}</strong><small>{row.medium || 'No medium'}{row.campaign ? ` · ${row.campaign}` : ''}</small></span><b>{display(row.visitors)}<small>visitors</small></b>
+                    </div>
                   )) : <p className={s.insightEmpty}>No acquisition data for this period yet.</p>)}
                   {overviewTab === 'pages' && (report.landing_pages.length ? report.landing_pages.slice(0, 5).map((row) => (
-                    <div className={s.insightRow} key={row.path}><span><strong>{displayPagePath(row.path)}</strong><small>Landing page</small></span><b>{display(row.visitors)}<small>visitors</small></b></div>
+                    <div className={`${s.insightRow} ${s.insightBarRow}`} key={row.path}>
+                      <span className={s.insightBar} aria-hidden="true"><i style={{ width: `${Math.max(2, (row.visitors / landingPageMax) * 100)}%` }} /></span>
+                      <span><strong>{displayPagePath(row.path)}</strong><small>Landing page</small></span><b>{display(row.visitors)}<small>visitors</small></b>
+                    </div>
                   )) : <p className={s.insightEmpty}>No landing page data for this period yet.</p>)}
                   {overviewTab === 'activity' && (report.recent_activity.length ? report.recent_activity.slice(0, 5).map((row, index) => (
                     <div className={s.insightRow} key={`${row.occurred_at}-${row.path}-${index}`}><span><strong>{row.name || 'Page view'}</strong><small>{displayPagePath(row.path)}</small></span><b className={s.insightTime}>{new Date(row.occurred_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</b></div>

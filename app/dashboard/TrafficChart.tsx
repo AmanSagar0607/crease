@@ -69,7 +69,7 @@ export default function TrafficChart({
               dataKey="date"
               interval={Math.max(0, Math.ceil(data.length / 6) - 1)}
               tick={{ fill: 'var(--muted)', fontSize: 12 }}
-              tickFormatter={(date: string) => date.slice(5)}
+              tickFormatter={(date: string) => new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: '2-digit', timeZone: 'UTC' })}
               tickLine={false}
               axisLine={false}
               tickMargin={10}

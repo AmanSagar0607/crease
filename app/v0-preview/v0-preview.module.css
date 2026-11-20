@@ -33,8 +33,10 @@
   --soft: #F7F6F2;
   --blue: #C0391B;
   --focus: #C0391B;
-  --accent-line: #EB3514;
-  --chart-muted: #817D75;
+  --accent-line: #4B8FB8;
+  --chart-muted: #CE7259;
+  --device-fill: #C8DCE7;
+  --device-track: #EAD8D1;
   min-height: 100vh;
   background: var(--background);
   color: var(--foreground);
@@ -97,8 +99,10 @@
   --soft: #1A1A1A;
   --blue: #FF5A3A;
   --focus: #FF765C;
-  --accent-line: #FF5A3A;
-  --chart-muted: #AAA69D;
+  --accent-line: #8ACBFA;
+  --chart-muted: #E78468;
+  --device-fill: #355269;
+  --device-track: #6B4339;
 }
 
 .layout { min-height: 100vh; background: var(--background); }
