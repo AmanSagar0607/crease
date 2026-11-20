@@ -8,8 +8,66 @@ import ThemeToggle from './theme-toggle';
 import ZappaWordmark from './zappa-wordmark';
 import s from './landing.module.css';
 
-export default function LandingNav() {
+type AuthLinkProps = { mobile?: boolean; onNavigate?: () => void };
+
+function ClerkAuthLinks({ mobile = false, onNavigate }: AuthLinkProps) {
   const { isLoaded, isSignedIn } = useAuth();
+  if (!isLoaded) return null;
+
+  if (mobile) {
+    return (
+      <div className={s.mobileMenuActions}>
+        {isSignedIn ? (
+          <Link className={s.mobileMenuStart} href="/dashboard" onClick={onNavigate}>
+            Dashboard <ArrowUpRight aria-hidden="true" />
+          </Link>
+        ) : (
+          <>
+            <Link className={s.mobileMenuLogin} href="/sign-in" onClick={onNavigate}>Log in</Link>
+            <Link className={s.mobileMenuStart} href="/sign-up" onClick={onNavigate}>
+              Start free <ArrowUpRight aria-hidden="true" />
+            </Link>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return isSignedIn ? (
+    <Link className={s.navAction} href="/dashboard">Dashboard</Link>
+  ) : (
+    <>
+      <Link className={s.navQuiet} href="/sign-in">Log in</Link>
+      <Link className={s.navAction} href="/sign-up">Start free</Link>
+    </>
+  );
+}
+
+function PublicAuthLinks({ mobile = false, onNavigate }: AuthLinkProps) {
+  if (mobile) {
+    return (
+      <div className={s.mobileMenuActions}>
+        <Link className={s.mobileMenuLogin} href="/sign-in" onClick={onNavigate}>Log in</Link>
+        <Link className={s.mobileMenuStart} href="/sign-up" onClick={onNavigate}>
+          Start free <ArrowUpRight aria-hidden="true" />
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <Link className={s.navQuiet} href="/sign-in">Log in</Link>
+      <Link className={s.navAction} href="/sign-up">Start free</Link>
+    </>
+  );
+}
+
+function AuthLinks({ enabled, ...props }: AuthLinkProps & { enabled: boolean }) {
+  return enabled ? <ClerkAuthLinks {...props} /> : <PublicAuthLinks {...props} />;
+}
+
+export default function LandingNav({ authEnabled }: { authEnabled: boolean }) {
   const [open, setOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -47,14 +105,7 @@ export default function LandingNav() {
         </div>
         <div className={s.navEnd}>
           <span className={s.navTheme}><ThemeToggle /></span>
-          {isLoaded && (isSignedIn ? (
-            <Link className={s.navAction} href="/dashboard">Dashboard</Link>
-          ) : (
-            <>
-              <Link className={s.navQuiet} href="/sign-in">Log in</Link>
-              <Link className={s.navAction} href="/sign-up">Start free</Link>
-            </>
-          ))}
+          <AuthLinks enabled={authEnabled} />
           <button
             ref={toggleRef}
             className={s.mobileMenuToggle}
@@ -83,16 +134,7 @@ export default function LandingNav() {
             <Link href="/waitlist" onClick={close}>Early access</Link>
             <a href="https://github.com/AmanSagar0607/Zappa" target="_blank" rel="noreferrer" onClick={close}>GitHub <ArrowUpRight aria-hidden="true" /></a>
             <div className={s.mobileMenuTheme}><ThemeToggle /></div>
-            {isLoaded && <div className={s.mobileMenuActions}>
-              {isSignedIn ? (
-                <Link className={s.mobileMenuStart} href="/dashboard" onClick={close}>Dashboard <ArrowUpRight aria-hidden="true" /></Link>
-              ) : (
-                <>
-                  <Link className={s.mobileMenuLogin} href="/sign-in" onClick={close}>Log in</Link>
-                  <Link className={s.mobileMenuStart} href="/sign-up" onClick={close}>Start free <ArrowUpRight aria-hidden="true" /></Link>
-                </>
-              )}
-            </div>}
+            <AuthLinks enabled={authEnabled} mobile onNavigate={close} />
           </div>
         </div>
       )}

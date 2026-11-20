@@ -4,6 +4,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import ThemeProvider from './theme-provider';
 import { Toaster } from '@/components/ui/sonner';
+import { clerkConfigured } from '@/lib/clerk-config';
 
 export const metadata: Metadata = {
   title: 'Zappa — Calm analytics for independent developers',
@@ -34,6 +35,8 @@ const clerkAppearance = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const app = <ThemeProvider>{children}<Toaster /></ThemeProvider>;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -42,9 +45,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         </Script>
       </head>
       <body>
-        <ClerkProvider appearance={clerkAppearance}>
-          <ThemeProvider>{children}<Toaster /></ThemeProvider>
-        </ClerkProvider>
+        {clerkConfigured ? <ClerkProvider appearance={clerkAppearance}>{app}</ClerkProvider> : app}
       </body>
     </html>
   );

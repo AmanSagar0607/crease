@@ -5,6 +5,7 @@ import LandingNav from './landing-nav';
 import InstallSnippet from './install-snippet';
 import LandingProductPreview from './v0-preview/LandingProductPreview';
 import s from './landing.module.css';
+import { clerkConfigured } from '@/lib/clerk-config';
 
 const repo = 'https://github.com/AmanSagar0607/Zappa';
 
@@ -89,7 +90,7 @@ export default function Home() {
         Skip to content
       </a>
 
-      <LandingNav />
+      <LandingNav authEnabled={clerkConfigured} />
 
       <main id="main">
         <section className={s.hero}>
