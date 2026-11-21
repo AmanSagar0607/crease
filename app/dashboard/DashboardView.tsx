@@ -1710,6 +1710,7 @@ export default function DashboardView({ projectId, mode = 'standard' }: Dashboar
                         <>
                           <OverviewV1
                             key={selected}
+                            projectId={selected}
                             report={overviewReport.report}
                             loading={overviewReport.loading}
                             error={overviewReport.error}

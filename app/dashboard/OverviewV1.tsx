@@ -7,6 +7,7 @@ import s from './overview-v1.module.css';
 import TrafficChart from './TrafficChart';
 
 type Props = {
+  projectId?: string;
   report: Report | null;
   loading: boolean;
   error: string;
@@ -119,7 +120,22 @@ function AnimatedMetric({ value, rate = false, active, delay = 0 }: {
   return <span ref={counterRef} aria-label={formatMetric(value, rate)}>{formatMetric(value == null ? null : current, rate)}</span>;
 }
 
-export default function OverviewV1({ report, loading, error, onRetry, model, conversionEvent, audience, previewMotion = false, onNavigate }: Props) {
+export default function OverviewV1({ projectId, report, loading, error, onRetry, model, conversionEvent, audience, previewMotion = false, onNavigate }: Props) {
+  const [aiTab, setAiTab] = useState<'referrals' | 'crawlers'>('referrals');
+  const [newCrawlerKey, setNewCrawlerKey] = useState('');
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [keyError, setKeyError] = useState('');
+  async function rotateCrawlerKey() {
+    setKeyBusy(true); setKeyError(''); setNewCrawlerKey('');
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId ?? '')}/ai-crawler-key`, { method: 'POST', credentials: 'same-origin' });
+      if (!response.ok) throw new Error(`Key generation failed (${response.status}).`);
+      const payload = await response.json() as { crawler_key?: string };
+      if (!payload.crawler_key) throw new Error('The server did not return a crawler key.');
+      setNewCrawlerKey(payload.crawler_key);
+    } catch (reason) { setKeyError(reason instanceof Error ? reason.message : 'Could not generate a crawler key.'); }
+    finally { setKeyBusy(false); }
+  }
   const [sourceSearch, setSourceSearch] = useState('');
   const [overviewTab, setOverviewTab] = useState<'acquisition' | 'pages' | 'activity'>('acquisition');
   const [chartVisible, setChartVisible] = useState(false);
@@ -296,20 +312,24 @@ export default function OverviewV1({ report, loading, error, onRetry, model, con
               </section>
 
               <section className={`${s.panel} ${s.aiPreview}`} aria-labelledby="ai-preview-title">
-                <div className={s.sectionHead}><div><span className={s.eyebrow}>COMING SOON · DEMO</span><h3 id="ai-preview-title">AI answers</h3><p>Example traffic from AI assistants</p></div></div>
-                <div className={s.aiPreviewChart} aria-label="Sample AI referral trend">
-                  <svg viewBox="0 0 360 126" role="img" aria-hidden="true" preserveAspectRatio="none">
-                    <path className={s.aiGridLine} d="M0 24H360M0 60H360M0 96H360" />
-                    <path className={s.aiLineOne} d="M0 70 C20 42 34 84 54 62 S84 50 100 74 S128 78 146 39 S174 60 194 58 S220 100 240 58 S268 75 286 54 S320 47 336 30 S350 61 360 24" />
-                    <path className={s.aiLineTwo} d="M0 108 C20 106 32 82 48 99 S76 113 92 104 S120 106 138 80 S166 97 184 104 S210 92 228 100 S256 112 274 83 S304 101 320 88 S344 100 360 72" />
-                    <path className={s.aiLineThree} d="M0 115 C28 115 40 109 58 112 S90 105 110 114 S146 108 164 112 S198 117 216 108 S246 111 266 114 S300 104 318 110 S344 102 360 105" />
-                  </svg>
-                  <div className={s.aiAxis}><span>Oct 24</span><span>Nov 5</span><span>Nov 20</span></div>
+                <div className={s.sectionHead}><div><span className={s.eyebrow}>AI TRAFFIC</span><h3 id="ai-preview-title">AI referrals &amp; crawlers</h3><p>Observed in the selected date range using {model.replaceAll('_', ' ')} attribution.</p></div></div>
+                <div className={s.insightTabs} role="tablist" aria-label="AI traffic views">
+                  <button type="button" role="tab" aria-selected={aiTab === 'referrals'} onClick={() => setAiTab('referrals')}>AI referrals</button>
+                  <button type="button" role="tab" aria-selected={aiTab === 'crawlers'} onClick={() => setAiTab('crawlers')}>AI crawlers</button>
                 </div>
-                <div className={s.aiSourceList}>
-                  {([['ChatGPT', '386'], ['Claude', '30'], ['Gemini', '23'], ['DuckDuckGo', '6']] as const).map(([name, count], index) => <div className={s.aiSource} key={name}><span><i data-tone={index} />{name}</span><b>{count}</b></div>)}
-                </div>
-                <p className={s.demoNote}>Illustrative sample values. Live AI referral reporting is not connected yet.</p>
+                {aiTab === 'referrals' ? <>
+                  <p><strong>{display(report?.ai_traffic.referrals.metrics.visitors ?? 0)}</strong> visitors · <strong>{display(report?.ai_traffic.referrals.metrics.sessions ?? 0)}</strong> sessions · <strong>{display(report?.ai_traffic.referrals.metrics.pageviews ?? 0)}</strong> page views</p>
+                  {(report?.ai_traffic.referrals.platforms ?? []).length ? <div className={s.aiSourceList}>{report!.ai_traffic.referrals.platforms.slice(0, 5).map((row) => <div className={s.aiSource} key={`${row.platform}-${row.referrer_hostname}`}><span><i />{row.platform}<small>{row.referrer_hostname}</small></span><b>{display(row.visitors)}</b></div>)}</div> : <p className={s.insightEmpty}>No AI traffic detected yet.</p>}
+                </> : <>
+                  <p><strong>{display(report?.ai_traffic.crawlers.metrics.requests ?? 0)}</strong> requests · <strong>{display(report?.ai_traffic.crawlers.metrics.unique_crawlers ?? 0)}</strong> crawler types · {report?.ai_traffic.crawlers.metrics.pages ?? 0} pages</p>
+                  {(report?.ai_traffic.crawlers.platforms ?? []).length ? <div className={s.aiSourceList}>{report!.ai_traffic.crawlers.platforms.slice(0, 5).map((row) => <div className={s.aiSource} key={row.crawler}><span><i />{row.crawler}<small>{row.category} · {row.verification_status}</small></span><b>{display(row.requests)}</b></div>)}</div> : <p className={s.insightEmpty}>No AI crawler activity detected yet.</p>}
+                  {report?.ai_traffic.crawlers.recent.slice(0, 3).map((row) => <div className={s.insightRow} key={row.request_id}><span><strong>{row.crawler} · {row.path}</strong><small>{row.hostname} · {row.method} {row.status_code} · unverified UA match</small></span><b className={s.insightTime}>{new Date(row.requested_at).toLocaleDateString()}</b></div>)}
+                  {projectId && <button type="button" onClick={() => void rotateCrawlerKey()} disabled={keyBusy}>{keyBusy ? 'Generating…' : 'Generate / rotate private crawler key'}</button>}
+                  {keyError && <p role="alert">{keyError}</p>}
+                  {newCrawlerKey && <p role="status">Copy this private key now; it is shown once: <code>{newCrawlerKey}</code></p>}
+                  {!report?.ai_traffic.crawler_key_configured && !newCrawlerKey && <p className={s.demoNote}>Add the generated key only to your site’s server environment. User-Agent matches are unverified.</p>}
+                </>}
+                <div className={s.aiPreviewChart} aria-label="AI traffic over time">{report?.ai_traffic.series.map((point) => <span key={point.date} title={`${point.date}: ${point.referral_visitors} referral visitors, ${point.crawler_requests} crawler requests`} style={{ display: 'inline-block', height: `${Math.max(2, Math.min(36, point.referral_visitors + point.crawler_requests))}px`, width: `${Math.max(2, 92 / Math.max(1, report.ai_traffic.series.length))}%`, marginRight: 2, background: 'var(--accent-line)', verticalAlign: 'bottom' }} />)}</div>
               </section>
             </div>
 

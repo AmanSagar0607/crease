@@ -170,6 +170,8 @@ export default function AcquisitionSection({
         </div>
       </header>
 
+      <aside className={s.note} aria-label="AI referral sources"><strong>AI referrals</strong> · {(report?.ai_traffic.referrals.platforms ?? []).length ? report!.ai_traffic.referrals.platforms.slice(0, 5).map((row) => `${row.platform} (${row.visitors} visitors)`).join(' · ') : 'No AI traffic detected yet.'}</aside>
+
       <div className={s.tools}>
         <label>
           Search source, medium or campaign

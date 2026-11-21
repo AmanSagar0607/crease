@@ -13,6 +13,10 @@
     "./next": {
       "types": "./next.d.ts",
       "default": "./next.js"
+    },
+    "./crawler": {
+      "types": "./crawler.d.ts",
+      "default": "./crawler.js"
     }
   },
   "files": [
@@ -20,6 +24,8 @@
     "index.d.ts",
     "next.js",
     "next.d.ts",
+    "crawler.js",
+    "crawler.d.ts",
     "README.md"
   ],
   "peerDependencies": {

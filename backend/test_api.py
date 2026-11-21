@@ -54,7 +54,7 @@ class ApiTest(unittest.TestCase):
         self._verifier_patch = patch.object(main, 'verify_clerk_token', side_effect=lambda token: self._verified_claims[token] if token in self._verified_claims else (_ for _ in ()).throw(__import__('fastapi').HTTPException(401, 'Invalid test token')))
         self._verifier_patch.start()
         with main.engine.begin() as db:
-            for table in ('geo_forward_replays', 'waitlist_signups', 'rate_limits', 'project_goals', 'event_properties', 'project_property_keys', 'analytics_sessions', 'events', 'project_repositories', 'project_vercel', 'vercel_connections', 'github_connections', 'projects', 'clerk_profiles'): db.execute(text('DELETE FROM '+table))
+            for table in ('ai_crawler_requests', 'geo_forward_replays', 'waitlist_signups', 'rate_limits', 'project_goals', 'event_properties', 'project_property_keys', 'analytics_sessions', 'events', 'project_repositories', 'project_vercel', 'vercel_connections', 'github_connections', 'projects', 'clerk_profiles'): db.execute(text('DELETE FROM '+table))
 
     def tearDown(self):
         self._verifier_patch.stop()
@@ -79,6 +79,27 @@ class ApiTest(unittest.TestCase):
         signature = hmac.new(b'test-cloudflare-secret-with-at-least-32-bytes', canonical, hashlib.sha256).hexdigest()
         headers = {'origin':'https://example.com','x-Zappa-key':write_key,'x-zappa-geo-timestamp':timestamp,'x-zappa-geo-nonce':nonce,'x-zappa-geo-envelope':envelope,'x-zappa-geo-signature':signature}
         return body, headers
+
+    def test_ai_crawler_key_rotation_and_ingestion_are_deduplicated_and_tenant_scoped(self):
+        self.client.cookies.set('__session', 'token')
+        project = self.client.post('/api/projects', json={'name':'Crawler site','domain':'example.com'}, headers={'origin':main.FRONTEND_URL}).json()
+        other = self.client.post('/api/projects', json={'name':'Other','domain':'other.example'}, headers={'origin':main.FRONTEND_URL}).json()
+        key_response = self.client.post(f"/api/projects/{project['id']}/ai-crawler-key", headers={'origin':main.FRONTEND_URL})
+        self.assertEqual(key_response.status_code, 201, key_response.text)
+        key = key_response.json()['crawler_key']
+        self.assertTrue(key.startswith('ZappaCrawler_'))
+        record = {'requestId':'test-request-001','timestamp':main.stamp(main.now()),'hostname':'example.com','path':'/docs','method':'GET','statusCode':200,'userAgent':'GPTBot/1.0'}
+        payload = {'projectId':project['id'],'requests':[record]}
+        response = self.client.post('/api/ai-crawlers', json=payload, headers={'x-zappa-crawler-key':key})
+        self.assertEqual(response.status_code, 202, response.text)
+        duplicate = self.client.post('/api/ai-crawlers', json=payload, headers={'x-zappa-crawler-key':key})
+        self.assertEqual(duplicate.json()['accepted'], 0)
+        wrong_tenant = self.client.post('/api/ai-crawlers', json={'projectId':other['id'],'requests':[record]}, headers={'x-zappa-crawler-key':key})
+        self.assertEqual(wrong_tenant.status_code, 401)
+        private_data = self.client.get(f"/api/projects/{project['id']}/ai-crawlers?start={main.now().date()}&end={main.now().date()}")
+        self.assertEqual(private_data.status_code, 200, private_data.text)
+        self.assertEqual(private_data.json()['total_rows'], 1)
+        self.assertEqual(private_data.json()['rows'][0]['verification_status'], 'unverified')
 
     def test_cloudflare_geo_hmac_stores_normalized_snapshot_and_rejects_replay(self):
         self.client.cookies.set('__session', 'token')
