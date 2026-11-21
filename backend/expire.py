@@ -35,7 +35,7 @@ def enforce_retention(db_engine=engine, log=logger):
         present = {
             name: table_exists(db, name)
             for name in ('payment_integrations', 'payment_webhook_events', 'payments',
-                         'attribution_touchpoints', 'event_properties')
+                         'attribution_touchpoints', 'event_properties', 'ai_crawler_requests')
         }
         projects = db.execute(text('SELECT id, name, retention_days FROM projects ORDER BY id')).mappings().all()
         for project in projects:
@@ -53,6 +53,11 @@ def enforce_retention(db_engine=engine, log=logger):
                 db.execute(
                     text('DELETE FROM event_properties WHERE project_id=:id AND event_id IN (SELECT id FROM events WHERE project_id=:id AND occurred_at<:cutoff)'),
                     {'id': project['id'], 'cutoff': cutoff},
+                )
+            if present['ai_crawler_requests']:
+                db.execute(
+                    text('DELETE FROM ai_crawler_requests WHERE project_id=:id AND requested_at<:cutoff'),
+                    {'id': project['id'], 'cutoff': now() - timedelta(days=project['retention_days'])},
                 )
             events = db.execute(
                 text('DELETE FROM events WHERE project_id=:id AND occurred_at<:cutoff'),

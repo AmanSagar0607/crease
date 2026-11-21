@@ -129,6 +129,95 @@ export type SeriesPoint = {
   previous_sessions: number;
 };
 
+export type AiReferralMetrics = {
+  visitors: number;
+  sessions: number;
+  pageviews: number;
+  conversions: number | null;
+  conversion_rate: number | null;
+};
+
+export type AiReferralRow = AiReferralMetrics & {
+  platform: string;
+  referrer_hostname: string;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+};
+
+export type AiLandingPageRow = {
+  path: string;
+  visitors: number;
+  sessions: number;
+  conversions: number | null;
+  conversion_rate: number | null;
+};
+
+export type AiCrawlerMetrics = {
+  requests: number;
+  unique_crawlers: number;
+  pages: number;
+  latest_at: string | null;
+};
+
+export type AiCrawlerPlatformRow = {
+  crawler: string;
+  organization: string;
+  category: string;
+  requests: number;
+  pages: number;
+  last_seen: string;
+  verification_status: 'unverified' | 'verified';
+  detection_method: string;
+};
+
+export type AiCrawlerPageRow = {
+  path: string;
+  requests: number;
+  crawlers: number;
+  last_seen: string;
+};
+
+export type AiCrawlerRecentRow = {
+  request_id: string;
+  requested_at: string;
+  crawler: string;
+  organization: string;
+  category: string;
+  hostname: string;
+  path: string;
+  method: string;
+  status_code: number;
+  user_agent: string;
+  detection_method: string;
+  verification_status: 'unverified' | 'verified';
+};
+
+export type AiTrafficPoint = {
+  date: string;
+  referral_visitors: number;
+  referral_sessions: number;
+  referral_pageviews: number;
+  crawler_requests: number;
+};
+
+export type AiTrafficReport = {
+  model: AttributionModel;
+  crawler_key_configured: boolean;
+  referrals: {
+    metrics: AiReferralMetrics;
+    platforms: AiReferralRow[];
+    landing_pages: AiLandingPageRow[];
+  };
+  crawlers: {
+    metrics: AiCrawlerMetrics;
+    platforms: AiCrawlerPlatformRow[];
+    top_pages: AiCrawlerPageRow[];
+    recent: AiCrawlerRecentRow[];
+  };
+  series: AiTrafficPoint[];
+};
+
 export type Report = {
   start: string;
   end: string;
@@ -141,6 +230,7 @@ export type Report = {
   campaigns: CampaignRow[];
   landing_pages: LandingRow[];
   recent_activity: RecentRow[];
+  ai_traffic: AiTrafficReport;
   revenue_available: boolean;
 };
 

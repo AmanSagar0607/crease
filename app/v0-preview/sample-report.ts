@@ -54,6 +54,13 @@ export function createSampleReport(): Report {
       { name: 'signup', path: '/sign-up', occurred_at: `${dateOffset(-1)}T16:41:00.000Z` },
       { name: 'pageview', path: '/pricing', occurred_at: `${dateOffset(-1)}T16:36:00.000Z` },
     ],
+    ai_traffic: {
+      model: 'last_non_direct',
+      crawler_key_configured: false,
+      referrals: { metrics: { visitors: 0, sessions: 0, pageviews: 0, conversions: null, conversion_rate: null }, platforms: [], landing_pages: [] },
+      crawlers: { metrics: { requests: 0, unique_crawlers: 0, pages: 0, latest_at: null }, platforms: [], top_pages: [], recent: [] },
+      series: [],
+    },
     revenue_available: false,
   };
 }
