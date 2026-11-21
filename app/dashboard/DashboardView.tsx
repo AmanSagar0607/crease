@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth, useClerk } from '@clerk/nextjs';
-import { clerkConfigured } from '@/lib/clerk-config';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { alpha2ToAlpha3, alpha3ToAlpha2, alpha2ToNumeric, getName, registerLocale } from 'i18n-iso-countries';
@@ -792,10 +791,11 @@ function GeoList({ rows, loading, error, totalRows, onPage, onBack, backLabel, o
 
 /* ---------- Main component ---------- */
 
-type DashboardViewProps = { projectId?: string; mode?: 'standard' | 'design-lab' };
+type DashboardContentProps = { projectId?: string; mode?: 'standard' | 'design-lab' };
+type DashboardViewProps = DashboardContentProps & { clerkEnabled: boolean };
 
-export default function DashboardView(props: DashboardViewProps) {
-  if (!clerkConfigured) {
+export default function DashboardView({ clerkEnabled, ...props }: DashboardViewProps) {
+  if (!clerkEnabled) {
     return (
       <main className={s.main}>
         <div className={s.statePanel} data-tone="error" role="alert">
@@ -810,7 +810,7 @@ export default function DashboardView(props: DashboardViewProps) {
   return <AuthenticatedDashboardView {...props} />;
 }
 
-function AuthenticatedDashboardView({ projectId, mode = 'standard' }: DashboardViewProps) {
+function AuthenticatedDashboardView({ projectId, mode = 'standard' }: DashboardContentProps) {
   const isDesignLab = mode === 'design-lab';
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
