@@ -247,6 +247,29 @@ class ApiTest(unittest.TestCase):
         with main.engine.connect() as db:
             self.assertEqual(db.execute(text('SELECT count(*) FROM attribution_touchpoints WHERE project_id=:id'), {'id':p['id']}).scalar_one(),0)
 
+    def test_overview_ai_traffic_daily_series_handles_iso_string_timestamps(self):
+        self.client.cookies.set('__session', 'token')
+        project = self.client.post('/api/projects', json={'name':'AI overview','domain':'example.com'}, headers={'origin':main.FRONTEND_URL}).json()
+        self.verify_project(project['id'])
+        day = main.now().date() - timedelta(days=2)
+        timestamp = main.stamp(datetime.combine(day, datetime.min.time(), timezone.utc) + timedelta(hours=9))
+        event = {'id':'ai-referral','name':'pageview','timestamp':timestamp,'path':'/from-ai','visitorId':'ai-visitor','referrer':'chatgpt.com'}
+        ingested = self.client.post('/api/events', json={'projectId':project['id'],'events':[event]}, headers={'origin':'https://example.com','x-Zappa-key':project['write_key']})
+        self.assertEqual(ingested.status_code, 200, ingested.text)
+        self.assertEqual(ingested.json()['accepted'], 1)
+
+        response = self.client.get(f"/api/projects/{project['id']}/overview?start={day}&end={day}")
+        self.assertEqual(response.status_code, 200, response.text)
+        ai_traffic = response.json()['ai_traffic']
+        self.assertEqual(ai_traffic['referrals']['metrics']['visitors'], 1)
+        self.assertEqual(ai_traffic['series'], [{
+            'date': day.isoformat(),
+            'referral_visitors': 1,
+            'referral_sessions': 1,
+            'referral_pageviews': 1,
+            'crawler_requests': 0,
+        }])
+
     def test_overview_utc_ranges_attribution_and_isolation(self):
         self.client.cookies.set('__session', 'token')
         p = self.client.post('/api/projects', json={'name':'Overview','domain':'example.com'}, headers={'origin':main.FRONTEND_URL}).json()

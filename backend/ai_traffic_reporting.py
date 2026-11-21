@@ -131,13 +131,13 @@ def report(db, project_id, start_date, end_date, model, conversion_event=None, c
 
     referral_daily = db.execute(text(f"""{attribution},
       e AS (
-        SELECT CAST(e.occurred_at AT TIME ZONE 'UTC' AS date) AS day, COUNT(DISTINCT e.visitor_id) AS visitors,
+        SELECT CAST(CAST(e.occurred_at AS TIMESTAMPTZ) AT TIME ZONE 'UTC' AS date) AS day, COUNT(DISTINCT e.visitor_id) AS visitors,
           COUNT(*) FILTER (WHERE e.name='pageview') AS pageviews
         FROM events e JOIN ai_visitors a ON a.visitor_id=e.visitor_id
         WHERE e.project_id=:project AND e.occurred_at>=:start AND e.occurred_at<:end
         GROUP BY 1
       ), s AS (
-        SELECT CAST(s.started_at AT TIME ZONE 'UTC' AS date) AS day, COUNT(*) AS sessions
+        SELECT CAST(CAST(s.started_at AS TIMESTAMPTZ) AT TIME ZONE 'UTC' AS date) AS day, COUNT(*) AS sessions
         FROM analytics_sessions s JOIN ai_visitors a ON a.visitor_id=s.visitor_id
         WHERE s.project_id=:project AND s.started_at>=:start AND s.started_at<:end
         GROUP BY 1
