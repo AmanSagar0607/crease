@@ -24,6 +24,7 @@ export default function CampaignsSection({ range, report, loading, error, onRetr
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'visitors', dir: 'desc' });
 
   const rows = report?.campaigns ?? [];
+  const aiReferralRows = report?.ai_traffic?.referrals?.platforms;
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
@@ -84,7 +85,7 @@ export default function CampaignsSection({ range, report, loading, error, onRetr
         </div>
       </header>
 
-      <aside className={s.note} aria-label="AI referral sources"><strong>AI referrals</strong> · {(report?.ai_traffic.referrals.platforms ?? []).length ? report!.ai_traffic.referrals.platforms.slice(0, 5).map((row) => `${row.platform} (${row.visitors} visitors)`).join(' · ') : 'No AI traffic detected yet.'}</aside>
+      <aside className={s.note} aria-label="AI referral sources"><strong>AI referrals</strong> · {(aiReferralRows ?? []).length ? aiReferralRows!.slice(0, 5).map((row) => `${row.platform} (${row.visitors} visitors)`).join(' · ') : (aiReferralRows ? 'No AI traffic detected yet.' : 'AI traffic report is not available from the backend yet.')}</aside>
 
       <div className={s.tools}>
         <label>
