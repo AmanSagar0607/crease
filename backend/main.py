@@ -303,6 +303,13 @@ async def geoip_update_loop():
 
 @app.on_event('startup')
 async def start_retention_scheduler():
+    if os.getenv('RUN_DB_MIGRATIONS_ON_STARTUP', 'false').lower() == 'true':
+        from alembic import command
+        from alembic.config import Config
+
+        config = Config(str(Path(__file__).with_name('alembic.ini')))
+        retention_log.info('running Alembic migrations before startup')
+        await asyncio.to_thread(command.upgrade, config, 'head')
     if RETENTION_INTERVAL_HOURS <= 0:
         retention_log.info('scheduled retention disabled')
         return
