@@ -39,6 +39,8 @@ from sqlalchemy.exc import IntegrityError
 from github_install import create_install_pr, enable_tracking_pr, installation_status
 from payment_adapters import StripeAdapter
 import overview_reporting
+import ai_traffic
+import ai_traffic_reporting
 from cryptography.fernet import Fernet, InvalidToken
 
 load_dotenv(Path(__file__).with_name('.env'))
@@ -301,6 +303,13 @@ async def geoip_update_loop():
 
 @app.on_event('startup')
 async def start_retention_scheduler():
+    if os.getenv('RUN_DB_MIGRATIONS_ON_STARTUP', 'false').lower() == 'true':
+        from alembic import command
+        from alembic.config import Config
+
+        config = Config(str(Path(__file__).with_name('alembic.ini')))
+        retention_log.info('running Alembic migrations before startup')
+        await asyncio.to_thread(command.upgrade, config, 'head')
     if RETENTION_INTERVAL_HOURS <= 0:
         retention_log.info('scheduled retention disabled')
         return
@@ -322,6 +331,7 @@ async def stop_retention_scheduler():
 def now(): return datetime.now(timezone.utc)
 def digest(value): return hashlib.sha256(value.encode()).hexdigest()
 def new_write_key(): return 'Zappa_' + secrets.token_urlsafe(24)
+def new_ai_crawler_key(): return 'ZappaCrawler_' + secrets.token_urlsafe(32)
 def new_verification_token(): return secrets.token_urlsafe(24)
 def stamp(value): return value.isoformat()
 
@@ -717,6 +727,14 @@ async def rotate_write_key(project_id: str, user=Depends(session_user)):
         db.execute(text('UPDATE projects SET write_key_hash=:key_hash WHERE id=:id'), {'key_hash':digest(write_key),'id':project_id})
     return {'write_key': write_key}
 
+@app.post('/api/projects/{project_id}/ai-crawler-key', status_code=201)
+async def rotate_ai_crawler_key(project_id: str, user=Depends(session_user)):
+    key = new_ai_crawler_key()
+    with engine.begin() as db:
+        owned(db, project_id, user['id'])
+        db.execute(text('UPDATE projects SET ai_crawler_key_hash=:hash WHERE id=:id'), {'hash':digest(key),'id':project_id})
+    return {'crawler_key': key}
+
 def verification_record(token): return 'Zappa-site-verification=' + token
 
 async def dns_has_token(domain, token):
@@ -810,6 +828,46 @@ class Batch(BaseModel):
     projectId: str = Field(max_length=36)
     events: list[Event] = Field(min_length=1,max_length=20)
 
+@app.post('/api/ai-crawlers', status_code=202)
+async def ingest_ai_crawlers(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, 'Invalid JSON')
+    if not isinstance(payload, dict) or not isinstance(payload.get('requests'), list) or len(payload['requests']) > 20:
+        raise HTTPException(422, 'Expected up to 20 crawler requests')
+    project_id = payload.get('projectId')
+    key = request.headers.get('x-zappa-crawler-key', '')
+    if not isinstance(project_id, str) or not isinstance(key, str) or len(key) > 128:
+        raise HTTPException(401, 'Invalid credentials')
+    with engine.begin() as db:
+        project = db.execute(text('SELECT domain,ai_crawler_key_hash FROM projects WHERE id=:id'), {'id':project_id}).mappings().first()
+        if not project or not project['ai_crawler_key_hash'] or not secrets.compare_digest(digest(key), project['ai_crawler_key_hash']):
+            raise HTTPException(401, 'Invalid credentials')
+        accepted = 0
+        for item in payload['requests']:
+            if not isinstance(item, dict): continue
+            ua = item.get('userAgent', '')
+            found = ai_traffic.classify_crawler(ua)
+            if not found: continue
+            host = item.get('hostname', '')
+            path = item.get('path', '')
+            method = item.get('method', '')
+            request_id = item.get('requestId', '')
+            try:
+                dt = datetime.fromisoformat((item.get('requestedAt') or item.get('timestamp') or '').replace('Z', '+00:00'))
+                status = int(item.get('statusCode'))
+            except (ValueError, TypeError, AttributeError): continue
+            if dt.tzinfo is None or abs((now()-dt.astimezone(timezone.utc)).total_seconds()) > 86400: continue
+            if not isinstance(host, str) or host.lower().rstrip('.') not in {project['domain'], 'www.'+project['domain']}: continue
+            if not isinstance(path, str) or not re.fullmatch(r'/[^?#\s]{0,510}', path) or '..' in path: continue
+            if method not in ('GET','HEAD','POST','PUT','DELETE','OPTIONS','PATCH') or not isinstance(request_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,64}',request_id): continue
+            if status < 100 or status > 599: continue
+            inserted = db.execute(text('''INSERT INTO ai_crawler_requests (project_id,request_id,requested_at,crawler_name,organization,category,hostname,path,method,status_code,user_agent,detection_method,verification_status) VALUES (:project,:request_id,:at,:crawler,:organization,:category,:host,:path,:method,:status,:ua,:detection,:verification) ON CONFLICT (project_id,request_id) DO NOTHING'''), {'project':project_id,'request_id':request_id,'at':dt.astimezone(timezone.utc),'crawler':found['crawler_name'],'organization':found['organization'],'category':found['category'],'host':host.lower().rstrip('.'),'path':path,'method':method,'status':status,'ua':ua[:1024] if isinstance(ua,str) else '',**{k:found[k] for k in ('detection_method','verification_status')}})
+            accepted += inserted.rowcount
+    return {'accepted':accepted}
+
+
 @app.middleware('http')
 async def limits(request: Request, call_next):
     origin = request.headers.get('origin')
@@ -817,8 +875,15 @@ async def limits(request: Request, call_next):
     clerk_webhook_request = request.url.path == '/api/clerk-webhook'
     if request.url.path == '/api/events' and request.method == 'OPTIONS':
         return Response(status_code=204, headers={'Access-Control-Allow-Origin': origin or 'null', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Zappa-Key', 'Vary': 'Origin'})
-    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/internal/events', '/internal/events/geo', '/internal/retention', '/api/clerk-webhook') and not payment_webhook and origin != FRONTEND_URL:
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.url.path not in ('/api/events', '/api/ai-crawlers', '/internal/events', '/internal/events/geo', '/internal/retention', '/api/clerk-webhook') and not payment_webhook and origin != FRONTEND_URL:
         return Response(status_code=403)
+    if request.url.path == '/api/ai-crawlers' and request.method == 'POST':
+        peer = request.client.host if request.client else 'unknown'
+        if not limiter.consume('ai-crawler-peer:' + peer, RATE_LIMIT_IP_PER_MINUTE): return Response(status_code=429)
+        length = request.headers.get('content-length')
+        if length and (not length.isdigit() or int(length) > 16384): return Response(status_code=413)
+        body = await request.body()
+        if len(body) > 16384: return Response(status_code=413)
     if payment_webhook or clerk_webhook_request:
         peer = request.client.host if request.client else 'unknown'
         if not limiter.consume('webhook-ip:' + peer, RATE_LIMIT_PROJECT_PER_MINUTE):
@@ -1269,6 +1334,15 @@ async def geography(
         'total_rows': int(count_row), 'rows': results,
     }
 
+@app.get('/api/projects/{project_id}/ai-crawlers')
+async def ai_crawler_details(project_id: str, start: date, end: date, page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100), user=Depends(session_user)):
+    if end < start or (end-start).days >= 90: raise HTTPException(422, 'Date range must cover 1 to 90 days')
+    if end > now().date(): raise HTTPException(422, 'End date cannot be in the future')
+    with engine.connect() as db:
+        owned(db, project_id, user['id'])
+        return ai_traffic_reporting.crawler_details(db, project_id, start, end, page, page_size)
+
+
 @app.get('/api/projects/{project_id}/overview')
 async def overview(project_id: str, start: date, end: date, model: str = 'first_touch', conversion_event: str | None = Query(default=None, min_length=1, max_length=64), user=Depends(session_user)):
     if end < start or (end - start).days >= 90: raise HTTPException(422, 'Date range must cover 1 to 90 days')
@@ -1276,7 +1350,10 @@ async def overview(project_id: str, start: date, end: date, model: str = 'first_
     if model not in overview_reporting.MODELS: raise HTTPException(422, 'Unsupported attribution model')
     with engine.connect() as db:
         owned(db, project_id, user['id'])
-        return overview_reporting.report(db, project_id, start, end, model, conversion_event)
+        report = overview_reporting.report(db, project_id, start, end, model, conversion_event)
+        configured = bool(db.execute(text('SELECT ai_crawler_key_hash IS NOT NULL FROM projects WHERE id=:id'), {'id':project_id}).scalar())
+        report['ai_traffic'] = ai_traffic_reporting.report(db, project_id, start, end, model, conversion_event, configured)
+        return report
 
 
 @app.get('/api/projects/{project_id}/acquisition')
