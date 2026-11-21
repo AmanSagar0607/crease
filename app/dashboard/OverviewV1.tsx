@@ -125,6 +125,8 @@ export default function OverviewV1({ projectId, report, loading, error, onRetry,
   const [newCrawlerKey, setNewCrawlerKey] = useState('');
   const [keyBusy, setKeyBusy] = useState(false);
   const [keyError, setKeyError] = useState('');
+  // Older API deployments may return the pre-AI Traffic overview contract during rollout.
+  const aiTraffic = report?.ai_traffic;
   async function rotateCrawlerKey() {
     setKeyBusy(true); setKeyError(''); setNewCrawlerKey('');
     try {
@@ -318,18 +320,18 @@ export default function OverviewV1({ projectId, report, loading, error, onRetry,
                   <button type="button" role="tab" aria-selected={aiTab === 'crawlers'} onClick={() => setAiTab('crawlers')}>AI crawlers</button>
                 </div>
                 {aiTab === 'referrals' ? <>
-                  <p><strong>{display(report?.ai_traffic.referrals.metrics.visitors ?? 0)}</strong> visitors · <strong>{display(report?.ai_traffic.referrals.metrics.sessions ?? 0)}</strong> sessions · <strong>{display(report?.ai_traffic.referrals.metrics.pageviews ?? 0)}</strong> page views</p>
-                  {(report?.ai_traffic.referrals.platforms ?? []).length ? <div className={s.aiSourceList}>{report!.ai_traffic.referrals.platforms.slice(0, 5).map((row) => <div className={s.aiSource} key={`${row.platform}-${row.referrer_hostname}`}><span><i />{row.platform}<small>{row.referrer_hostname}</small></span><b>{display(row.visitors)}</b></div>)}</div> : <p className={s.insightEmpty}>No AI traffic detected yet.</p>}
+                  <p><strong>{display(aiTraffic?.referrals.metrics.visitors ?? 0)}</strong> visitors · <strong>{display(aiTraffic?.referrals.metrics.sessions ?? 0)}</strong> sessions · <strong>{display(aiTraffic?.referrals.metrics.pageviews ?? 0)}</strong> page views</p>
+                  {(aiTraffic?.referrals.platforms ?? []).length ? <div className={s.aiSourceList}>{aiTraffic!.referrals.platforms.slice(0, 5).map((row) => <div className={s.aiSource} key={`${row.platform}-${row.referrer_hostname}`}><span><i />{row.platform}<small>{row.referrer_hostname}</small></span><b>{display(row.visitors)}</b></div>)}</div> : <p className={s.insightEmpty}>{aiTraffic ? 'No AI traffic detected yet.' : 'AI traffic report is not available from the backend yet.'}</p>}
                 </> : <>
-                  <p><strong>{display(report?.ai_traffic.crawlers.metrics.requests ?? 0)}</strong> requests · <strong>{display(report?.ai_traffic.crawlers.metrics.unique_crawlers ?? 0)}</strong> crawler types · {report?.ai_traffic.crawlers.metrics.pages ?? 0} pages</p>
-                  {(report?.ai_traffic.crawlers.platforms ?? []).length ? <div className={s.aiSourceList}>{report!.ai_traffic.crawlers.platforms.slice(0, 5).map((row) => <div className={s.aiSource} key={row.crawler}><span><i />{row.crawler}<small>{row.category} · {row.verification_status}</small></span><b>{display(row.requests)}</b></div>)}</div> : <p className={s.insightEmpty}>No AI crawler activity detected yet.</p>}
-                  {report?.ai_traffic.crawlers.recent.slice(0, 3).map((row) => <div className={s.insightRow} key={row.request_id}><span><strong>{row.crawler} · {row.path}</strong><small>{row.hostname} · {row.method} {row.status_code} · unverified UA match</small></span><b className={s.insightTime}>{new Date(row.requested_at).toLocaleDateString()}</b></div>)}
+                  <p><strong>{display(aiTraffic?.crawlers.metrics.requests ?? 0)}</strong> requests · <strong>{display(aiTraffic?.crawlers.metrics.unique_crawlers ?? 0)}</strong> crawler types · {aiTraffic?.crawlers.metrics.pages ?? 0} pages</p>
+                  {(aiTraffic?.crawlers.platforms ?? []).length ? <div className={s.aiSourceList}>{aiTraffic!.crawlers.platforms.slice(0, 5).map((row) => <div className={s.aiSource} key={row.crawler}><span><i />{row.crawler}<small>{row.category} · {row.verification_status}</small></span><b>{display(row.requests)}</b></div>)}</div> : <p className={s.insightEmpty}>{aiTraffic ? 'No AI crawler activity detected yet.' : 'Crawler report is not available from the backend yet.'}</p>}
+                  {aiTraffic?.crawlers.recent.slice(0, 3).map((row) => <div className={s.insightRow} key={row.request_id}><span><strong>{row.crawler} · {row.path}</strong><small>{row.hostname} · {row.method} {row.status_code} · unverified UA match</small></span><b className={s.insightTime}>{new Date(row.requested_at).toLocaleDateString()}</b></div>)}
                   {projectId && <button type="button" onClick={() => void rotateCrawlerKey()} disabled={keyBusy}>{keyBusy ? 'Generating…' : 'Generate / rotate private crawler key'}</button>}
                   {keyError && <p role="alert">{keyError}</p>}
                   {newCrawlerKey && <p role="status">Copy this private key now; it is shown once: <code>{newCrawlerKey}</code></p>}
-                  {!report?.ai_traffic.crawler_key_configured && !newCrawlerKey && <p className={s.demoNote}>Add the generated key only to your site’s server environment. User-Agent matches are unverified.</p>}
+                  {!aiTraffic?.crawler_key_configured && !newCrawlerKey && <p className={s.demoNote}>Add the generated key only to your site’s server environment. User-Agent matches are unverified.</p>}
                 </>}
-                <div className={s.aiPreviewChart} aria-label="AI traffic over time">{report?.ai_traffic.series.map((point) => <span key={point.date} title={`${point.date}: ${point.referral_visitors} referral visitors, ${point.crawler_requests} crawler requests`} style={{ display: 'inline-block', height: `${Math.max(2, Math.min(36, point.referral_visitors + point.crawler_requests))}px`, width: `${Math.max(2, 92 / Math.max(1, report.ai_traffic.series.length))}%`, marginRight: 2, background: 'var(--accent-line)', verticalAlign: 'bottom' }} />)}</div>
+                <div className={s.aiPreviewChart} aria-label="AI traffic over time">{aiTraffic?.series.map((point) => <span key={point.date} title={`${point.date}: ${point.referral_visitors} referral visitors, ${point.crawler_requests} crawler requests`} style={{ display: 'inline-block', height: `${Math.max(2, Math.min(36, point.referral_visitors + point.crawler_requests))}px`, width: `${Math.max(2, 92 / Math.max(1, (aiTraffic?.series.length ?? 0)))}%`, marginRight: 2, background: 'var(--accent-line)', verticalAlign: 'bottom' }} />)}</div>
               </section>
             </div>
 

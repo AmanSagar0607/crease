@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth, useClerk } from '@clerk/nextjs';
+import { clerkConfigured } from '@/lib/clerk-config';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { alpha2ToAlpha3, alpha3ToAlpha2, alpha2ToNumeric, getName, registerLocale } from 'i18n-iso-countries';
@@ -793,7 +794,23 @@ function GeoList({ rows, loading, error, totalRows, onPage, onBack, backLabel, o
 
 type DashboardViewProps = { projectId?: string; mode?: 'standard' | 'design-lab' };
 
-export default function DashboardView({ projectId, mode = 'standard' }: DashboardViewProps) {
+export default function DashboardView(props: DashboardViewProps) {
+  if (!clerkConfigured) {
+    return (
+      <main className={s.main}>
+        <div className={s.statePanel} data-tone="error" role="alert">
+          <div className={s.statePanelBody}>
+            <strong>Dashboard authentication is not configured</strong>
+            <p>Configure Clerk’s publishable and secret keys for this deployment, then rebuild the app.</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+  return <AuthenticatedDashboardView {...props} />;
+}
+
+function AuthenticatedDashboardView({ projectId, mode = 'standard' }: DashboardViewProps) {
   const isDesignLab = mode === 'design-lab';
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
