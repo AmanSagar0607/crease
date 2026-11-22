@@ -33,6 +33,14 @@ export default function Docs() {
     <h2>Custom events</h2>
     <Code>{`window.Zappa.capture('signup_completed', { plan: 1, trial: true });`}</Code>
     <p>Property values must be numbers or booleans, with at most 20 properties per event. Pages and referrers are recorded automatically.</p>
+    <h2 id="ai-crawlers">AI crawler reporting on Next.js/Vercel</h2>
+    <p>Browser analytics cannot see crawlers that do not run JavaScript. Crawler reporting needs a server or middleware collector on the website being monitored; generating a Zappa key alone does not install that collector.</p>
+    <ol>
+      <li>In the Zappa project’s <strong>Overview → AI Traffic → AI crawlers</strong> panel, generate or rotate a private crawler key.</li>
+      <li>In the tracked website’s Vercel project, set <code>ZAPPA_PROJECT_ID</code> and <code>ZAPPA_CRAWLER_KEY</code> as server-only environment variables. Never use a <code>NEXT_PUBLIC_</code> prefix for the private key, commit it, or put it in browser code.</li>
+      <li>Install a Next.js middleware or server collector on the tracked site. Forward only privacy-minimized crawler request metadata to Zappa’s AI crawler endpoint, then deploy the site.</li>
+    </ol>
+    <p>Middleware runs before the final page response, so it cannot observe the downstream HTTP status; such integrations may report “status not captured.” User-Agent detection is heuristic and displayed as unverified, not proof that a request came from a named AI provider. AI referrals are separate and require an actual visitor click-through from a recognized AI source; crawler requests do not create referral sessions.</p>
     <h2>Next.js and npm</h2>
     <p>Install <code>@aman-sagar06077/zappa-analytics</code> with <code>npm install @aman-sagar06077/zappa-analytics</code>. Then add its component to your app and pass the project ID and public write key shown in Installation.</p>
     <p>Copy the project-specific <code>NEXT_PUBLIC_ZAPPA_*</code> values from your project’s Installation setup and add them to <code>.env.local</code> (and your hosting provider for production). The endpoint is prefilled by Installation; it can point to Zappa’s standard collector or an enabled Cloudflare geolocation collector.</p>

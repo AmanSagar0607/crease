@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import type { AnalyticsSection } from './navigation';
 import { compareLabel, display, displayPagePath, eventLabel, type AttributionModel, type Metrics, type Report } from './reporting';
 import s from './overview-v1.module.css';
@@ -325,11 +326,19 @@ export default function OverviewV1({ projectId, report, loading, error, onRetry,
                 </> : <>
                   <p><strong>{display(aiTraffic?.crawlers.metrics.requests ?? 0)}</strong> requests · <strong>{display(aiTraffic?.crawlers.metrics.unique_crawlers ?? 0)}</strong> crawler types · {aiTraffic?.crawlers.metrics.pages ?? 0} pages</p>
                   {(aiTraffic?.crawlers.platforms ?? []).length ? <div className={s.aiSourceList}>{aiTraffic!.crawlers.platforms.slice(0, 5).map((row) => <div className={s.aiSource} key={row.crawler}><span><i />{row.crawler}<small>{row.category} · {row.verification_status}</small></span><b>{display(row.requests)}</b></div>)}</div> : <p className={s.insightEmpty}>{aiTraffic ? 'No AI crawler activity detected yet.' : 'Crawler report is not available from the backend yet.'}</p>}
-                  {aiTraffic?.crawlers.recent.slice(0, 3).map((row) => <div className={s.insightRow} key={row.request_id}><span><strong>{row.crawler} · {row.path}</strong><small>{row.hostname} · {row.method} {row.status_code} · unverified UA match</small></span><b className={s.insightTime}>{new Date(row.requested_at).toLocaleDateString()}</b></div>)}
+                  {aiTraffic?.crawlers.recent.slice(0, 3).map((row) => (
+                    <div className={s.insightRow} key={row.request_id}>
+                      <span>
+                        <strong>{row.crawler} · {row.path}</strong>
+                        <small>{row.hostname} · {row.method} {row.status_code === 0 ? 'status not captured' : row.status_code} · unverified UA match</small>
+                      </span>
+                      <b className={s.insightTime}>{new Date(row.requested_at).toLocaleDateString()}</b>
+                    </div>
+                  ))}
                   {projectId && <button type="button" onClick={() => void rotateCrawlerKey()} disabled={keyBusy}>{keyBusy ? 'Generating…' : 'Generate / rotate private crawler key'}</button>}
                   {keyError && <p role="alert">{keyError}</p>}
                   {newCrawlerKey && <p role="status">Copy this private key now; it is shown once: <code>{newCrawlerKey}</code></p>}
-                  {!aiTraffic?.crawler_key_configured && !newCrawlerKey && <p className={s.demoNote}>Add the generated key only to your site’s server environment. User-Agent matches are unverified.</p>}
+                  <p className={s.demoNote}>For Next.js/Vercel, install a site-side server collector and set <code>ZAPPA_PROJECT_ID</code> and <code>ZAPPA_CRAWLER_KEY</code> in the tracked site’s server environment. Never expose the crawler key with a <code>NEXT_PUBLIC_</code> prefix. <Link href="/docs#ai-crawlers">Setup guide</Link>. User-Agent matches are unverified.</p>
                 </>}
                 <div className={s.aiPreviewChart} aria-label="AI traffic over time">{aiTraffic?.series.map((point) => <span key={point.date} title={`${point.date}: ${point.referral_visitors} referral visitors, ${point.crawler_requests} crawler requests`} style={{ display: 'inline-block', height: `${Math.max(2, Math.min(36, point.referral_visitors + point.crawler_requests))}px`, width: `${Math.max(2, 92 / Math.max(1, (aiTraffic?.series.length ?? 0)))}%`, marginRight: 2, background: 'var(--accent-line)', verticalAlign: 'bottom' }} />)}</div>
               </section>

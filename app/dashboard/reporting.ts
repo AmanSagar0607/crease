@@ -187,6 +187,7 @@ export type AiCrawlerRecentRow = {
   hostname: string;
   path: string;
   method: string;
+  /** 0 means the middleware could not observe the final downstream response status. */
   status_code: number;
   user_agent: string;
   detection_method: string;
