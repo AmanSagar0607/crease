@@ -101,6 +101,30 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(private_data.json()['total_rows'], 1)
         self.assertEqual(private_data.json()['rows'][0]['verification_status'], 'unverified')
 
+    def test_ai_crawler_ingestion_accepts_explicit_unknown_status(self):
+        self.client.cookies.set('__session', 'token')
+        project = self.client.post('/api/projects', json={'name':'Crawler proxy status','domain':'example.com'}, headers={'origin':main.FRONTEND_URL}).json()
+        key_response = self.client.post(f"/api/projects/{project['id']}/ai-crawler-key", headers={'origin':main.FRONTEND_URL})
+        self.assertEqual(key_response.status_code, 201, key_response.text)
+        key = key_response.json()['crawler_key']
+        record = {
+            'requestId':'vercel-proxy-unknown-001',
+            'timestamp':main.stamp(main.now()),
+            'hostname':'www.example.com',
+            'path':'/docs',
+            'method':'GET',
+            'statusCode':0,
+            'userAgent':'GPTBot/1.0',
+        }
+
+        response = self.client.post('/api/ai-crawlers', json={'projectId':project['id'],'requests':[record]}, headers={'x-zappa-crawler-key':key})
+
+        self.assertEqual(response.status_code, 202, response.text)
+        self.assertEqual(response.json()['accepted'], 1)
+        with main.engine.connect() as db:
+            status = db.execute(text('SELECT status_code FROM ai_crawler_requests WHERE project_id=:project AND request_id=:request'), {'project':project['id'],'request':record['requestId']}).scalar_one()
+        self.assertEqual(status, 0)
+
     def test_cloudflare_geo_hmac_stores_normalized_snapshot_and_rejects_replay(self):
         self.client.cookies.set('__session', 'token')
         with patch.object(main, 'GEO_CF_HMAC_SECRET', 'test-cloudflare-secret-with-at-least-32-bytes'):

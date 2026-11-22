@@ -862,8 +862,10 @@ async def ingest_ai_crawlers(request: Request):
             if not isinstance(host, str) or host.lower().rstrip('.') not in {project['domain'], 'www.'+project['domain']}: continue
             if not isinstance(path, str) or not re.fullmatch(r'/[^?#\s]{0,510}', path) or '..' in path: continue
             if method not in ('GET','HEAD','POST','PUT','DELETE','OPTIONS','PATCH') or not isinstance(request_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,64}',request_id): continue
-            if status < 100 or status > 599: continue
-            inserted = db.execute(text('''INSERT INTO ai_crawler_requests (project_id,request_id,requested_at,crawler_name,organization,category,hostname,path,method,status_code,user_agent,detection_method,verification_status) VALUES (:project,:request_id,:at,:crawler,:organization,:category,:host,:path,:method,:status,:ua,:detection,:verification) ON CONFLICT (project_id,request_id) DO NOTHING'''), {'project':project_id,'request_id':request_id,'at':dt.astimezone(timezone.utc),'crawler':found['crawler_name'],'organization':found['organization'],'category':found['category'],'host':host.lower().rstrip('.'),'path':path,'method':method,'status':status,'ua':ua[:1024] if isinstance(ua,str) else '',**{k:found[k] for k in ('detection_method','verification_status')}})
+            # 0 means the edge middleware observed the request but could not
+            # observe the final downstream response status.
+            if status != 0 and (status < 100 or status > 599): continue
+            inserted = db.execute(text('''INSERT INTO ai_crawler_requests (project_id,request_id,requested_at,crawler_name,organization,category,hostname,path,method,status_code,user_agent,detection_method,verification_status) VALUES (:project,:request_id,:at,:crawler,:organization,:category,:hostname,:path,:method,:status,:ua,:detection,:verification) ON CONFLICT (project_id,request_id) DO NOTHING'''), {'project':project_id,'request_id':request_id,'at':dt.astimezone(timezone.utc),'crawler':found['crawler_name'],'organization':found['organization'],'category':found['category'],'hostname':host.lower().rstrip('.'),'path':path,'method':method,'status':status,'ua':ua[:1024] if isinstance(ua,str) else '',**{k:found[k] for k in ('detection_method','verification_status')}})
             accepted += inserted.rowcount
     return {'accepted':accepted}
 
