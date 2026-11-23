@@ -4820,3 +4820,30 @@
   .headerProjectActions .utilityAction { min-height: 34px; padding-inline: 6px; font-size: 11px; }
   .headerProjectActions .utilityActionPrimary { display: none; }
 }
+
+
+/* Hold project controls and navigation slots steady before project data resolves. */
+.headerProjectControlsSkeleton { display: flex; flex: 0 1 430px; align-items: center; gap: 10px; min-width: 0; }
+.headerProjectControlsSkeleton span,
+.projectTopNavSkeleton span {
+  display: block;
+  border-radius: var(--radius-1, 8px);
+  background: var(--surface-raised);
+  animation: dashboard-loading-pulse 1.2s ease-in-out infinite alternate;
+}
+.headerProjectControlsSkeleton span:first-child { width: min(232px, 24vw); min-width: 140px; height: 38px; }
+.headerProjectControlsSkeleton span:last-child { width: 128px; height: 34px; }
+.projectTopNavSkeleton { display: flex; min-height: 46px; align-items: center; justify-content: space-between; gap: 14px; }
+.projectTopNavSkeleton span:first-child { width: min(620px, 62%); height: 34px; }
+.projectTopNavSkeleton span:last-child { width: min(260px, 28%); height: 34px; }
+@media (max-width: 767px) {
+  .headerProjectControlsSkeleton { flex: 0 1 auto; gap: 6px; }
+  .headerProjectControlsSkeleton span:first-child { width: clamp(116px, 32vw, 168px); min-width: 116px; }
+  .headerProjectControlsSkeleton span:last-child { width: 44px; }
+  .projectTopNavSkeleton { min-height: 0; flex-direction: column; align-items: stretch; gap: 6px; }
+  .projectTopNavSkeleton span:first-child,
+  .projectTopNavSkeleton span:last-child { width: 100%; height: 42px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .headerProjectControlsSkeleton *, .projectTopNavSkeleton * { animation: none !important; }
+}

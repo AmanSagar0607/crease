@@ -877,7 +877,12 @@ function AuthenticatedDashboardView({ projectId, mode = 'standard' }: DashboardC
   const [funnelError, setFunnelError] = useState('');
   const [tab, setTab] = useState<Tab>('analytics');
   const [activeSection, setActiveSection] = useState<AnalyticsSection>('overview');
-  const project = showProjects ? undefined : projects.find((item) => item.id === selected);
+  const project = projectId
+    ? projects.find((item) => item.id === projectId)
+    : showProjects
+      ? undefined
+      : projects.find((item) => item.id === selected);
+  const isProjectDashboard = Boolean(projectId || project);
   const projectRef = useRef<Project | undefined>(undefined);
   const loadVersion = useRef(0);
   projectRef.current = project;
@@ -1420,17 +1425,17 @@ function AuthenticatedDashboardView({ projectId, mode = 'standard' }: DashboardC
 
   return (
     <TooltipProvider>
-    <div className={`${s.dashboard} ${project || isDesignLab ? s.analyticsDashboard : ''}`}>
+    <div className={`${s.dashboard} ${isProjectDashboard || isDesignLab ? s.analyticsDashboard : ''}`}>
       <a className={s.skip} href="#main">
         Skip to content
       </a>
 
       {!isDesignLab && (
-      <header className={`${s.header} ${project ? s.analyticsHeader : ''}`}>
+      <header className={`${s.header} ${isProjectDashboard ? s.analyticsHeader : ''}`}>
         <div className={s.headerInner}>
           <div className={s.headerIdentity}>
             <Link className={s.brand} href="/" aria-label="Zappa home"><ZappaWordmark /></Link>
-            {project && !isDesignLab && (
+            {isProjectDashboard && !isDesignLab && project && (
               <div className={s.headerProjectControls}>
                 <label className={s.headerProjectSelect}>
                   <span className={s.srOnly}>Switch website</span>
@@ -1462,6 +1467,12 @@ function AuthenticatedDashboardView({ projectId, mode = 'standard' }: DashboardC
                 </ButtonGroup>
               </div>
             )}
+            {isProjectDashboard && !isDesignLab && !project && (
+              <div className={s.headerProjectControlsSkeleton} aria-hidden="true">
+                <span />
+                <span />
+              </div>
+            )}
           </div>
           <div className={s.account}>
             <DropdownMenu>
@@ -1491,7 +1502,7 @@ function AuthenticatedDashboardView({ projectId, mode = 'standard' }: DashboardC
       </header>
       )}
 
-      {!isDesignLab && !project && (
+      {!isDesignLab && !isProjectDashboard && (
         <div className={s.utilityNavWrap}>
           <div className={s.utilityNav}>
             <Breadcrumb className={s.dashboardBreadcrumb}>
@@ -1509,9 +1520,9 @@ function AuthenticatedDashboardView({ projectId, mode = 'standard' }: DashboardC
         </div>
       )}
 
-      {project && !isDesignLab && (
+      {isProjectDashboard && !isDesignLab && (
         <div className={s.projectTopNavWrap}>
-          <div className={s.projectTopNav}>
+          {project ? <div className={s.projectTopNav}>
             <nav className={s.projectTopNavLinks} aria-label="Project analytics">
               {NAV_GROUPS.flatMap((group) => group.items).map((item) => (
                 <a
@@ -1542,7 +1553,7 @@ function AuthenticatedDashboardView({ projectId, mode = 'standard' }: DashboardC
                 );
               })}
             </nav>
-          </div>
+          </div> : <div className={s.projectTopNavSkeleton} aria-hidden="true"><span /><span /></div>}
         </div>
       )}
 
